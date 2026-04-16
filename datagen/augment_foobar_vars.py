@@ -210,11 +210,7 @@ def augment_dataframe_with_foobar_vars(df):
     df_work = df.dropna(how="all").copy()
     code_col = _find_column(df_work, ["code", "Code"])
     validity_col = _find_column(df_work, ["phys_valid", "Phys Valid"], required=False)
-
-    if "foobar_vars" not in df_work.columns:
-        df_work["foobar_vars"] = pd.NA
-
-    df_work["foobar_vars"] = "No"
+    mod_type_col = _find_column(df_work, ["mod_type", "Mod Type"], required=False)
 
     augmented_rows = []
     eligible_rows = 0
@@ -234,7 +230,8 @@ def augment_dataframe_with_foobar_vars(df):
 
         new_row = row.copy()
         new_row[code_col] = _serialize_code_text(transformed_code)
-        new_row["foobar_vars"] = "Yes"
+        if mod_type_col is not None:
+            new_row[mod_type_col] = "NoComm_CorrVar"
         if "num_lines" in new_row.index:
             new_row["num_lines"] = len(transformed_code.splitlines())
         if "num_char" in new_row.index:
