@@ -1,0 +1,28 @@
+Final dataset format: pdedataxlsx
+physics_code contains data without augmentations provided by Lohit and Shreya.
+
+title (str): Title of code example in the row, in the format (“{Pde class}_{Comment type}_{Valid/invalid}_{idx}” e.g. “Wave_Comm_Valid_1”)
+code (str): Code for the PDE, must contain newline characters.
+num_lines (int64): Number of lines in code.
+num_char (int64): Number of characters in code.
+pde_class (str): PDE classification [wave, heat, burgers, navier-stokes]
+phys_process (str): Dominant physical process encoded by the PDE [oscillation/advection/diffusion/restoration]. If multiple apply, concatenate with “/”.
+phys_valid (bool): True/False whether the code is a physically valid simulation, or has been corrupted to produce physically invalid results [define this precisely as NaN-producing elsewhere]
+num_method (str): Numerical method(s) used in implementation (explicit/implicit/spectral). If multiple apply, concatenate with “/”.
+
+corruption_source_id (str): title field of code example that comments have been taken from. NaN if row does not correspond to corrupted comment example.
+corruption_source_pde (str): pde_class of code example that comments have been taken from. NaN if row does not correspond to corrupted comment example.
+injected_comments (str): list encoding dicts with exact comment changes of the form 
+
+[{'donor_text': '# Wavenumbers', 'gt_position': 5, 'source_line_in_donor': 6, 'line_inserted': 5}, …]
+
+
+NaN if row does not correspond to corrupted comment example.
+
+delta_comments (int64): n_donor_comments - n_receiver_comments. NaN if not a corrupted comment row.
+
+num_comments (int64): number of comments in the code. 0 if the code has no comments. [TBD: this needs to be computed for everything, including existing rows]
+
+gt_sample (str): Identifier for the original code (“{pde_class}_{i}” e.g. “Wave_1”)
+
+mod_type (str): Type of modification made to code [NoComm_Valid, Comm_Valid, NoComm_InValid, NoComm_CorrVar, CorrComm]. NoComm_Valid corresponds to “ground truth".
