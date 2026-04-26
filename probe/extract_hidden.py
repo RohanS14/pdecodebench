@@ -53,8 +53,8 @@ valid: ____
 """
 
 EXPECTED_MOD_TYPE_DIST = {
-    "Comm_Valid": 16, "NoComm_Valid": 16, "NoComm_InValid": 16,
-    "CorrComm": 16, "NoComm_CorrVar": 16, "Comm_InValid": 16,
+    "Comm_Valid": 16, "NoComm_Valid": 16, "CorrComm": 16, "NoComm_CorrVar": 16,
+    "Comm_InValid": 16, "NoComm_InValid": 16, "CorrComm_Invalid": 16, "NoComm_CorrVar_InValid": 16,
 }
 
 
@@ -106,7 +106,7 @@ def validate_code_span(tokenizer, input_ids, span, code, title):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset", default="data/pdedata_clean_v2.xlsx")
+    parser.add_argument("--dataset", default="data/pdedata_clean_v3.xlsx")
     parser.add_argument("--model", default="Qwen/Qwen2.5-Coder-7B-Instruct")
     parser.add_argument("--output_dir", default="probe/hidden_states/")
     args = parser.parse_args()
@@ -122,7 +122,7 @@ def main():
     # Load dataset (same integrity check as run_eval.py)
     df = pd.read_excel(args.dataset)
     print(f"Dataset: {len(df)} rows", flush=True)
-    assert len(df) == 96, f"Expected 96 rows, got {len(df)}"
+    assert len(df) == 128, f"Expected 128 rows, got {len(df)}"
     dist = df["mod_type"].value_counts().to_dict()
     assert dist == EXPECTED_MOD_TYPE_DIST, f"Unexpected mod_type distribution: {dist}"
 

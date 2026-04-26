@@ -1,5 +1,5 @@
 """
-Linear probe — all 96 rows, LOGO-CV by gt_sample.
+Linear probe — all 128 rows (v3), LOGO-CV by gt_sample.
 
 Answers: which layers encode PDE properties; does test accuracy drop for
 corrupted mod_types in the test folds?
@@ -114,6 +114,7 @@ def main():
     data = load_data(args.hidden)
     reps = data[args.pool].astype(np.float32)   # (N, L, D)
     N, L, D = reps.shape
+    assert N == 128, f"Expected 128 rows in NPZ, got {N}. Re-run extract_hidden.slurm on v3."
     groups    = data["gt_samples"]
     mod_types = data["mod_types"]
 
@@ -124,7 +125,7 @@ def main():
         # fallback: try loading from dataset
         raw_codes = None
         try:
-            df_raw = pd.read_excel("data/pdedata_clean_v2.xlsx")
+            df_raw = pd.read_excel("data/pdedata_clean_v3.xlsx")
             title_to_code = {str(r["title"]): str(r["code"]) for _, r in df_raw.iterrows()}
             raw_codes = [title_to_code.get(str(t), "") for t in data["titles"]]
         except Exception as e:
@@ -187,7 +188,7 @@ def main():
                    label=f"Chance ({CHANCE[label_name]:.2f})")
         ax.set_xlabel("Layer (0 = embedding)")
         ax.set_ylabel("LOGO-CV Accuracy")
-        ax.set_title(f"Linear probe: {label_name} — all 96 rows [{args.pool}]")
+        ax.set_title(f"Linear probe: {label_name} — all {N} rows [{args.pool}]")
         ax.legend(fontsize=8)
         ax.grid(True, alpha=0.3)
         ax.set_xlim(-0.5, L - 0.5)

@@ -1,5 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=pde_rsa
+#SBATCH --mail-type=BEGIN,END,FAIL
+#SBATCH --mail-user=rs9768@nyu.edu
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=8G
 #SBATCH --time=00:30:00

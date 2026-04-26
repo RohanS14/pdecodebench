@@ -9,9 +9,9 @@ Usage:
         --pool mean_pool
 
 Produces:
-    rsa_layer{l}_{pool}.png       — 96×96 cosine-distance heatmap per layer
-    rsa_block_score_{pool}.png    — within/between class distance ratio vs layer depth
-    rsa_modtype_compare_l{l}.png  — side-by-side 16×16 heatmaps for 3 mod_types
+    rsa_layer{l}_{pool}.png          — 128×128 cosine-distance heatmap per layer
+    rsa_block_score_{pool}.png       — within/between class distance ratio vs layer (pde_class + phys_valid)
+    rsa_modtype_compare_l{l}.png     — side-by-side 16×16 heatmaps for all 8 mod_types
 """
 import argparse
 import os
@@ -26,7 +26,7 @@ import matplotlib.patches as mpatches
 import numpy as np
 from sklearn.metrics.pairwise import cosine_distances
 
-from probe_utils import load_data, PDE_CLASSES, MOD_TYPES
+from probe_utils import load_data, PDE_CLASSES, MOD_TYPES  # MOD_TYPES = all 8 mod_types
 
 PDE_COLORS = {
     "wave": "#4C72B0",
@@ -130,6 +130,7 @@ def main():
     titles = data["titles"]
 
     N, L, D = reps_all.shape
+    assert N == 128, f"Expected 128 rows in NPZ, got {N}. Re-run extract_hidden.slurm on v3."
     print(f"Loaded: {N} examples, {L} layers, {D} dim  [{args.pool}]", flush=True)
 
     # Sort order: by pde_class, then gt_sample, then mod_type
@@ -146,50 +147,58 @@ def main():
     layer_ids = [int(x) for x in args.layers.split(",")]
     layer_ids = [l for l in layer_ids if 0 <= l < L]
 
-    # --- Per-layer RDM heatmaps ---
-    block_scores = []
+    phys_valid_labels = data["phys_valid"].astype(str)  # "True" / "False"
+
+    # --- Per-layer RDM heatmaps + block scores for pde_class and phys_valid ---
+    block_scores_pde = []
+    block_scores_validity = []
+
     for l_idx in range(L):
         reps_l = reps_all[:, l_idx, :]
         rdm = compute_rdm(reps_l)
-        score = block_rdm_score(rdm, pde_labels)
-        block_scores.append(score)
+        block_scores_pde.append(block_rdm_score(rdm, pde_labels))
+        block_scores_validity.append(block_rdm_score(rdm, phys_valid_labels))
 
         if l_idx in layer_ids:
-            print(f"  Layer {l_idx}: block_score={score:.4f}", flush=True)
-            out = os.path.join(args.output_dir,
-                               f"rsa_layer{l_idx:02d}_{args.pool}.png")
+            print(f"  Layer {l_idx}: pde_block={block_scores_pde[-1]:.4f}  "
+                  f"valid_block={block_scores_validity[-1]:.4f}", flush=True)
+            out = os.path.join(args.output_dir, f"rsa_layer{l_idx:02d}_{args.pool}.png")
             plot_rdm(rdm, order, pde_labels, mod_type_labels,
                      title=f"RSA — Layer {l_idx} ({args.pool})", out_path=out)
             print(f"    Saved: {out}", flush=True)
 
-    # --- Block score vs layer ---
+    # --- Block score vs layer (pde_class + phys_valid on same plot) ---
     fig, ax = plt.subplots(figsize=(10, 4))
-    ax.plot(range(L), block_scores, marker="o", markersize=4, linewidth=1.5)
-    ax.axhline(1.0, color="gray", linestyle="--", linewidth=1, label="ratio=1 (no clustering)")
+    ax.plot(range(L), block_scores_pde, marker="o", markersize=4, linewidth=1.5,
+            label="pde_class")
+    ax.plot(range(L), block_scores_validity, marker="s", markersize=4, linewidth=1.5,
+            linestyle="--", label="phys_valid")
+    ax.axhline(1.0, color="gray", linestyle=":", linewidth=1, label="ratio=1 (no clustering)")
     ax.set_xlabel("Layer (0 = embedding)")
-    ax.set_ylabel("Within/between distance ratio\n(lower = better PDE clustering)")
+    ax.set_ylabel("Within/between distance ratio\n(lower = better clustering)")
     ax.set_title(f"RSA block score vs layer depth [{args.pool}]")
     ax.legend()
     ax.grid(True, alpha=0.3)
-    # Mark selected layers
     for l_idx in layer_ids:
-        ax.axvline(l_idx, color="red", linestyle=":", alpha=0.5)
+        ax.axvline(l_idx, color="red", linestyle=":", alpha=0.4)
     plt.tight_layout()
     score_path = os.path.join(args.output_dir, f"rsa_block_score_{args.pool}.png")
     plt.savefig(score_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
     print(f"Block score plot: {score_path}", flush=True)
 
-    # --- Mod-type comparison at one layer ---
+    # --- Mod-type comparison at best pde_class layer (all 8 mod_types) ---
     compare_l = args.compare_layer
     if compare_l is None:
-        # pick layer with lowest block score (best clustering)
-        compare_l = int(np.argmin(block_scores))
+        compare_l = int(np.argmin(block_scores_pde))
         print(f"Auto-selected layer {compare_l} for mod-type comparison "
-              f"(best block score: {block_scores[compare_l]:.4f})", flush=True)
+              f"(best pde block score: {block_scores_pde[compare_l]:.4f})", flush=True)
 
-    compare_mod_types = ["Comm_Valid", "CorrComm", "NoComm_CorrVar"]
-    fig, axes = plt.subplots(1, len(compare_mod_types), figsize=(5 * len(compare_mod_types), 5))
+    compare_mod_types = MOD_TYPES  # all 8
+    ncols = 4
+    nrows = 2
+    fig, axes = plt.subplots(nrows, ncols, figsize=(5 * ncols, 5 * nrows))
+    axes = axes.flatten()
     fig.suptitle(f"RSA mod-type comparison — Layer {compare_l} [{args.pool}]", fontsize=12)
 
     for ax, mt in zip(axes, compare_mod_types):
@@ -197,11 +206,12 @@ def main():
         idx = np.where(mask)[0]
         if len(idx) == 0:
             ax.set_title(f"{mt}\n(no data)")
+            ax.axis("off")
             continue
 
-        # Sort within this mod_type by pde_class
         pde_sub = pde_labels[idx]
-        sub_order = sorted(range(len(idx)), key=lambda i: pde_order_map.get(pde_sub[i].lower(), 99))
+        sub_order = sorted(range(len(idx)),
+                           key=lambda i: pde_order_map.get(pde_sub[i].lower(), 99))
         idx_sorted = idx[sub_order]
 
         reps_sub = reps_all[idx_sorted, compare_l, :]
@@ -214,11 +224,6 @@ def main():
         class_pos = {}
         for i, p in enumerate(pde_sub_sorted):
             class_pos.setdefault(p, []).append(i)
-        for p, positions in class_pos.items():
-            center = int(np.mean(positions))
-            ax.text(center, -1.5, p, ha="center", fontsize=7, rotation=30)
-
-        # class boundaries
         prev = pde_sub_sorted[0]
         for i, p in enumerate(pde_sub_sorted):
             if p != prev:
@@ -227,9 +232,13 @@ def main():
                 prev = p
 
         score_sub = block_rdm_score(rdm_sub, pde_sub_sorted)
-        ax.set_title(f"{mt}\nblock={score_sub:.3f} (N={len(idx)})", fontsize=9)
+        ax.set_title(f"{mt}\nblock={score_sub:.3f} (N={len(idx)})", fontsize=8)
         ax.set_xticks([])
         ax.set_yticks([])
+
+    # hide any unused axes
+    for ax in axes[len(compare_mod_types):]:
+        ax.axis("off")
 
     plt.tight_layout()
     mt_path = os.path.join(args.output_dir,
@@ -239,9 +248,9 @@ def main():
     print(f"Mod-type comparison: {mt_path}", flush=True)
 
     print("\nBlock scores by layer:", flush=True)
-    for l_idx, s in enumerate(block_scores):
+    for l_idx, (sp, sv) in enumerate(zip(block_scores_pde, block_scores_validity)):
         marker = " <-- selected" if l_idx in layer_ids else ""
-        print(f"  Layer {l_idx:2d}: {s:.4f}{marker}", flush=True)
+        print(f"  Layer {l_idx:2d}: pde={sp:.4f}  valid={sv:.4f}{marker}", flush=True)
 
 
 if __name__ == "__main__":

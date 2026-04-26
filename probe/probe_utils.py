@@ -8,8 +8,10 @@ from sklearn.model_selection import LeaveOneGroupOut
 from sklearn.preprocessing import StandardScaler
 
 PDE_CLASSES = ["wave", "heat", "burgers", "navier-stokes"]
-MOD_TYPES = ["Comm_Valid", "NoComm_Valid", "CorrComm", "NoComm_CorrVar",
-             "Comm_InValid", "NoComm_InValid"]
+MOD_TYPES = [
+    "Comm_Valid", "NoComm_Valid", "CorrComm", "NoComm_CorrVar",
+    "Comm_InValid", "NoComm_InValid", "CorrComm_Invalid", "NoComm_CorrVar_InValid",
+]
 
 # Binary label names and how to extract them from raw "/" -separated strings
 BINARY_PROCESS_LABELS = ["diffusion", "advection", "oscillation", "restoration"]
@@ -40,8 +42,7 @@ def extract_label_arrays(data: dict) -> dict:
     # Binary physical process labels
     for proc in BINARY_PROCESS_LABELS:
         labels[f"process_{proc}"] = np.array(
-            [int(proc in str(p).lower().replace("difffusion", "diffusion"))
-             for p in data["phys_process"]], dtype=np.int32
+            [int(proc in str(p).lower()) for p in data["phys_process"]], dtype=np.int32
         )
 
     # Binary numerical method labels

@@ -25,7 +25,7 @@ echo "GPU:    $(nvidia-smi --query-gpu=name --format=csv,noheader | head -1)"
 echo "Start:  $(date)"
 
 python probe/extract_hidden.py \
-    --dataset data/pdedata_clean_v2.xlsx \
+    --dataset data/pdedata_clean_v3.xlsx \
     --model Qwen/Qwen2.5-Coder-7B-Instruct \
     --output_dir probe/hidden_states/
 
