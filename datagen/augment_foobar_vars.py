@@ -1,49 +1,33 @@
+"""
+augment_foobar_vars.py — Generate NoComm_CorrVar and NoComm_CorrVar_InValid rows.
+
+NoComm_CorrVar:
+  Run the AST renamer on NoComm_Valid code. Variable mapping is derived
+  fresh from the code (sorted candidate names -> foobar_1, foobar_2, ...).
+
+NoComm_CorrVar_InValid:
+  Re-run the AST renamer on the corresponding NoComm_Valid to recover the
+  mapping, then apply that exact mapping to NoComm_InValid code. Any variables
+  in the invalid code not present in the mapping are assigned new foobar_N names
+  continuing the existing numbering. This ensures shared variables have identical
+  obfuscated names across validity conditions, preventing the probe from using
+  name identity as a validity shortcut.
+"""
+
 import ast
 import builtins
 import keyword
-from pathlib import Path
 
 import pandas as pd
-from openpyxl.styles import Alignment
 
 
-INPUT_PATH = Path("/home/ehb7466/pdecodebench/data/pdedata.xlsx")
-SOURCE_SHEET = 0
-OUTPUT_SHEET = "FoobarVars"
 BUILTIN_NAMES = set(dir(builtins))
 KEYWORD_NAMES = set(keyword.kwlist)
 
 
-def _is_truthy(value):
-    return pd.notna(value) and str(value).strip().lower() in {"yes", "true", "1"}
-
-
-def _find_column(df, candidates, required=True):
-    column_lookup = {str(col).strip().lower(): col for col in df.columns}
-    for candidate in candidates:
-        column = column_lookup.get(candidate.lower())
-        if column is not None:
-            return column
-
-    if required:
-        raise KeyError(
-            f"None of {candidates!r} were found in the DataFrame columns: "
-            f"{list(df.columns)!r}"
-        )
-    return None
-
-
-def _normalize_code_text(code):
-    if pd.isna(code):
-        raise ValueError("Code is null")
-
-    source = str(code)
-    return source.replace("\\r\\n", "\n").replace("\\n", "\n").replace("\\t", "\t")
-
-
-def _serialize_code_text(code):
-    return code.replace("\r\n", "\n").replace("\n", "\\n\n")
-
+# ---------------------------------------------------------------------------
+# AST helpers
+# ---------------------------------------------------------------------------
 
 class VariableCollector(ast.NodeVisitor):
     def __init__(self):
@@ -163,122 +147,133 @@ class VariableRenamer(ast.NodeTransformer):
         return node
 
 
-def obfuscate_code(code):
-    source = _normalize_code_text(code)
-    tree = ast.parse(source)
+def _normalize(code: str) -> str:
+    return code.replace("\\r\\n", "\n").replace("\\n", "\n").replace("\\t", "\t")
 
+
+def _build_maps(code: str) -> tuple[dict, dict]:
+    """Return (variable_rename_map, function_rename_map) for a piece of code."""
+    tree = ast.parse(_normalize(code))
     collector = VariableCollector()
     collector.visit(tree)
 
-    variable_excluded = (
-        BUILTIN_NAMES
-        | KEYWORD_NAMES
-        | collector.imported_names
-        | collector.function_names
-        | collector.class_names
+    excluded = (
+        BUILTIN_NAMES | KEYWORD_NAMES
+        | collector.imported_names | collector.function_names | collector.class_names
     )
+    names_to_rename = sorted(n for n in collector.candidate_names if n and n not in excluded)
+    var_map = {name: f"foobar_{i}" for i, name in enumerate(names_to_rename, start=1)}
 
-    names_to_rename = [
-        name for name in sorted(collector.candidate_names) if name and name not in variable_excluded
-    ]
-
-    rename_map = {
-        original: f"foobar_{i}"
-        for i, original in enumerate(names_to_rename, start=1)
+    fn_excluded = BUILTIN_NAMES | KEYWORD_NAMES | collector.imported_names | collector.class_names
+    fn_map = {
+        name: f"fn{i}"
+        for i, name in enumerate(collector.function_names_in_order, start=1)
+        if name not in fn_excluded
     }
-    function_excluded = (
-        BUILTIN_NAMES
-        | KEYWORD_NAMES
-        | collector.imported_names
-        | collector.class_names
-    )
-    function_rename_map = {
-        original: f"fn{i}"
-        for i, original in enumerate(collector.function_names_in_order, start=1)
-        if original not in function_excluded
-    }
+    return var_map, fn_map
 
-    if not rename_map and not function_rename_map:
-        return source
 
-    new_tree = VariableRenamer(rename_map, function_rename_map).visit(tree)
+def _apply_maps(code: str, var_map: dict, fn_map: dict) -> str:
+    source = _normalize(code)
+    tree = ast.parse(source)
+    new_tree = VariableRenamer(var_map, fn_map).visit(tree)
     ast.fix_missing_locations(new_tree)
     return ast.unparse(new_tree)
 
 
-def augment_dataframe_with_foobar_vars(df):
-    df_work = df.dropna(how="all").copy()
-    code_col = _find_column(df_work, ["code", "Code"])
-    validity_col = _find_column(df_work, ["phys_valid", "Phys Valid"], required=False)
-    mod_type_col = _find_column(df_work, ["mod_type", "Mod Type"], required=False)
+def _extend_map(base_var_map: dict, invalid_code: str) -> tuple[dict, dict]:
+    """
+    Return (extended_var_map, fn_map) for invalid_code.
+    Shared variables keep their foobar_N names from base_var_map.
+    New variables continue numbering from the highest N already used.
+    """
+    max_n = max((int(v.split("_")[1]) for v in base_var_map.values() if v.startswith("foobar_")), default=0)
 
-    augmented_rows = []
-    eligible_rows = 0
+    tree = ast.parse(_normalize(invalid_code))
+    collector = VariableCollector()
+    collector.visit(tree)
+    excluded = (
+        BUILTIN_NAMES | KEYWORD_NAMES
+        | collector.imported_names | collector.function_names | collector.class_names
+    )
+    all_names = sorted(n for n in collector.candidate_names if n and n not in excluded)
+
+    extended = dict(base_var_map)
+    counter = max_n + 1
+    for name in all_names:
+        if name not in extended:
+            extended[name] = f"foobar_{counter}"
+            counter += 1
+
+    fn_excluded = BUILTIN_NAMES | KEYWORD_NAMES | collector.imported_names | collector.class_names
+    fn_map = {
+        name: f"fn{i}"
+        for i, name in enumerate(collector.function_names_in_order, start=1)
+        if name not in fn_excluded
+    }
+    return extended, fn_map
+
+
+# ---------------------------------------------------------------------------
+# Public generation functions
+# ---------------------------------------------------------------------------
+
+def generate_foobar_rows(df: pd.DataFrame) -> list[dict]:
+    """
+    Returns new NoComm_CorrVar + NoComm_CorrVar_InValid rows to append to df.
+    """
+    no_comm_valid = df[df["mod_type"] == "NoComm_Valid"].reset_index(drop=True)
+    no_comm_invalid = df[df["mod_type"] == "NoComm_InValid"].reset_index(drop=True)
+    invalid_by_gt = no_comm_invalid.set_index("gt_sample")
+
+    new_rows = []
     parse_failures = 0
 
-    for _, row in df_work.iterrows():
-        if validity_col is not None and not _is_truthy(row.get(validity_col)):
-            continue
+    for _, row in no_comm_valid.iterrows():
+        gt = row["gt_sample"]
 
-        eligible_rows += 1
-        code_value = row.get(code_col)
+        # --- NoComm_CorrVar ---
         try:
-            transformed_code = obfuscate_code(code_value)
-        except Exception:
+            var_map, fn_map = _build_maps(row["code"])
+            transformed = _apply_maps(row["code"], var_map, fn_map)
+        except Exception as e:
+            print(f"WARNING: parse failure for {gt} (NoComm_CorrVar): {e}")
             parse_failures += 1
             continue
 
         new_row = row.copy()
-        new_row[code_col] = _serialize_code_text(transformed_code)
-        if mod_type_col is not None:
-            new_row[mod_type_col] = "NoComm_CorrVar"
-        if "num_lines" in new_row.index:
-            new_row["num_lines"] = len(transformed_code.splitlines())
-        if "num_char" in new_row.index:
-            new_row["num_char"] = len(new_row[code_col])
-        augmented_rows.append(new_row)
+        new_row["code"] = transformed
+        new_row["mod_type"] = "NoComm_CorrVar"
+        new_row["num_lines"] = len(transformed.splitlines())
+        new_row["num_char"] = len(transformed)
+        new_row["title"] = row["title"].replace("NoComm_Valid", "NoComm_CorrVar")
+        new_rows.append(new_row.to_dict())
 
-    if augmented_rows:
-        df_aug = pd.DataFrame(augmented_rows, columns=df_work.columns)
-        df_out = pd.concat([df_work, df_aug], ignore_index=True)
-    else:
-        df_out = df_work.copy()
+        # --- NoComm_CorrVar_InValid ---
+        if gt not in invalid_by_gt.index:
+            print(f"WARNING: no NoComm_InValid found for {gt}, skipping CorrVar_InValid")
+            continue
 
-    print(f"Rows after removing empty Excel rows: {len(df_work)}")
-    print(f"Eligible rows: {eligible_rows}")
-    print(f"Parse failures skipped: {parse_failures}")
-    print(f"Augmented rows created: {len(augmented_rows)}")
-    print(f"Output rows: {len(df_out)}")
-    return df_out
+        inv_row = no_comm_invalid[no_comm_invalid["gt_sample"] == gt].iloc[0]
+        try:
+            extended_var_map, inv_fn_map = _extend_map(var_map, inv_row["code"])
+            inv_transformed = _apply_maps(inv_row["code"], extended_var_map, inv_fn_map)
+        except Exception as e:
+            print(f"WARNING: parse failure for {gt} (NoComm_CorrVar_InValid): {e}")
+            parse_failures += 1
+            continue
 
+        inv_new_row = inv_row.copy()
+        inv_new_row["code"] = inv_transformed
+        inv_new_row["mod_type"] = "NoComm_CorrVar_InValid"
+        inv_new_row["num_lines"] = len(inv_transformed.splitlines())
+        inv_new_row["num_char"] = len(inv_transformed)
+        inv_new_row["title"] = inv_row["title"].replace("NoComm_InValid", "NoComm_CorrVar_InValid")
+        new_rows.append(inv_new_row.to_dict())
 
-def _format_output_sheet(writer, df_out):
-    worksheet = writer.sheets[OUTPUT_SHEET]
-    code_col_idx = list(df_out.columns).index(_find_column(df_out, ["code", "Code"])) + 1
-
-    worksheet.freeze_panes = "A2"
-    worksheet.column_dimensions[worksheet.cell(row=1, column=code_col_idx).column_letter].width = 120
-
-    wrapped_top = Alignment(wrap_text=True, vertical="top")
-    for row in range(2, len(df_out) + 2):
-        worksheet.cell(row=row, column=code_col_idx).alignment = wrapped_top
-
-
-def main():
-    df = pd.read_excel(INPUT_PATH, sheet_name=SOURCE_SHEET)
-    df_out = augment_dataframe_with_foobar_vars(df)
-
-    with pd.ExcelWriter(
-        INPUT_PATH,
-        engine="openpyxl",
-        mode="a",
-        if_sheet_exists="replace",
-    ) as writer:
-        df_out.to_excel(writer, sheet_name=OUTPUT_SHEET, index=False)
-        _format_output_sheet(writer, df_out)
-
-    print(f"Saved augmented data to {INPUT_PATH} sheet {OUTPUT_SHEET!r}")
-
-
-if __name__ == "__main__":
-    main()
+    print(f"Parse failures: {parse_failures}")
+    corrvar = [r for r in new_rows if r["mod_type"] == "NoComm_CorrVar"]
+    corrvar_inv = [r for r in new_rows if r["mod_type"] == "NoComm_CorrVar_InValid"]
+    print(f"Generated {len(corrvar)} NoComm_CorrVar rows")
+    print(f"Generated {len(corrvar_inv)} NoComm_CorrVar_InValid rows")
+    return new_rows

@@ -1,17 +1,21 @@
 """
-corrupt_comment.py — Generate CorrComm rows for pdedata.xlsx.
+corrupt_comment.py — Generate CorrComm and CorrComm_Invalid rows.
 
-For each NoComm_Valid sample, find a Comm_Valid donor with a different
-pde_class AND different num_method, inject its comments into the
-receiver's Comm_Valid code, and append the result as a CorrComm row.
+For each gt_sample, a single donor is selected randomly (seeded) from
+Comm_Valid rows with a different pde_class AND different num_method.
+The same donor is used for both:
+  - CorrComm:         donor comments injected into Comm_Valid of receiver
+  - CorrComm_Invalid: donor comments injected into Comm_InValid of receiver
+
+This prevents the probe from using a deterministic donor fingerprint as a
+shortcut to recover pde_class or phys_valid.
 """
 
+import random
 import pandas as pd
 
+SEED = 42
 
-# ---------------------------------------------------------------------------
-# ---------------------------------------------------------------------------
-# Helpers
 
 def count_comments(code_str: str) -> int:
     return sum(1 for line in code_str.split("\n") if line.strip().startswith("#"))
@@ -32,7 +36,6 @@ def inject_comments(receiver_code: str, donor_comments: list[dict], n_receiver: 
     Preserves receiver's leading whitespace on each comment line.
     Returns (new_code, injected_list).
     """
-    # Cycle or truncate donor comments to exactly n_receiver entries
     if len(donor_comments) == 0:
         final_donor = []
     else:
@@ -47,7 +50,6 @@ def inject_comments(receiver_code: str, donor_comments: list[dict], n_receiver: 
         if line.strip().startswith("#") and donor_idx < len(final_donor):
             donor_entry = final_donor[donor_idx]
             donor_idx += 1
-            # Preserve leading whitespace of the receiver line, use donor text
             leading_ws = line[: len(line) - len(line.lstrip())]
             donor_text_stripped = donor_entry["text"].strip()
             new_line = leading_ws + donor_text_stripped
@@ -66,143 +68,135 @@ def inject_comments(receiver_code: str, donor_comments: list[dict], n_receiver: 
     return "\n".join(new_lines), injected
 
 
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
+def build_donor_table(comm_valid: pd.DataFrame, rng: random.Random) -> dict:
+    """
+    For each gt_sample in comm_valid, pick one donor gt_sample randomly
+    (different pde_class AND different num_method). Caps each donor pde_class
+    at n_receivers // n_classes uses to prevent one class dominating as donor.
+    Receivers are shuffled before assignment so no class is systematically favored.
+    Returns {gt_sample: donor_row}.
+    """
+    n_classes = comm_valid["pde_class"].nunique()
+    n_receivers = len(comm_valid)
+    per_class_cap = n_receivers // n_classes  # e.g. 16 // 4 = 4
 
-def main():
-    df = pd.read_excel("data/pdedata.xlsx")
+    donor_class_counts: dict[str, int] = {}
+    donor_table = {}
 
-    # ------------------------------------------------------------------
-    # Step 0 — column fixups on existing rows
-    # ------------------------------------------------------------------
-    if "corruption_source_idx" in df.columns:
-        df = df.rename(columns={"corruption_source_idx": "corruption_source_id"})
+    shuffled = comm_valid.sample(frac=1, random_state=rng.randint(0, 2**31))
+    for _, receiver in shuffled.iterrows():
+        candidates = comm_valid[
+            (comm_valid["pde_class"] != receiver["pde_class"])
+            & (comm_valid["num_method"] != receiver["num_method"])
+            & comm_valid["pde_class"].map(lambda c: donor_class_counts.get(c, 0) < per_class_cap)
+        ]
+        if candidates.empty:
+            # Relax cap if no candidates remain under it
+            candidates = comm_valid[
+                (comm_valid["pde_class"] != receiver["pde_class"])
+                & (comm_valid["num_method"] != receiver["num_method"])
+            ]
+        if candidates.empty:
+            print(f"WARNING: no donor found for {receiver['gt_sample']}, skipping")
+            continue
+        chosen = candidates.sample(1, random_state=rng.randint(0, 2**31)).iloc[0]
+        donor_class_counts[chosen["pde_class"]] = donor_class_counts.get(chosen["pde_class"], 0) + 1
+        donor_table[receiver["gt_sample"]] = chosen
+    return donor_table
 
-    # Drop leftover index column if present
-    if "Unnamed: 0" in df.columns:
-        df = df.drop(columns=["Unnamed: 0"])
 
-    # Add num_comments for all existing rows
-    df["num_comments"] = df["code"].apply(count_comments)
+def make_corrcomm_rows(
+    receivers: pd.DataFrame,
+    comm_versions: pd.DataFrame,
+    donor_table: dict,
+    mod_type_out: str,
+    valid_flag: bool,
+) -> list[dict]:
+    """
+    Build CorrComm or CorrComm_Invalid rows.
 
-    # Add missing CorrComm-specific columns (NaN for existing rows)
-    for col in ["delta_comments"]:
-        if col not in df.columns:
-            df[col] = pd.NA
-
-    # ------------------------------------------------------------------
-    # Step 1–4 — build CorrComm rows
-    # ------------------------------------------------------------------
-    comm_valid = df[df["mod_type"] == "Comm_Valid"].reset_index(drop=True)
-    no_comm_valid = df[df["mod_type"] == "NoComm_Valid"].reset_index(drop=True)
-
+    receivers      — NoComm_Valid or NoComm_InValid rows
+    comm_versions  — Comm_Valid or Comm_InValid rows (defines comment positions)
+    donor_table    — {gt_sample: donor_row} from build_donor_table
+    mod_type_out   — "CorrComm" or "CorrComm_Invalid"
+    valid_flag     — True for CorrComm, False for CorrComm_Invalid
+    """
     new_rows = []
+    for _, receiver in receivers.iterrows():
+        gt = receiver["gt_sample"]
 
-    for _, receiver in no_comm_valid.iterrows():
-        # Find the Comm_Valid version of this same sample
-        comm_match = comm_valid[comm_valid["gt_sample"] == receiver["gt_sample"]]
+        comm_match = comm_versions[comm_versions["gt_sample"] == gt]
         if comm_match.empty:
-            print(f"WARNING: no Comm_Valid found for {receiver['gt_sample']}, skipping")
+            print(f"WARNING: no comm version found for {gt}, skipping")
             continue
         comm_receiver = comm_match.iloc[0]
 
-        # Find donor: different pde_class AND different num_method
-        def qualifies(row):
-            return (
-                row["pde_class"] != receiver["pde_class"]
-                and row["num_method"] != receiver["num_method"]
-            )
-
-        donors = comm_valid[comm_valid.apply(qualifies, axis=1)].copy()
-        if donors.empty:
-            print(f"WARNING: no donor found for {receiver['gt_sample']}, skipping")
+        if gt not in donor_table:
             continue
+        donor = donor_table[gt]
 
-        # Deterministic: alphabetically first gt_sample among qualifiers
-        donor = donors.sort_values("gt_sample").iloc[0]
-
-        # Extract comments
         donor_comments = extract_comments(donor["code"])
         receiver_comments = extract_comments(comm_receiver["code"])
         n_receiver = len(receiver_comments)
 
         if n_receiver == 0:
-            print(f"WARNING: receiver {receiver['gt_sample']} has no comments in Comm_Valid, skipping")
+            print(f"WARNING: {gt} has no comments in comm version, skipping")
             continue
 
         delta_comments = len(donor_comments) - n_receiver
-
-        # Build corrupted code
         new_code, injected = inject_comments(comm_receiver["code"], donor_comments, n_receiver)
 
-        # Title: e.g. "Wave_CorrComm_Valid_1"
         pde_cap = receiver["pde_class"].capitalize()
-        idx = receiver["title"].split("_")[-1]  # last token of NoComm_Valid title
-        title = f"{pde_cap}_CorrComm_Valid_{idx}"
+        idx = receiver["title"].split("_")[-1]
+        validity_str = "Valid" if valid_flag else "InValid"
+        title = f"{pde_cap}_CorrComm_{validity_str}_{idx}"
 
-        new_row = {
-            "title": title,
-            "code": new_code,
-            "num_lines": len(new_code.split("\n")),
-            "num_char": len(new_code),
-            "pde_class": receiver["pde_class"],
-            "phys_process": receiver["phys_process"],
-            "phys_valid": receiver["phys_valid"],
-            "num_method": receiver["num_method"],
-            "corruption_source_id": donor["title"],
-            "corruption_source_pde": donor["pde_class"],
-            "injected_comments": str(injected),
-            "delta_comments": delta_comments,
-            "num_comments": count_comments(new_code),
-            "gt_sample": receiver["gt_sample"],
-            "mod_type": "CorrComm",
-        }
-        new_rows.append(new_row)
-
-    print(f"Generated {len(new_rows)} CorrComm rows")
-
-    # ------------------------------------------------------------------
-    # Step 5 — assemble final DataFrame
-    # ------------------------------------------------------------------
-    new_df = pd.DataFrame(new_rows)
-
-    # Align columns before concat
-    col_order = [
-        "title", "code", "num_lines", "num_char",
-        "pde_class", "phys_process", "phys_valid", "num_method",
-        "corruption_source_id", "corruption_source_pde",
-        "injected_comments", "delta_comments", "num_comments",
-        "gt_sample", "mod_type",
-    ]
-
-    # Ensure existing df has all columns (fill missing with NaN)
-    for col in col_order:
-        if col not in df.columns:
-            df[col] = pd.NA
-
-    df = df[col_order]
-    final_df = pd.concat([df, new_df[col_order]], ignore_index=True)
-
-    # ------------------------------------------------------------------
-    # Verification
-    # ------------------------------------------------------------------
-    n_corr = final_df[final_df["mod_type"] == "CorrComm"].shape[0]
-    print(f"Total rows: {final_df.shape[0]}  (expected 64)")
-    print(f"CorrComm rows: {n_corr}  (expected 16)")
-    assert n_corr == 16, f"Expected 16 CorrComm rows, got {n_corr}"
-    assert final_df.shape[0] == 64, f"Expected 64 rows, got {final_df.shape[0]}"
-    assert final_df["num_comments"].isna().sum() == 0, "num_comments has NaNs"
-
-    corr_rows = final_df[final_df["mod_type"] == "CorrComm"]
-    assert (corr_rows["corruption_source_pde"] != corr_rows["pde_class"]).all(), \
-        "Some CorrComm rows have same pde_class as donor"
-
-    print("All assertions passed.")
-
-    final_df.to_excel("../data/pdedata.xlsx", index=False)
-    print("Saved data/pdedata.xlsx")
+        new_rows.append(
+            {
+                "title": title,
+                "code": new_code,
+                "num_lines": len(new_code.split("\n")),
+                "num_char": len(new_code),
+                "pde_class": receiver["pde_class"],
+                "phys_process": receiver["phys_process"],
+                "phys_valid": receiver["phys_valid"],
+                "num_method": receiver["num_method"],
+                "corruption_source_id": donor["title"],
+                "corruption_source_pde": donor["pde_class"],
+                "injected_comments": str(injected),
+                "delta_comments": delta_comments,
+                "num_comments": count_comments(new_code),
+                "gt_sample": gt,
+                "mod_type": mod_type_out,
+            }
+        )
+    return new_rows
 
 
-if __name__ == "__main__":
-    main()
+def generate_corrcomm_rows(df: pd.DataFrame) -> list[dict]:
+    """
+    Entry point: returns new CorrComm + CorrComm_Invalid rows to append to df.
+    Uses a seeded RNG so donor assignments are reproducible.
+    """
+    rng = random.Random(SEED)
+
+    comm_valid = df[df["mod_type"] == "Comm_Valid"].reset_index(drop=True)
+    comm_invalid = df[df["mod_type"] == "Comm_InValid"].reset_index(drop=True)
+    no_comm_valid = df[df["mod_type"] == "NoComm_Valid"].reset_index(drop=True)
+    no_comm_invalid = df[df["mod_type"] == "NoComm_InValid"].reset_index(drop=True)
+
+    donor_table = build_donor_table(comm_valid, rng)
+    print(f"Donor assignments (seed={SEED}):")
+    for gt, donor in sorted(donor_table.items()):
+        print(f"  {gt:30s} -> {donor['gt_sample']} ({donor['pde_class']})")
+
+    corrcomm_rows = make_corrcomm_rows(
+        no_comm_valid, comm_valid, donor_table, "CorrComm", valid_flag=True
+    )
+    corrcomm_invalid_rows = make_corrcomm_rows(
+        no_comm_invalid, comm_invalid, donor_table, "CorrComm_Invalid", valid_flag=False
+    )
+
+    print(f"Generated {len(corrcomm_rows)} CorrComm rows")
+    print(f"Generated {len(corrcomm_invalid_rows)} CorrComm_Invalid rows")
+    return corrcomm_rows + corrcomm_invalid_rows
