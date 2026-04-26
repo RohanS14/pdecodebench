@@ -109,6 +109,9 @@ def main():
     parser.add_argument("--dataset", default="data/pdedata_clean_v3.xlsx")
     parser.add_argument("--model", default="Qwen/Qwen2.5-Coder-7B-Instruct")
     parser.add_argument("--output_dir", default="probe/hidden_states/")
+    parser.add_argument("--gt_samples", default=None,
+                        help="Comma-separated gt_sample IDs to filter (e.g. Wave_1,Heat_1). "
+                             "Omit for full dataset run.")
     args = parser.parse_args()
 
     if not torch.cuda.is_available():
@@ -119,12 +122,18 @@ def main():
     print(f"GPU: {torch.cuda.get_device_name(0)}", flush=True)
     print(f"Model: {args.model}", flush=True)
 
-    # Load dataset (same integrity check as run_eval.py)
+    # Load dataset
     df = pd.read_excel(args.dataset)
-    print(f"Dataset: {len(df)} rows", flush=True)
-    assert len(df) == 128, f"Expected 128 rows, got {len(df)}"
-    dist = df["mod_type"].value_counts().to_dict()
-    assert dist == EXPECTED_MOD_TYPE_DIST, f"Unexpected mod_type distribution: {dist}"
+    print(f"Dataset: {len(df)} rows loaded", flush=True)
+
+    if args.gt_samples:
+        keep = [s.strip() for s in args.gt_samples.split(",")]
+        df = df[df["gt_sample"].isin(keep)].reset_index(drop=True)
+        print(f"Filtered to gt_samples {keep}: {len(df)} rows", flush=True)
+    else:
+        assert len(df) == 128, f"Expected 128 rows, got {len(df)}"
+        dist = df["mod_type"].value_counts().to_dict()
+        assert dist == EXPECTED_MOD_TYPE_DIST, f"Unexpected mod_type distribution: {dist}"
 
     # Load tokenizer
     print("Loading tokenizer...", flush=True)
@@ -244,7 +253,8 @@ def main():
     # Save — always write the NPZ so GPU work is not lost
     os.makedirs(args.output_dir, exist_ok=True)
     slug = args.model.replace("/", "_")
-    out_path = os.path.join(args.output_dir, f"{slug}.npz")
+    suffix = "_canary" if args.gt_samples else ""
+    out_path = os.path.join(args.output_dir, f"{slug}{suffix}.npz")
 
     # Preserve existing NPZ before overwriting
     if os.path.exists(out_path):

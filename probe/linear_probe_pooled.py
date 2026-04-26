@@ -114,7 +114,8 @@ def main():
     data = load_data(args.hidden)
     reps = data[args.pool].astype(np.float32)   # (N, L, D)
     N, L, D = reps.shape
-    assert N == 128, f"Expected 128 rows in NPZ, got {N}. Re-run extract_hidden.slurm on v3."
+    if N not in (16, 128):
+        print(f"WARNING: unexpected N={N} (expected 16 for canary or 128 for full run)", flush=True)
     groups    = data["gt_samples"]
     mod_types = data["mod_types"]
 

@@ -130,8 +130,9 @@ def main():
     titles = data["titles"]
 
     N, L, D = reps_all.shape
-    assert N == 128, f"Expected 128 rows in NPZ, got {N}. Re-run extract_hidden.slurm on v3."
     print(f"Loaded: {N} examples, {L} layers, {D} dim  [{args.pool}]", flush=True)
+    if N not in (16, 128):
+        print(f"WARNING: unexpected N={N} (expected 16 for canary or 128 for full run)", flush=True)
 
     # Sort order: by pde_class, then gt_sample, then mod_type
     pde_order_map = {c: i for i, c in enumerate(PDE_CLASSES)}
