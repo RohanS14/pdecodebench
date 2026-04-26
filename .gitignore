@@ -13,3 +13,11 @@ __pycache__/
 
 # Editors
 .vscode/
+
+# Probe directory — ignore generated/runtime artifacts
+probe/__pycache__/
+probe/figures/
+probe/logs/
+probe/hidden_states/
+probe/results/
+probe/venv/
