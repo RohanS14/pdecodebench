@@ -1,6 +1,6 @@
 # PDE Benchmark Dataset — Overview
 
-**Current version:** `pdedata_clean_v3.xlsx`  
+**Current version:** `pdedata_clean_v4.xlsx`  
 **Rows:** 128 (16 ground-truth problems × 8 modification types)
 
 ---
