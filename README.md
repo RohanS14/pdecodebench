@@ -2,7 +2,7 @@
 
 `datagen/`: Scripts for dataset corruption and augmentation.
 
-`eval/`: Evaluation pipeline for model outputs (Experiment 1 on free-generation accuracy and Experiment 2 on MCQ confidence.)
+`eval/`: Evaluation pipeline for model outputs (Experiment 1 on free-generation accuracy, Experiment 2 on MCQ confidence, Experiment 4 on belief revision.)
 
 `probe/`: Probing experiments on model hidden states. 
 
