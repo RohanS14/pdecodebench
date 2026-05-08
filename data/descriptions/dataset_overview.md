@@ -60,7 +60,16 @@ Each `gt_sample` appears in 8 modification types (`mod_type`):
 
 ## Version History
 
-### v3 — current (`pdedata_clean_v3.xlsx`)
+### v4 — current (`pdedata_clean_v4.xlsx`)
+
+Built from `pdedata_clean_v4_base.xlsx` by `datagen/build_v4.py`.
+
+**Fixes:**
+- **Burgers Initialization Bug:** `Burgers_2`, `Burgers_3`, and `Burgers_4` were natively missing their initialization code (`u_init`, `dx`, `t`) in their `Comm_Valid`, `Comm_InValid`, and `NoComm_InValid` variants, causing immediate `NameError` execution crashes. The missing initialization blocks were extracted from `NoComm_Valid` and injected into the broken variants in `v4_base`, ensuring they execute correctly while preserving physical validity/invalidity properties.
+- **Literal Newline Parsing:** Removed escaping artifacts (`\\n`) that were improperly saved as literal characters in the code.
+- **Note on `Burgers_1`:** This sample continues to remain unexecutable across all variants as it entirely lacks initialization code in the original raw dataset as well.
+
+### v3 (`pdedata_clean_v3.xlsx`)
 
 Built from v2 by `datagen/build_v3.py`.
 

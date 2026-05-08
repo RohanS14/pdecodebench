@@ -1,0 +1,26 @@
+\begin{table}[h]
+\centering
+\caption{Belief Revision Transitions by Modification Type}
+\label{tab:transitions}
+\begin{tabular}{lrrrrr}
+\toprule
+\textbf{Mod Type} & \textbf{R$\to$R (\%)} & \textbf{R$\to$W (\%)} & \textbf{W$\to$R (\%)} & \textbf{W$\to$W (\%)} & $\boldsymbol{\Delta}$ \textbf{Acc (pp)} \\
+\midrule
+\texttt{Comm\_Valid} & 19 & 0 & 6 & 75 & +6.2 \\
+\texttt{NoComm\_Valid} & 19 & 0 & 0 & 81 & +0.0 \\
+\texttt{CorrComm} & 19 & 0 & 6 & 75 & +6.2 \\
+\texttt{NoComm\_CorrVar} & 50 & 0 & 12 & 38 & +12.5 \\
+\texttt{Comm\_InValid} & 81 & 0 & 6 & 12 & +6.2 \\
+\texttt{NoComm\_InValid} & 81 & 0 & 6 & 12 & +6.2 \\
+\texttt{CorrComm\_Invalid} & 81 & 0 & 6 & 12 & +6.2 \\
+\texttt{NoComm\_CorrVar\_InValid} & 69 & 0 & 19 & 12 & +18.8 \\
+\midrule
+\textbf{Overall} & 52 & 0 & 8 & 40 & +7.8 \\
+\bottomrule
+\end{tabular}
+\begin{tablenotes}
+\small
+\item R$\to$R: correct both stages. R$\to$W: degraded. W$\to$R: improved. W$\to$W: wrong both stages.
+\item $\Delta$ Acc = S2 $-$ S1 accuracy (percentage points). $N=16$ per mod type.
+\end{tablenotes}
+\end{table}

@@ -146,10 +146,10 @@ def make_corrcomm_rows(
         delta_comments = len(donor_comments) - n_receiver
         new_code, injected = inject_comments(comm_receiver["code"], donor_comments, n_receiver)
 
-        pde_cap = receiver["pde_class"].capitalize()
+        prefix = receiver["gt_sample"].split("_")[0]
         idx = receiver["title"].split("_")[-1]
         validity_str = "Valid" if valid_flag else "InValid"
-        title = f"{pde_cap}_CorrComm_{validity_str}_{idx}"
+        title = f"{prefix}_CorrComm_{validity_str}_{idx}"
 
         new_rows.append(
             {

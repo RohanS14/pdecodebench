@@ -1,6 +1,10 @@
 """
 augment_foobar_vars.py — Generate NoComm_CorrVar and NoComm_CorrVar_InValid rows.
 
+Note: ns4_kwargs exclusions are scoped strictly to NavierStokes_4 to prevent
+physics-revealing variable names (Nx, viscosity, drag, etc.) from leaking
+unobfuscated into other PDE CorrVar variants.
+
 NoComm_CorrVar:
   Run the AST renamer on NoComm_Valid code. Variable mapping is derived
   fresh from the code (sorted candidate names -> foobar_1, foobar_2, ...).
@@ -151,14 +155,24 @@ def _normalize(code: str) -> str:
     return code.replace("\\r\\n", "\n").replace("\\n", "\n").replace("\\t", "\t")
 
 
-def _build_maps(code: str) -> tuple[dict, dict]:
+# These kwargs must remain un-obfuscated in NavierStokes_4 because they are
+# passed as keyword arguments to external library calls (jax_cfd / partial()).
+# Renaming them would break the external API. Scoped ONLY to NavierStokes_4.
+_NS4_PROTECTED_KWARGS = {
+    "Nx", "Ny", "t_pts", "t_eval", "viscosity", "drag",
+    "max_velocity", "fixed_ic", "target_N",
+}
+
+
+def _build_maps(code: str, gt_sample: str = "") -> tuple[dict, dict]:
     """Return (variable_rename_map, function_rename_map) for a piece of code."""
     tree = ast.parse(_normalize(code))
     collector = VariableCollector()
     collector.visit(tree)
 
+    extra_excluded = _NS4_PROTECTED_KWARGS if gt_sample == "NavierStokes_4" else set()
     excluded = (
-        BUILTIN_NAMES | KEYWORD_NAMES
+        BUILTIN_NAMES | KEYWORD_NAMES | extra_excluded
         | collector.imported_names | collector.function_names | collector.class_names
     )
     names_to_rename = sorted(n for n in collector.candidate_names if n and n not in excluded)
@@ -181,7 +195,7 @@ def _apply_maps(code: str, var_map: dict, fn_map: dict) -> str:
     return ast.unparse(new_tree)
 
 
-def _extend_map(base_var_map: dict, invalid_code: str) -> tuple[dict, dict]:
+def _extend_map(base_var_map: dict, invalid_code: str, gt_sample: str = "") -> tuple[dict, dict]:
     """
     Return (extended_var_map, fn_map) for invalid_code.
     Shared variables keep their foobar_N names from base_var_map.
@@ -192,8 +206,9 @@ def _extend_map(base_var_map: dict, invalid_code: str) -> tuple[dict, dict]:
     tree = ast.parse(_normalize(invalid_code))
     collector = VariableCollector()
     collector.visit(tree)
+    extra_excluded = _NS4_PROTECTED_KWARGS if gt_sample == "NavierStokes_4" else set()
     excluded = (
-        BUILTIN_NAMES | KEYWORD_NAMES
+        BUILTIN_NAMES | KEYWORD_NAMES | extra_excluded
         | collector.imported_names | collector.function_names | collector.class_names
     )
     all_names = sorted(n for n in collector.candidate_names if n and n not in excluded)
@@ -218,6 +233,49 @@ def _extend_map(base_var_map: dict, invalid_code: str) -> tuple[dict, dict]:
 # Public generation functions
 # ---------------------------------------------------------------------------
 
+def _patch_ns4_kwargs(code: str) -> str:
+    old_call = """dataset = get_ns2d(
+    n_samples=2,
+    t_pts=100,
+    Nx=64,
+    Ny=64,
+    key=key,
+    dt=0.001,
+    T_end=1,
+    viscosity=1e-3,
+    drag=0.1,
+    max_velocity=7.0,
+    batch_size=16,
+    target_N=64,
+)"""
+    new_call = """dataset = get_ns2d(
+    2,
+    100,
+    64,
+    64,
+    key,
+    0.001,
+    1,
+    1e-3,
+    0.1,
+    7.0,
+    16,
+    None,
+    64,
+)"""
+    return code.replace(old_call, new_call)
+
+
+def _patch_wave4_kwargs(code: str) -> str:
+    # Wave_4 calls spectral_wave_solver with keyword args T=, dt=, c= which
+    # would be left unrenamed after parameter obfuscation. Convert to positional
+    # before the renamer runs, matching the approach used for NavierStokes_4.
+    return code.replace(
+        "spectral_wave_solver(u0, v0, L, T=5, dt=0.05, c=c)",
+        "spectral_wave_solver(u0, v0, L, 5, 0.05, c)",
+    )
+
+
 def generate_foobar_rows(df: pd.DataFrame) -> list[dict]:
     """
     Returns new NoComm_CorrVar + NoComm_CorrVar_InValid rows to append to df.
@@ -233,9 +291,15 @@ def generate_foobar_rows(df: pd.DataFrame) -> list[dict]:
         gt = row["gt_sample"]
 
         # --- NoComm_CorrVar ---
+        src_code = row["code"]
+        if gt == "NavierStokes_4":
+            src_code = _patch_ns4_kwargs(src_code)
+        if gt == "Wave_4":
+            src_code = _patch_wave4_kwargs(src_code)
+            
         try:
-            var_map, fn_map = _build_maps(row["code"])
-            transformed = _apply_maps(row["code"], var_map, fn_map)
+            var_map, fn_map = _build_maps(src_code, gt_sample=gt)
+            transformed = _apply_maps(src_code, var_map, fn_map)
         except Exception as e:
             print(f"WARNING: parse failure for {gt} (NoComm_CorrVar): {e}")
             parse_failures += 1
@@ -255,9 +319,15 @@ def generate_foobar_rows(df: pd.DataFrame) -> list[dict]:
             continue
 
         inv_row = no_comm_invalid[no_comm_invalid["gt_sample"] == gt].iloc[0]
+        inv_src_code = inv_row["code"]
+        if gt == "NavierStokes_4":
+            inv_src_code = _patch_ns4_kwargs(inv_src_code)
+        if gt == "Wave_4":
+            inv_src_code = _patch_wave4_kwargs(inv_src_code)
+            
         try:
-            extended_var_map, inv_fn_map = _extend_map(var_map, inv_row["code"])
-            inv_transformed = _apply_maps(inv_row["code"], extended_var_map, inv_fn_map)
+            extended_var_map, inv_fn_map = _extend_map(var_map, inv_src_code, gt_sample=gt)
+            inv_transformed = _apply_maps(inv_src_code, extended_var_map, inv_fn_map)
         except Exception as e:
             print(f"WARNING: parse failure for {gt} (NoComm_CorrVar_InValid): {e}")
             parse_failures += 1

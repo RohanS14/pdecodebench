@@ -6,6 +6,7 @@ __pycache__/
 *.pyc
 *.pyo
 .venv/
+.pde_venv/
 *.egg-info/
 
 # Jupyter
