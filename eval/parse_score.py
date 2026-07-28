@@ -3,6 +3,10 @@ import re
 import numpy as np
 from typing import Optional
 
+_GT_TYPOS = {
+    "behavior": {"difffusion": "diffusion"},
+}
+
 ALIASES = {
     "pde": {
         "wave":          ["wave", "wave equation"],
@@ -103,7 +107,8 @@ def score_multival(parsed_text: Optional[str], gt_string: str,
     any_match: 1 if ANY GT token found in response.
     recall:    fraction of GT tokens found (partial credit: 0, 0.5, 1.0).
     """
-    gt_tokens = [t.strip().lower() for t in gt_string.split("/") if t.strip()]
+    typos = _GT_TYPOS.get(field, {})
+    gt_tokens = [typos.get(t.strip().lower(), t.strip().lower()) for t in gt_string.split("/") if t.strip()]
     text = (parsed_text or "").strip()
 
     if not gt_tokens:

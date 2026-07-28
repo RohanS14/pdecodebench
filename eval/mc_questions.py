@@ -85,7 +85,7 @@ You are analyzing a numerical simulation written in Python.
 {code}
 </code>
 
-Is this simulation physically valid?
+Does this code run and produce a correct physical solution for the PDE?
 
 A) {opt_A}
 B) {opt_B}
