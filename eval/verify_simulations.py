@@ -1,4 +1,5 @@
 import os
+import sys
 import glob
 import runpy
 import numpy as np
@@ -41,7 +42,7 @@ def check_for_anomalies(namespace):
     return has_nans, has_spikes
 
 def main():
-    extracted_dir = "data/extracted_codes"
+    extracted_dir = sys.argv[1] if len(sys.argv) > 1 else "data/extracted_codes"
     py_files = glob.glob(os.path.join(extracted_dir, "*.py"))
     
     print(f"Found {len(py_files)} extracted files to verify.")
