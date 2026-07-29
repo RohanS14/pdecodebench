@@ -476,6 +476,22 @@ def get_new_base_rows(tag_rows: list[dict], newcode_path: str = NEWCODE_PATH) ->
     return rows + nocomm_rows
 
 
+def build_base_rows(core_rows: list[dict]) -> list[dict]:
+    """Returns 32 rows: 16 gt_samples x {Valid, InValid}, titled
+    '{Class}_Valid_{i}' / '{Class}_InValid_{i}' -- same convention as
+    parse_humangen.build_base_rows, so both sources merge cleanly."""
+    rows = []
+    for row in core_rows:
+        if row["mod_type"] not in ("Comm_Valid", "Comm_InValid"):
+            continue
+        variant = "Valid" if row["mod_type"] == "Comm_Valid" else "InValid"
+        prefix, idx = row["gt_sample"].split("_")
+        new_row = dict(row)
+        new_row["title"] = f"{prefix}_{variant}_{idx}"
+        rows.append(new_row)
+    return rows
+
+
 if __name__ == "__main__":
     import os as _os
     script_dir = _os.path.dirname(_os.path.abspath(__file__))

@@ -3,7 +3,7 @@ import os
 
 def extract_code(excel_path, out_dir):
     print(f"Reading from {excel_path}...")
-    df = pd.read_excel(excel_path)
+    df = pd.read_csv(excel_path) if str(excel_path).endswith(".csv") else pd.read_excel(excel_path)
     
     os.makedirs(out_dir, exist_ok=True)
     
