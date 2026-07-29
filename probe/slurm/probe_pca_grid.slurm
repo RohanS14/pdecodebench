@@ -1,11 +1,11 @@
 #!/bin/bash
-#SBATCH --job-name=pde_probe_pooled
+#SBATCH --job-name=pde_probe_pca_grid
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=16G
-#SBATCH --time=06:00:00
+#SBATCH --time=04:00:00
 #SBATCH --account=torch_pr_154_courant
-#SBATCH --output=probe/logs/probe_pooled_%j.out
-#SBATCH --error=probe/logs/probe_pooled_%j.err
+#SBATCH --output=probe/logs/probe_pca_grid_%j.out
+#SBATCH --error=probe/logs/probe_pca_grid_%j.err
 #SBATCH --mail-type=BEGIN,END,FAIL
 #SBATCH --mail-user=rs9768@nyu.edu
 
@@ -19,23 +19,28 @@ fi
 source probe/venv/bin/activate
 
 echo "Job ID: $SLURM_JOB_ID"
+echo "Node:   $SLURMD_NODENAME"
 echo "Start:  $(date)"
 
 NPZ="probe/hidden_states/Qwen_Qwen2.5-Coder-7B-Instruct.npz"
 
 if [ ! -f "$NPZ" ]; then
-    echo "ERROR: $NPZ not found. Run extract_hidden.slurm first."
+    echo "ERROR: $NPZ not found."
     exit 1
 fi
 
-python probe/linear_probe_pooled.py \
+python probe/probe_hyperparam.py \
     --hidden "$NPZ" \
     --output_dir probe/results/ \
-    --pool mean_pool
+    --pool mean_pool \
+    --representation pca20 \
+    --C_grid 0.01 0.1 1.0 10.0
 
-python probe/linear_probe_pooled.py \
+python probe/probe_hyperparam.py \
     --hidden "$NPZ" \
     --output_dir probe/results/ \
-    --pool last_tok
+    --pool last_tok \
+    --representation pca20 \
+    --C_grid 0.01 0.1 1.0 10.0
 
 echo "Done: $(date)"

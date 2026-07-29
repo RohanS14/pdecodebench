@@ -26,6 +26,7 @@ import numpy as np
 import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import LeaveOneGroupOut
 from sklearn.preprocessing import StandardScaler
 
@@ -60,6 +61,8 @@ def run_bow_probe(codes, y, groups, mod_types):
     logo = LeaveOneGroupOut()
     mt_true_pred = {mt: ([], []) for mt in MOD_TYPES}
     all_true, all_pred = [], []
+    fold_accs = []
+    fold_aurocs = []
 
     for train_idx, test_idx in logo.split(np.zeros(len(y)), y, groups):
         codes_train = [codes[i] for i in train_idx]
@@ -73,12 +76,23 @@ def run_bow_probe(codes, y, groups, mod_types):
         n_classes = len(np.unique(y_train))
         if n_classes < 2:
             pred = np.full(len(y_test), y_train[0])
+            fold_auroc = float("nan")
         else:
             clf = LogisticRegression(C=1.0, max_iter=500, solver="lbfgs",
                                      random_state=42)
             clf.fit(X_train, y_train)
             pred = clf.predict(X_test)
+            proba = clf.predict_proba(X_test)
+            try:
+                if len(clf.classes_) == 2:
+                    fold_auroc = roc_auc_score(y_test, proba[:, 1])
+                else:
+                    fold_auroc = roc_auc_score(y_test, proba, multi_class="ovr", average="macro")
+            except ValueError:
+                fold_auroc = float("nan")
 
+        fold_accs.append(float(np.mean(pred == y_test)))
+        fold_aurocs.append(fold_auroc)
         all_true.extend(y_test.tolist())
         all_pred.extend(pred.tolist())
         for mt in MOD_TYPES:
@@ -94,7 +108,7 @@ def run_bow_probe(codes, y, groups, mod_types):
     for mt in MOD_TYPES:
         t, p = mt_true_pred[mt]
         mt_acc[mt] = float(np.mean(np.array(t) == np.array(p))) if t else float("nan")
-    return acc, mt_acc
+    return acc, mt_acc, fold_accs, fold_aurocs
 
 
 def main():
@@ -146,10 +160,17 @@ def main():
 
         # BoW baseline
         if raw_codes is not None:
-            bow_acc, bow_mt = run_bow_probe(raw_codes, y, groups, mod_types)
-            print(f"  BoW: {bow_acc:.3f}", flush=True)
+            bow_acc, bow_mt, bow_fold_accs, bow_fold_aurocs = run_bow_probe(raw_codes, y, groups, mod_types)
+            _, bow_ci_lo, bow_ci_hi = bootstrap_ci(bow_fold_accs)
+            valid_bow_aurocs = [a for a in bow_fold_aurocs if not np.isnan(a)]
+            bow_auroc, bow_auroc_lo, bow_auroc_hi = (
+                bootstrap_ci(valid_bow_aurocs) if valid_bow_aurocs else (float("nan"),) * 3
+            )
+            print(f"  BoW: acc={bow_acc:.3f} [{bow_ci_lo:.3f}, {bow_ci_hi:.3f}]  "
+                  f"auroc={bow_auroc:.3f} [{bow_auroc_lo:.3f}, {bow_auroc_hi:.3f}]", flush=True)
             bow_row = {"label": label_name, "layer": "bow", "pool": args.pool,
-                       "accuracy": bow_acc, "ci_low": float("nan"), "ci_high": float("nan")}
+                       "accuracy": bow_acc, "ci_low": bow_ci_lo, "ci_high": bow_ci_hi,
+                       "auroc": bow_auroc, "auroc_ci_low": bow_auroc_lo, "auroc_ci_high": bow_auroc_hi}
             bow_row.update({f"mt_{mt}": bow_mt.get(mt, float("nan")) for mt in MOD_TYPES})
             rows.append(bow_row)
 

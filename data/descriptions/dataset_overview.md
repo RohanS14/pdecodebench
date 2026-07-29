@@ -1,13 +1,13 @@
 # PDE Benchmark Dataset — Overview
 
-**Current version:** `pdedata_clean_v4.xlsx`  
-**Rows:** 128 (16 ground-truth problems × 8 modification types)
+**Current version:** `pdedata_clean_v5.xlsx`  
+**Rows:** 256 (32 ground-truth problems × 8 modification types)
 
 ---
 
 ## Structure
 
-16 PDE solver code samples (`gt_sample`), each from one of 4 PDE classes:
+32 PDE solver code samples (`gt_sample`), each from one of 4 PDE classes:
 
 | `pde_class` | `phys_process` | `num_method` |
 |---|---|---|
@@ -29,7 +29,7 @@ Each `gt_sample` appears in 8 modification types (`mod_type`):
 | `CorrComm_Invalid` | Donor comments | GT names | False |
 | `NoComm_CorrVar_InValid` | None | Obfuscated (`foobar_N`) | False |
 
-**Balance:** 32 rows per `pde_class`, 16 rows per `mod_type`, 64 valid / 64 invalid.
+**Balance:** 64 rows per `pde_class`, 32 rows per `mod_type`, 128 valid / 128 invalid.
 
 ---
 
@@ -55,12 +55,56 @@ Each `gt_sample` appears in 8 modification types (`mod_type`):
 | `corruption_source_id` | Donor title (CorrComm rows only) |
 | `corruption_source_pde` | Donor PDE class (CorrComm rows only) |
 | `injected_comments` | Per-comment injection metadata (CorrComm rows only) |
+| `invalidity_note` | Short failure-mode description (v5+ new samples' invalid rows only, NaN elsewhere) |
 
 ---
 
 ## Version History
 
-### v4 — current (`pdedata_clean_v4.xlsx`)
+### v5 — current (`pdedata_clean_v5.xlsx`)
+
+Built from `pdedata_clean_v4.xlsx` (kept as-is) plus 16 new base problems curated by
+Shreya (`data/newcode_jul28.txt`, parsed by `datagen/parse_newcode.py`), combined and
+augmented by `datagen/build_v5.py`. **256 rows** (32 `gt_sample` x 8 `mod_type`,
+double the v4 base-problem count), same 4-per-class balance (`Heat_5`-`Heat_8`,
+`Wave_5`-`Wave_8`, `Burgers_5`-`Burgers_8`, `NavierStokes_5`-`NavierStokes_8`).
+
+Intermediate files (also new, neither overwrites anything from v1-v4):
+- `pdedata_newcode_v5_base.xlsx` — new material only, 16 samples x 4 core mod_types
+  (`Comm_Valid`/`NoComm_Valid`/`Comm_InValid`/`NoComm_InValid`) = 64 rows.
+- `pdedata_clean_v5_base.xlsx` — combined base (old + new), 32 samples x 4 core
+  mod_types = 128 rows, pre-`CorrComm`/`NoComm_CorrVar` augmentation.
+
+**New column:** `invalidity_note` — a short free-text description of the invalid
+variant's failure mode (e.g. "blow ups, overflow", "breaks symmetry"), authored by
+Shreya per new `gt_sample` and propagated across all 4 of its invalid `mod_type`
+rows. Purely additive: `NaN` for every v1-v4 row and for all valid-`mod_type` rows.
+
+**Source-material handling (new samples only):** Shreya's snippets are full
+end-to-end generation artifacts — module docstrings naming the PDE/method, and
+trailing matplotlib/animation code whose titles and saved filenames spell out the
+PDE class and numerical method in plain text. Both are stripped entirely before
+the code enters the dataset (the docstring text is mined as *input* to the
+`phys_process`/`num_method`/`invalidity_note` tags, then discarded), since the
+`NoComm_*` condition otherwise wouldn't hide PDE identity regardless of variable
+obfuscation. `phys_process`/`num_method` tags for the 16 new samples were proposed
+with reasoning and reviewed via `data/descriptions/newcode_v5_tag_review.csv`
+before being locked in; a few borderline calls are flagged "NEEDS REVIEW" in that
+file's `reasoning` column (Wave_8 Newmark-beta damping; NavierStokes_5/6
+restoration-vs-diffusion-only).
+
+**Fix during construction:** the new snippets follow their generation prompt's
+"inline comments" instruction, so almost all of their comments are *trailing*
+(`code  # comment`) rather than the whole-line style (`# comment` on its own line)
+that the existing `corrupt_comment.py`/`_strip_comments` machinery detects. Left
+alone, this would have made `NoComm_*` not actually comment-free and `CorrComm` a
+near no-op for the new samples (only one generic whole-line comment,
+"Domain and physical parameters," existed to swap). `parse_newcode.py` normalizes
+every new snippet's trailing comments onto their own line (same indentation) via
+`tokenize`, before anything reaches the existing pipeline scripts, which remain
+unmodified.
+
+### v4 (`pdedata_clean_v4.xlsx`)
 
 Built from `pdedata_clean_v4_base.xlsx` by `datagen/build_v4.py`.
 

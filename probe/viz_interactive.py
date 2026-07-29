@@ -222,7 +222,20 @@ def build_pilot(dfs: dict, first_plotly: bool = False, majority: dict = None) ->
             if pool == "mean_pool":
                 bow_rows = df[(df["label"] == label) & (df["layer"] == "bow")]
                 if not bow_rows.empty:
-                    bv = float(bow_rows["accuracy"].iloc[0])
+                    bv  = float(bow_rows["accuracy"].iloc[0])
+                    blo = bow_rows["ci_low"].iloc[0]
+                    bhi = bow_rows["ci_high"].iloc[0]
+                    if not (np.isnan(float(blo)) or np.isnan(float(bhi))):
+                        blo, bhi = float(blo), float(bhi)
+                        acc_fig.add_trace(go.Scatter(
+                            x=[layers[0], layers[-1], layers[-1], layers[0]],
+                            y=[blo, blo, bhi, bhi],
+                            fill="toself", fillcolor="rgba(255,127,14,0.15)",
+                            line=dict(width=0), mode="lines",
+                            name="BoW CI", hoverinfo="skip",
+                            visible=visible, showlegend=False,
+                        ))
+                        acc_traces.append(label)
                     acc_fig.add_trace(go.Scatter(
                         x=[layers[0], layers[-1]], y=[bv, bv],
                         mode="lines", line=dict(dash="dash", color="#ff7f0e", width=1.5),
@@ -324,6 +337,35 @@ def build_pilot(dfs: dict, first_plotly: bool = False, majority: dict = None) ->
         ))
         auroc_traces.append(label)
 
+        if "mean_pool" in available:
+            bow_auroc_row = dfs["mean_pool"][
+                (dfs["mean_pool"]["label"] == label) & (dfs["mean_pool"]["layer"] == "bow")
+            ]
+            if not bow_auroc_row.empty and "auroc" in bow_auroc_row.columns:
+                bav = bow_auroc_row["auroc"].iloc[0]
+                if not (isinstance(bav, float) and np.isnan(bav)):
+                    bav = float(bav)
+                    balo = bow_auroc_row["auroc_ci_low"].iloc[0]
+                    bahi = bow_auroc_row["auroc_ci_high"].iloc[0]
+                    if not (np.isnan(float(balo)) or np.isnan(float(bahi))):
+                        balo, bahi = float(balo), float(bahi)
+                        auroc_fig.add_trace(go.Scatter(
+                            x=[0, 28, 28, 0],
+                            y=[balo, balo, bahi, bahi],
+                            fill="toself", fillcolor="rgba(255,127,14,0.15)",
+                            line=dict(width=0), mode="lines",
+                            name="BoW AUROC CI", hoverinfo="skip",
+                            visible=visible, showlegend=False,
+                        ))
+                        auroc_traces.append(label)
+                    auroc_fig.add_trace(go.Scatter(
+                        x=[0, 28], y=[bav, bav],
+                        mode="lines", line=dict(dash="dash", color="#ff7f0e", width=1.5),
+                        name="BoW", hoverinfo="skip",
+                        visible=visible, showlegend=True,
+                    ))
+                    auroc_traces.append(label)
+
     auroc_buttons = [
         dict(label=lbl, method="update",
              args=[{"visible": [t == lbl for t in auroc_traces]},
@@ -394,11 +436,21 @@ def build_pilot(dfs: dict, first_plotly: bool = False, majority: dict = None) ->
 
         # BoW bar group
         bow_vals = [bow_mt_vals[label].get(mt, float("nan")) for mt in MOD_TYPES]
-        bow_hover = [f"{mt}<br>BoW acc={v:.3f}" if not np.isnan(v) else f"{mt}<br>N/A"
-                     for mt, v in zip(MOD_TYPES, bow_vals)]
+        bow_err_lo, bow_err_hi, bow_hover = [], [], []
+        for mt, v in zip(MOD_TYPES, bow_vals):
+            if not np.isnan(v):
+                k = round(v * 16)
+                lo, hi = wilson_ci(k, 16)
+                bow_err_lo.append(v - lo)
+                bow_err_hi.append(hi - v)
+                bow_hover.append(f"{mt}<br>BoW acc={v:.3f} [{lo:.3f}–{hi:.3f}]<br>Wilson CI (n=16)")
+            else:
+                bow_err_lo.append(0); bow_err_hi.append(0)
+                bow_hover.append(f"{mt}<br>N/A")
         mt_fig.add_trace(go.Bar(
             x=MOD_TYPES, y=bow_vals, name="BoW",
             marker_color="#ff7f0e",
+            error_y=dict(type="data", symmetric=False, array=bow_err_hi, arrayminus=bow_err_lo),
             hovertext=bow_hover, hoverinfo="text",
             visible=visible, showlegend=True,
         ))

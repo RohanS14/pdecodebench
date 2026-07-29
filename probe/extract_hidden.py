@@ -141,11 +141,23 @@ def main():
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    # Load model
-    print("Loading model (float16)...", flush=True)
+    # Spot-check chat template — print first 20 token IDs and decoded prefix
+    # so cross-model comparisons can verify inputs are equivalent
+    _sample_code = "x = 1.0"
+    _sample_prompt = PROMPT_TEMPLATE.format(code=_sample_code)
+    _sample_fmt = tokenizer.apply_chat_template(
+        [{"role": "user", "content": _sample_prompt}],
+        tokenize=False, add_generation_prompt=True,
+    )
+    _sample_ids = tokenizer(_sample_fmt, add_special_tokens=False)["input_ids"][:20]
+    print(f"Chat template spot-check (first 20 token IDs): {_sample_ids}", flush=True)
+    print(f"  decoded: {repr(tokenizer.decode(_sample_ids))}", flush=True)
+
+    # Load model in bfloat16 (native for Qwen2.5/QwQ; fp16 risks overflow on 32B models)
+    print("Loading model (bfloat16)...", flush=True)
     model = AutoModelForCausalLM.from_pretrained(
         args.model,
-        torch_dtype=torch.float16,
+        torch_dtype=torch.bfloat16,
         device_map="auto",
         trust_remote_code=True,
     )
@@ -238,17 +250,26 @@ def main():
         for l, hs in enumerate(outputs.hidden_states):
             hs_l = hs[0]  # (T, D)
             code_hs = hs_l[span[0]:span[1]]  # (n_code_tokens, D)
-            all_mean_pool[idx, l] = (
-                code_hs.mean(dim=0).float().cpu().numpy().astype(np.float16)
-            )
-            all_last_tok[idx, l] = (
-                hs_l[last_code_pos].float().cpu().numpy().astype(np.float16)
-            )
+            # cast bfloat16 → float32 before numpy (float16 can't represent bf16 range)
+            mp = code_hs.mean(dim=0).float().cpu().numpy()
+            lt = hs_l[last_code_pos].float().cpu().numpy()
+            all_mean_pool[idx, l] = mp.astype(np.float16)
+            all_last_tok[idx, l]  = lt.astype(np.float16)
 
         n_code_toks = span[1] - span[0]
         if (idx + 1) % 10 == 0 or idx == 0:
             print(f"  [{idx+1:3d}/{N}] {row['title']} ({row['mod_type']}) "
                   f"seq_len={input_ids.shape[1]} code_toks={n_code_toks}", flush=True)
+
+    # Sanity check: assert no NaN/inf in hidden states
+    for name, arr in [("mean_pool", all_mean_pool), ("last_tok", all_last_tok)]:
+        n_nan = int(np.isnan(arr).sum())
+        n_inf = int(np.isinf(arr).sum())
+        if n_nan > 0 or n_inf > 0:
+            print(f"ERROR: {name} has {n_nan} NaN and {n_inf} Inf values — "
+                  f"likely bf16→fp16 overflow. Check model dtype.", flush=True)
+            sys.exit(1)
+    print("NaN/Inf check passed for mean_pool and last_tok.", flush=True)
 
     # Save — always write the NPZ so GPU work is not lost
     os.makedirs(args.output_dir, exist_ok=True)

@@ -1,0 +1,2111 @@
+﻿Generate 4 fully runnable, end-to-end Python scripts for solving the heat equation ($\frac{\partial u}{\partial t} = \alpha \nabla^2 u$). Diversity Requirements:
+* Spatial Dimensions: Mix 1D and higher dimensions (e.g., two 1D scripts, two 2D/3D scripts).
+* Numerical Schemes: Mix different numerical schemes (e.g., FTCS, Crank-Nicolson, ADI, Fourier Spectral, or Implicit Euler)
+* Initial Conditions: Use distinct initial condition functions (e.g., Gaussian distribution, top-hat/step function, sinusoidal wave, and a multi-point heat source).
+Code Formatting Rules:
+* Each script must be complete, runnable, and save or display a plot of the solution.
+* Keep comments minimal: strictly 5 to 6 inline/docstring comments per script.
+* Ensure all stability conditions (like the CFL condition for explicit schemes) are satisfied so the simulation produces valid physical results.
+
+Heat Equation Simulation Code Example 1
+"""
+1D Heat Equation: Explicit FTCS (Forward-Time Central-Space) scheme.
+Initial condition: Gaussian pulse.
+"""
+import numpy as np
+import matplotlib.pyplot as plt
+
+
+# Domain and physical parameters
+L, alpha = 1.0, 0.01
+nx, nt = 101, 2000
+dx = L / (nx - 1)
+dt = 0.4 * dx**2 / alpha  # CFL condition for FTCS: alpha*dt/dx^2 <= 0.5
+r = alpha * dt / dx**2
+
+
+x = np.linspace(0, L, nx)
+u = np.exp(-((x - L / 2) ** 2) / (2 * 0.02 ** 2))  # Gaussian initial condition
+u[0], u[-1] = 0.0, 0.0  # Dirichlet boundary conditions
+
+
+snapshots = {0: u.copy()}
+save_steps = [nt // 4, nt // 2, nt - 1]
+
+
+for n in range(nt):
+    u_new = u.copy()
+    u_new[1:-1] = u[1:-1] + r * (u[2:] - 2 * u[1:-1] + u[:-2])  # explicit update
+    u_new[0], u_new[-1] = 0.0, 0.0
+    u = u_new
+    if n in save_steps:
+        snapshots[n] = u.copy()
+
+
+plt.figure(figsize=(7, 5))
+for step, snap in snapshots.items():
+    plt.plot(x, snap, label=f"t = {step * dt:.4f} s")
+plt.xlabel("x")
+plt.ylabel("u(x,t)")
+plt.title("1D Heat Equation - FTCS (Gaussian IC)")
+plt.legend()
+plt.tight_layout()
+plt.savefig("heat_1d_ftcs_gaussian.png", dpi=150)
+plt.show()
+
+
+Heat Equation Simulation Code Example 1 invalid (blow ups, overflow)
+"""
+1D Heat Equation: Explicit FTCS (Forward-Time Central-Space) scheme.
+Initial condition: Gaussian pulse.
+"""
+import numpy as np
+import matplotlib.pyplot as plt
+
+
+# Domain and physical parameters
+L, alpha = 1.0, 0.01
+nx, nt = 101, 2000
+dx = L / (nx - 1)
+dt = 0.4 * dx**2 / alpha  # CFL condition for FTCS: alpha*dt/dx^2 <= 0.5
+r = alpha * dt / dx**2
+
+
+x = np.linspace(0, L, nx)
+u = np.exp(-((x - L / 2) ** 2) / (2 * 0.02 ** 2))  # Gaussian initial condition
+u[0], u[-1] = 0.0, 0.0  # Dirichlet boundary conditions
+
+
+snapshots = {0: u.copy()}
+save_steps = [nt // 4, nt // 2, nt - 1]
+
+
+for n in range(nt):
+    u_new = u.copy()
+    u_new[1:-1] = u[1:-1] - r * (u[2:] - 2 * u[1:-1] + u[:-2])  # explicit update
+    u_new[0], u_new[-1] = 0.0, 0.0
+    u = u_new
+    if n in save_steps:
+        snapshots[n] = u.copy()
+
+
+plt.figure(figsize=(7, 5))
+for step, snap in snapshots.items():
+    plt.plot(x, snap, label=f"t = {step * dt:.4f} s")
+plt.xlabel("x")
+plt.ylabel("u(x,t)")
+plt.title("1D Heat Equation - FTCS (Gaussian IC)")
+plt.legend()
+plt.tight_layout()
+plt.savefig("heat_1d_ftcs_gaussian_backward.png", dpi=150)
+plt.show()
+
+
+Heat Equation Simulation Code Example 2
+"""
+1D Heat Equation: Crank-Nicolson (unconditionally stable implicit scheme).
+Initial condition: top-hat / step function.
+"""
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.linalg import solve_banded
+
+
+# Domain and physical parameters
+L, alpha = 1.0, 0.01
+nx, nt = 101, 500
+dx = L / (nx - 1)
+dt = 0.001  # No CFL restriction needed; Crank-Nicolson is unconditionally stable
+r = alpha * dt / dx**2
+
+
+x = np.linspace(0, L, nx)
+u = np.zeros(nx)
+u[(x > 0.4) & (x < 0.6)] = 1.0  # top-hat initial condition
+u[0], u[-1] = 0.0, 0.0
+
+
+# Build tridiagonal system (I - r/2 * D2) u_new = (I + r/2 * D2) u_old
+n_int = nx - 2
+ab = np.zeros((3, n_int))
+ab[0, 1:] = -r / 2
+ab[1, :] = 1 + r
+ab[2, :-1] = -r / 2
+
+
+snapshots = {0: u.copy()}
+save_steps = [nt // 4, nt // 2, nt - 1]
+
+
+for n in range(nt):
+    rhs = (r / 2) * u[:-2] + (1 - r) * u[1:-1] + (r / 2) * u[2:]  # explicit half-step RHS
+    u_int = solve_banded((1, 1), ab, rhs)
+    u[1:-1] = u_int
+    u[0], u[-1] = 0.0, 0.0
+    if n in save_steps:
+        snapshots[n] = u.copy()
+
+
+plt.figure(figsize=(7, 5))
+for step, snap in snapshots.items():
+    plt.plot(x, snap, label=f"t = {step * dt:.3f} s")
+plt.xlabel("x")
+plt.ylabel("u(x,t)")
+plt.title("1D Heat Equation - Crank-Nicolson (Top-Hat IC)")
+plt.legend()
+plt.tight_layout()
+plt.savefig("heat_1d_crank_nicolson_tophat.png", dpi=150)
+plt.show()
+
+
+Heat Equation Simulation Code Example 2 invalid (breaks symmetry)
+
+
+"""
+1D Heat Equation: Crank-Nicolson (unconditionally stable implicit scheme).
+Initial condition: top-hat / step function.
+"""
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.linalg import solve_banded
+
+
+# Domain and physical parameters
+L, alpha = 1.0, 0.01
+nx, nt = 101, 500
+dx = L / (nx - 1)
+dt = 0.001  # No CFL restriction needed; Crank-Nicolson is unconditionally stable
+r = alpha * dt / dx**2
+
+
+x = np.linspace(0, L, nx)
+u = np.zeros(nx)
+u[(x > 0.4) & (x < 0.6)] = 1.0  # top-hat initial condition
+u[0], u[-1] = 0.0, 0.0
+
+
+# Build tridiagonal system (I - r/2 * D2) u_new = (I + r/2 * D2) u_old
+n_int = nx - 2
+ab = np.zeros((3, n_int))
+ab[0, 1:] = -r / 2
+ab[1, :] = 1 + r
+ab[2, :-1] = -r / 2
+
+
+snapshots = {0: u.copy()}
+save_steps = [nt // 4, nt // 2, nt - 1]
+
+
+for n in range(nt):
+    rhs = (r / 2) * u[1:-1] + (1 - r) * u[1:-1] + (r / 2) * u[2:]  # explicit half-step RHS
+    u_int = solve_banded((1, 1), ab, rhs)
+    u[1:-1] = u_int
+    u[0], u[-1] = 0.0, 0.0
+    if n in save_steps:
+        snapshots[n] = u.copy()
+
+
+plt.figure(figsize=(7, 5))
+for step, snap in snapshots.items():
+    plt.plot(x, snap, label=f"t = {step * dt:.3f} s")
+plt.xlabel("x")
+plt.ylabel("u(x,t)")
+plt.title("1D Heat Equation - Crank-Nicolson (Top-Hat IC)")
+plt.legend()
+plt.tight_layout()
+plt.savefig("heat_1d_crank_nicolson_tophat_asymmetric.png", dpi=150)
+plt.show()
+
+
+Heat Equation Simulation Code Example 3
+"""
+2D Heat Equation: Alternating Direction Implicit (ADI) scheme.
+Initial condition: multiple point heat sources.
+"""
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.linalg import solve_banded
+
+
+# Domain and physical parameters
+L, alpha = 1.0, 0.01
+nx = ny = 61
+dx = dy = L / (nx - 1)
+dt = 0.005  # ADI is unconditionally stable, so dt is chosen for accuracy, not stability
+r = alpha * dt / dx**2
+nt = 100
+
+
+x = np.linspace(0, L, nx)
+y = np.linspace(0, L, ny)
+u = np.zeros((ny, nx))
+sources = [(0.25, 0.25), (0.75, 0.75), (0.25, 0.75), (0.75, 0.25)]  # multi-point sources
+for sx, sy in sources:
+    i, j = int(sy / dy), int(sx / dx)
+    u[i, j] = 50.0
+
+
+def thomas_solve(n, r):
+    """Build and return tridiagonal coefficients for an implicit half-step."""
+    ab = np.zeros((3, n))
+    ab[0, 1:] = -r / 2
+    ab[1, :] = 1 + r
+    ab[2, :-1] = -r / 2
+    return ab
+
+
+ab_int = thomas_solve(nx - 2, r)
+
+
+for n in range(nt):
+    # Half-step 1: implicit in x, explicit in y
+    u_star = u.copy()
+    for i in range(1, ny - 1):
+        rhs = (r / 2) * u[i, :-2] - (r - 1) * u[i, 1:-1] + (r / 2) * u[i, 2:]
+        rhs += (r / 2) * (u[i - 1, 1:-1] - 2 * u[i, 1:-1] + u[i + 1, 1:-1])
+        u_star[i, 1:-1] = solve_banded((1, 1), ab_int, rhs)
+    # Half-step 2: implicit in y, explicit in x
+    u_new = u_star.copy()
+    for j in range(1, nx - 1):
+        rhs = (r / 2) * u_star[:-2, j] - (r - 1) * u_star[1:-1, j] + (r / 2) * u_star[2:, j]
+        u_new[1:-1, j] = solve_banded((1, 1), ab_int, rhs)
+    u = u_new
+
+
+X, Y = np.meshgrid(x, y)
+plt.figure(figsize=(6, 5))
+plt.contourf(X, Y, u, levels=30, cmap="hot")
+plt.colorbar(label="Temperature")
+plt.xlabel("x")
+plt.ylabel("y")
+plt.title("2D Heat Equation - ADI (Multi-Point Source IC)")
+plt.tight_layout()
+plt.savefig("heat_2d_adi_multisource.png", dpi=150)
+plt.show()
+
+
+Heat Equation Simulation Code Example 3 Invalid (heat spreads unevenly by direction)
+
+
+"""
+2D Heat Equation: Alternating Direction Implicit (ADI) scheme.
+Initial condition: multiple point heat sources.
+"""
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.linalg import solve_banded
+
+
+# Domain and physical parameters
+L, alpha = 1.0, 0.01
+nx = ny = 61
+dx = dy = L / (nx - 1)
+dt = 0.005  # ADI is unconditionally stable, so dt is chosen for accuracy, not stability
+r = alpha * dt / dx**2
+nt = 100
+
+
+x = np.linspace(0, L, nx)
+y = np.linspace(0, L, ny)
+u = np.zeros((ny, nx))
+sources = [(0.25, 0.25), (0.75, 0.75), (0.25, 0.75), (0.75, 0.25)]  # multi-point sources
+for sx, sy in sources:
+    i, j = int(sy / dy), int(sx / dx)
+    u[i, j] = 50.0
+
+
+def thomas_solve(n, r):
+    """Build and return tridiagonal coefficients for an implicit half-step."""
+    ab = np.zeros((3, n))
+    ab[0, 1:] = -r / 2
+    ab[1, :] = 1 + r
+    ab[2, :-1] = -r / 2
+    return ab
+
+
+ab_int = thomas_solve(nx - 2, r)
+
+
+for n in range(nt):
+    # Half-step 1: implicit in x, explicit in y
+    u_star = u.copy()
+    for i in range(1, ny - 1):
+        rhs = (r / 2) * u[i, :-2] - (r - 1) * u[i, 1:-1] + (r / 2) * u[i, 2:]
+        rhs -= (r / 2) * (u[i - 1, 1:-1] - 2 * u[i, 1:-1] + u[i + 1, 1:-1])
+        u_star[i, 1:-1] = solve_banded((1, 1), ab_int, rhs)
+    # Half-step 2: implicit in y, explicit in x
+    u_new = u_star.copy()
+    for j in range(1, nx - 1):
+        rhs = (r / 2) * u_star[:-2, j] - (r - 1) * u_star[1:-1, j] + (r / 2) * u_star[2:, j]
+        u_new[1:-1, j] = solve_banded((1, 1), ab_int, rhs)
+    u = u_new
+
+
+X, Y = np.meshgrid(x, y)
+plt.figure(figsize=(6, 5))
+plt.contourf(X, Y, u, levels=30, cmap="hot")
+plt.colorbar(label="Temperature")
+plt.xlabel("x")
+plt.ylabel("y")
+plt.title("2D Heat Equation - ADI (Multi-Point Source IC)")
+plt.tight_layout()
+plt.savefig("heat_2d_adi_multisource_unstable.png", dpi=150)
+plt.show()
+
+
+
+
+Heat Equation Simulation Code Example 4
+
+
+"""
+2D Heat Equation: Fourier spectral method (periodic BCs), exact in time via FFT.
+Initial condition: sinusoidal wave pattern.
+"""
+import numpy as np
+import matplotlib.pyplot as plt
+
+
+# Domain and physical parameters
+L, alpha = 2 * np.pi, 0.05
+nx = ny = 128
+x = np.linspace(0, L, nx, endpoint=False)
+y = np.linspace(0, L, ny, endpoint=False)
+X, Y = np.meshgrid(x, y)
+
+
+u0 = np.sin(3 * X) * np.sin(2 * Y) + 0.5 * np.sin(5 * X)  # sinusoidal initial condition
+
+
+kx = np.fft.fftfreq(nx, d=L / nx) * 2 * np.pi
+ky = np.fft.fftfreq(ny, d=L / ny) * 2 * np.pi
+KX, KY = np.meshgrid(kx, ky)
+K2 = KX**2 + KY**2  # Laplacian eigenvalues in Fourier space
+
+
+u0_hat = np.fft.fft2(u0)
+
+
+t_final = 0.5  # No CFL restriction: solution advances via exact spectral decay factor
+decay = np.exp(-alpha * K2 * t_final)
+u_final = np.real(np.fft.ifft2(u0_hat * decay))
+
+
+fig, axes = plt.subplots(1, 2, figsize=(11, 5))
+im0 = axes[0].contourf(X, Y, u0, levels=30, cmap="coolwarm")
+axes[0].set_title("Initial Condition (t=0)")
+fig.colorbar(im0, ax=axes[0])
+im1 = axes[1].contourf(X, Y, u_final, levels=30, cmap="coolwarm")
+axes[1].set_title(f"Solution at t = {t_final}")
+fig.colorbar(im1, ax=axes[1])
+plt.tight_layout()
+plt.savefig("heat_2d_fourier_spectral_sine.png", dpi=150)
+plt.show()
+
+
+Heat Equation Simulation Code Example 4 invalid (blows up)
+"""
+2D Heat Equation: Fourier spectral method (periodic BCs), exact in time via FFT.
+Initial condition: sinusoidal wave pattern.
+"""
+import numpy as np
+import matplotlib.pyplot as plt
+
+
+# Domain and physical parameters
+L, alpha = 2 * np.pi, 0.05
+nx = ny = 128
+x = np.linspace(0, L, nx, endpoint=False)
+y = np.linspace(0, L, ny, endpoint=False)
+X, Y = np.meshgrid(x, y)
+
+
+u0 = np.sin(3 * X) * np.sin(2 * Y) + 0.5 * np.sin(5 * X)  # sinusoidal initial condition
+
+
+kx = np.fft.fftfreq(nx, d=L / nx) * 2 * np.pi
+ky = np.fft.fftfreq(ny, d=L / ny) * 2 * np.pi
+KX, KY = np.meshgrid(kx, ky)
+K2 = KX**2 + KY**2  # Laplacian eigenvalues in Fourier space
+
+
+u0_hat = np.fft.fft2(u0)
+
+
+t_final = 0.5  # No CFL restriction: solution advances via exact spectral decay factor
+decay = np.exp(alpha * K2 * t_final)
+u_final = np.real(np.fft.ifft2(u0_hat * decay))
+
+
+fig, axes = plt.subplots(1, 2, figsize=(11, 5))
+im0 = axes[0].contourf(X, Y, u0, levels=30, cmap="coolwarm")
+axes[0].set_title("Initial Condition (t=0)")
+fig.colorbar(im0, ax=axes[0])
+im1 = axes[1].contourf(X, Y, u_final, levels=30, cmap="coolwarm")
+axes[1].set_title(f"Solution at t = {t_final}")
+fig.colorbar(im1, ax=axes[1])
+plt.tight_layout()
+plt.savefig("heat_2d_fourier_spectral_sine_backward.png", dpi=150)
+plt.show()
+
+
+Generate 4 fully runnable, end-to-end Python scripts for solving the wave equation ($\frac{\partial^2 u}{\partial t^2} = c^2 \nabla^2 u$). Diversity Requirements:
+   * Spatial Dimensions: Include a mix of 1D and 2D spatial setups (e.g., two 1D scripts, two 2D scripts).
+   * Numerical Schemes: Use different numerical approaches (e.g., standard FDTD Leapfrog, Pseudo-Spectral FFT, Newmark-$\beta$ or implicit scheme, and finite difference with varying speed/absorbers).
+   * Initial Conditions: Mix initial displacements $u(x,0)$ and initial velocities $\frac{\partial u}{\partial t}(x,0)$ across the scripts
+Code Formatting Rules:
+   * Each script must be complete, runnable, and save/display a plot or animation of the wave propagation.
+   * Keep comments minimal: strictly 5 to 6 inline/docstring comments per script.
+   * Ensure all stability parameters meet the CFL condition
+Wave Equation Simulation Code Example 1
+"""
+1D Wave Equation: standard explicit FDTD leapfrog scheme, animated as a GIF.
+Initial condition: Gaussian displacement, zero initial velocity.
+"""
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+
+
+# Domain and physical parameters
+L, c = 1.0, 1.0
+nx, nt = 201, 800
+dx = L / (nx - 1)
+dt = 0.5 * dx / c  # CFL condition: Courant number c*dt/dx <= 1
+courant = (c * dt / dx) ** 2
+
+
+x = np.linspace(0, L, nx)
+u_prev = np.exp(-((x - L / 2) ** 2) / (2 * 0.03 ** 2))  # Gaussian initial displacement
+v0 = np.zeros(nx)  # zero initial velocity
+
+
+u_curr = u_prev.copy()
+u_curr[1:-1] = (u_prev[1:-1] + dt * v0[1:-1]
+                + 0.5 * courant * (u_prev[2:] - 2 * u_prev[1:-1] + u_prev[:-2]))
+u_curr[0], u_curr[-1] = 0.0, 0.0
+
+
+frames = [u_prev.copy(), u_curr.copy()]
+for n in range(1, nt):
+    u_next = np.zeros(nx)
+    u_next[1:-1] = (2 * u_curr[1:-1] - u_prev[1:-1]
+                    + courant * (u_curr[2:] - 2 * u_curr[1:-1] + u_curr[:-2]))  # leapfrog update
+    u_next[0], u_next[-1] = 0.0, 0.0
+    u_prev, u_curr = u_curr, u_next
+    if n % 4 == 0:  # store every 4th step to keep the GIF short
+        frames.append(u_curr.copy())
+
+
+fig, ax = plt.subplots(figsize=(7, 5))
+line, = ax.plot(x, frames[0])
+ax.set_ylim(-1.1, 1.1)
+ax.set_xlabel("x"); ax.set_ylabel("u(x,t)")
+ax.set_title("1D Wave Equation - FDTD Leapfrog (Gaussian displacement)")
+
+
+def update(frame):
+    line.set_ydata(frame)
+    return line,
+
+
+ani = animation.FuncAnimation(fig, update, frames=frames, interval=30, blit=True)
+ani.save("wave_1d_leapfrog_gaussian.gif", writer="pillow", fps=30)
+plt.close(fig)
+
+
+Wave Equation Simulation Code Example 1 Invalid (ends up looking like just diffusion, no oscillations)
+"""
+1D Wave Equation: standard explicit FDTD leapfrog scheme, animated as a GIF.
+Initial condition: Gaussian displacement, zero initial velocity.
+"""
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+
+
+# Domain and physical parameters
+L, c = 1.0, 1.0
+nx, nt = 201, 800
+dx = L / (nx - 1)
+dt = 0.5 * dx / c  # CFL condition: Courant number c*dt/dx <= 1
+courant = (c * dt / dx) ** 2
+
+
+x = np.linspace(0, L, nx)
+u_prev = np.exp(-((x - L / 2) ** 2) / (2 * 0.03 ** 2))  # Gaussian initial displacement
+v0 = np.zeros(nx)  # zero initial velocity
+
+
+u_curr = u_prev.copy()
+u_curr[1:-1] = (u_prev[1:-1] + dt * v0[1:-1]
+                + 0.5 * courant * (u_prev[2:] - 2 * u_prev[1:-1] + u_prev[:-2]))
+u_curr[0], u_curr[-1] = 0.0, 0.0
+
+
+frames = [u_prev.copy(), u_curr.copy()]
+for n in range(1, nt):
+    u_next = np.zeros(nx)
+    u_next[1:-1] = (2 * u_curr[1:-1] - u_curr[1:-1]
+                    + courant * (u_curr[2:] - 2 * u_curr[1:-1] + u_curr[:-2]))  # leapfrog update
+    u_next[0], u_next[-1] = 0.0, 0.0
+    u_prev, u_curr = u_curr, u_next
+    if n % 4 == 0:  # store every 4th step to keep the GIF short
+        frames.append(u_curr.copy())
+
+
+fig, ax = plt.subplots(figsize=(7, 5))
+line, = ax.plot(x, frames[0])
+ax.set_ylim(-1.1, 1.1)
+ax.set_xlabel("x"); ax.set_ylabel("u(x,t)")
+ax.set_title("1D Wave Equation - FDTD Leapfrog (Gaussian displacement)")
+
+
+def update(frame):
+    line.set_ydata(frame)
+    return line,
+
+
+ani = animation.FuncAnimation(fig, update, frames=frames, interval=30, blit=True)
+ani.save("wave_1d_leapfrog_gaussian_nomemory.gif", writer="pillow", fps=30)
+plt.close(fig)
+
+
+Wave Equation Simulation Code Example 2
+"""
+1D Wave Equation: pseudo-spectral FFT method (periodic BCs), animated as a GIF.
+Each Fourier mode is advanced by its exact analytic time solution.
+Initial condition: zero displacement, localized initial velocity pulse.
+"""
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+
+
+# Domain and physical parameters
+L, c = 2 * np.pi, 1.0
+nx = 256
+x = np.linspace(0, L, nx, endpoint=False)
+dx = L / nx
+
+
+u0 = np.zeros(nx)  # zero initial displacement
+v0 = 5.0 * np.exp(-((x - L / 2) ** 2) / (2 * 0.1 ** 2))  # localized initial velocity pulse
+
+
+k = np.fft.fftfreq(nx, d=dx) * 2 * np.pi  # wavenumber array
+u0_hat = np.fft.fft(u0)
+v0_hat = np.fft.fft(v0)
+omega = c * k
+
+
+times = np.linspace(0, 3.0, 150)  # spectral time-stepping is exact per mode, so no CFL restriction
+frames = []
+for t in times:
+    with np.errstate(divide="ignore", invalid="ignore"):
+        coeff = np.where(k != 0, v0_hat / np.where(omega == 0, 1, omega), 0.0)
+    u_hat_t = u0_hat * np.cos(omega * t) + coeff * np.sin(omega * t)
+    u_hat_t[0] = u0_hat[0] + v0_hat[0] * t  # k=0 mode grows linearly (mean velocity)
+    frames.append(np.real(np.fft.ifft(u_hat_t)))
+
+
+fig, ax = plt.subplots(figsize=(7, 5))
+line, = ax.plot(x, frames[0])
+ax.set_ylim(-0.2, 0.8)
+ax.set_xlabel("x"); ax.set_ylabel("u(x,t)")
+ax.set_title("1D Wave Equation - Pseudo-Spectral FFT (velocity pulse IC)")
+
+
+def update(frame):
+    line.set_ydata(frame)
+    return line,
+
+
+ani = animation.FuncAnimation(fig, update, frames=frames, interval=30, blit=True)
+ani.save("wave_1d_spectral_velocity.gif", writer="pillow", fps=30)
+plt.close(fig)
+
+
+Wave Equation Simulation Code Example 2 invalid (blows up)
+
+
+"""
+1D Wave Equation: pseudo-spectral FFT method (periodic BCs), animated as a GIF.
+Each Fourier mode is advanced by its exact analytic time solution.
+Initial condition: zero displacement, localized initial velocity pulse.
+"""
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+
+
+# Domain and physical parameters
+L, c = 2 * np.pi, 1.0
+nx = 256
+x = np.linspace(0, L, nx, endpoint=False)
+dx = L / nx
+
+
+u0 = np.zeros(nx)  # zero initial displacement
+v0 = 5.0 * np.exp(-((x - L / 2) ** 2) / (2 * 0.1 ** 2))  # localized initial velocity pulse
+
+
+k = np.fft.fftfreq(nx, d=dx) * 2 * np.pi  # wavenumber array
+u0_hat = np.fft.fft(u0)
+v0_hat = np.fft.fft(v0)
+omega = c * k
+
+
+times = np.linspace(0, 3.0, 150)  # spectral time-stepping is exact per mode, so no CFL restriction
+frames = []
+for t in times:
+    with np.errstate(divide="ignore", invalid="ignore"):
+        coeff = np.where(k != 0, v0_hat / np.where(omega == 0, 1, omega), 0.0)
+    u_hat_t = u0_hat * np.cosh(omega * t) + coeff * np.sinh(omega * t)
+    u_hat_t[0] = u0_hat[0] + v0_hat[0] * t  # k=0 mode grows linearly (mean velocity)
+    frames.append(np.real(np.fft.ifft(u_hat_t)))
+
+
+fig, ax = plt.subplots(figsize=(7, 5))
+line, = ax.plot(x, frames[0])
+ax.set_ylim(-0.2, 0.8)
+ax.set_xlabel("x"); ax.set_ylabel("u(x,t)")
+ax.set_title("1D Wave Equation - Pseudo-Spectral FFT (velocity pulse IC)")
+
+
+def update(frame):
+    line.set_ydata(frame)
+    return line,
+
+
+ani = animation.FuncAnimation(fig, update, frames=frames, interval=30, blit=True)
+ani.save("wave_1d_spectral_velocity_coshsinh.gif", writer="pillow", fps=30)
+plt.close(fig)
+
+
+
+
+
+
+Wave Equation Simulation Code Example 3
+"""
+2D Wave Equation: FDTD leapfrog with spatially varying wave speed c(x,y)
+and a sponge-layer absorbing boundary, animated as a GIF.
+Initial condition: multi-point source displacement, zero initial velocity.
+"""
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+
+
+# Domain and physical parameters
+L, nx, ny = 1.0, 121, 121
+dx = dy = L / (nx - 1)
+x = np.linspace(0, L, nx)
+y = np.linspace(0, L, ny)
+X, Y = np.meshgrid(x, y, indexing="ij")
+
+
+c_max = 1.0
+c = c_max * (1.0 + 0.5 * (X > 0.5))  # varying speed: faster medium in right half
+dt = 0.4 * dx / c_max  # CFL condition for 2D: c*dt*sqrt(1/dx^2+1/dy^2) <= 1
+
+
+u_prev = np.zeros((nx, ny))
+for sx, sy in [(0.25, 0.5), (0.75, 0.25)]:  # multi-point source displacement
+    u_prev += 1.0 * np.exp(-(((X - sx) ** 2 + (Y - sy) ** 2)) / (2 * 0.02 ** 2))
+u_curr = u_prev.copy()  # zero initial velocity -> first step equals initial field
+
+
+sponge = np.ones((nx, ny))  # sponge absorbing layer near domain edges
+width = 15
+for i in range(width):
+    damp = 1.0 - 0.08 * (width - i)
+    sponge[i, :] *= damp; sponge[-i - 1, :] *= damp
+    sponge[:, i] *= damp; sponge[:, -i - 1] *= damp
+
+
+nt = 140  # stop before fronts fully cross so the wavefronts stay visible
+r2 = (c * dt / dx) ** 2
+frames = [u_curr.copy()]
+
+
+for n in range(nt):
+    lap = (np.roll(u_curr, -1, axis=0) + np.roll(u_curr, 1, axis=0)
+           + np.roll(u_curr, -1, axis=1) + np.roll(u_curr, 1, axis=1) - 4 * u_curr)
+    u_next = (2 * u_curr - u_prev + r2 * lap) * sponge  # leapfrog update with absorption
+    u_next[0, :] = u_next[-1, :] = u_next[:, 0] = u_next[:, -1] = 0.0
+    u_prev, u_curr = u_curr, u_next
+    if n % 2 == 0:
+        frames.append(u_curr.copy())
+
+
+fig, ax = plt.subplots(figsize=(6, 5))
+im = ax.pcolormesh(X, Y, frames[0], cmap="RdBu", shading="auto", vmin=-0.3, vmax=0.3)
+ax.axvline(0.5, color="k", linewidth=0.5, linestyle="--")  # marks the speed discontinuity
+fig.colorbar(im, ax=ax, label="Displacement")
+ax.set_xlabel("x"); ax.set_ylabel("y")
+ax.set_title("2D Wave Equation - Leapfrog, Varying Speed + Absorbing Boundary")
+
+
+def update(frame):
+    im.set_array(frame.ravel())
+    return im,
+
+
+ani = animation.FuncAnimation(fig, update, frames=frames, interval=40, blit=True)
+ani.save("wave_2d_varyingc_absorbing.gif", writer="pillow", fps=25)
+plt.close(fig)
+
+
+Wave Equation Simulation Code Example 3 invalid (blows up, creates checkerboard pattern)
+"""
+2D Wave Equation: FDTD leapfrog with spatially varying wave speed c(x,y)
+and a sponge-layer absorbing boundary, animated as a GIF.
+Initial condition: multi-point source displacement, zero initial velocity.
+"""
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+
+
+# Domain and physical parameters
+L, nx, ny = 1.0, 121, 121
+dx = dy = L / (nx - 1)
+x = np.linspace(0, L, nx)
+y = np.linspace(0, L, ny)
+X, Y = np.meshgrid(x, y, indexing="ij")
+
+
+c_max = 1.0
+c = c_max * (1.0 + 0.5 * (X > 0.5))  # varying speed: faster medium in right half
+dt = 0.4 * dx / c_max  # CFL condition for 2D: c*dt*sqrt(1/dx^2+1/dy^2) <= 1
+
+
+u_prev = np.zeros((nx, ny))
+for sx, sy in [(0.25, 0.5), (0.75, 0.25)]:  # multi-point source displacement
+    u_prev += 1.0 * np.exp(-(((X - sx) ** 2 + (Y - sy) ** 2)) / (2 * 0.02 ** 2))
+u_curr = u_prev.copy()  # zero initial velocity -> first step equals initial field
+
+
+sponge = np.ones((nx, ny))  # sponge absorbing layer near domain edges
+width = 15
+for i in range(width):
+    damp = 1.0 - 0.08 * (width - i)
+    sponge[i, :] *= damp; sponge[-i - 1, :] *= damp
+    sponge[:, i] *= damp; sponge[:, -i - 1] *= damp
+
+
+nt = 140  # stop before fronts fully cross so the wavefronts stay visible
+r2 = (c * dt / dx) ** 2
+frames = [u_curr.copy()]
+
+
+for n in range(nt):
+    lap = (np.roll(u_curr, -1, axis=0) + np.roll(u_curr, 1, axis=0)
+           + np.roll(u_curr, -1, axis=1) + np.roll(u_curr, 1, axis=1) - 4 * u_curr)
+    u_next = (2 * u_curr - u_prev - r2 * lap) * sponge  # leapfrog update with absorption
+    u_next[0, :] = u_next[-1, :] = u_next[:, 0] = u_next[:, -1] = 0.0
+    u_prev, u_curr = u_curr, u_next
+    if n % 2 == 0:
+        frames.append(u_curr.copy())
+
+
+fig, ax = plt.subplots(figsize=(6, 5))
+im = ax.pcolormesh(X, Y, frames[0], cmap="RdBu", shading="auto", vmin=-0.3, vmax=0.3)
+ax.axvline(0.5, color="k", linewidth=0.5, linestyle="--")  # marks the speed discontinuity
+fig.colorbar(im, ax=ax, label="Displacement")
+ax.set_xlabel("x"); ax.set_ylabel("y")
+ax.set_title("2D Wave Equation - Leapfrog, Varying Speed + Absorbing Boundary")
+
+
+def update(frame):
+    im.set_array(frame.ravel())
+    return im,
+
+
+ani = animation.FuncAnimation(fig, update, frames=frames, interval=40, blit=True)
+ani.save("wave_2d_varyingc_absorbing_blowup.gif", writer="pillow", fps=25)
+plt.close(fig)
+
+
+
+
+Wave Equation Simulation Code Example 4
+"""
+2D Wave Equation: implicit Newmark-beta scheme (average-acceleration form),
+unconditionally stable, animated as a GIF using a single LU factorization.
+Initial condition: sinusoidal displacement plus a localized initial velocity pulse.
+"""
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+import scipy.sparse as sp
+from scipy.sparse.linalg import splu
+
+
+# Domain and physical parameters
+L, c, nx, ny = 1.0, 1.0, 121, 121
+dx = dy = L / (nx - 1)
+x = np.linspace(0, L, nx)
+y = np.linspace(0, L, ny)
+X, Y = np.meshgrid(x, y, indexing="ij")
+N = nx * ny
+
+
+e = np.ones(nx)  # build sparse 2D Laplacian (Dirichlet BC) via Kronecker sum
+D2x = sp.diags([e[:-1], -2 * e, e[:-1]], [-1, 0, 1]) / dx**2
+Ix = sp.identity(nx)
+Lap = sp.kron(D2x, Ix) + sp.kron(Ix, D2x)
+K = -(c**2) * Lap  # positive semi-definite stiffness-like operator
+
+
+u0 = 0.1 * np.sin(np.pi * X) * np.sin(np.pi * Y)  # sinusoidal initial displacement
+sigma = 6 * dx  # pulse width kept well above grid spacing to avoid grid-scale aliasing
+v0 = 3.0 * np.exp(-(((X - 0.3) ** 2 + (Y - 0.7) ** 2)) / (2 * sigma**2))
+u = u0.flatten(); v = v0.flatten()
+a = -K.dot(u)  # initial acceleration from the governing equation
+
+
+beta, gamma, dt, nt = 0.3025, 0.6, 0.01, 150  # gamma>0.5 adds mild damping of grid-scale noise, stays unconditionally stable
+A = sp.identity(N) + (dt**2) * beta * K
+lu = splu(A.tocsc())  # factorize once since the system matrix is constant
+
+
+frames = [u0.copy()]
+for n in range(nt):
+    rhs = u + dt * v + (dt**2) * (0.5 - beta) * a
+    u_new = lu.solve(rhs)
+    a_new = -K.dot(u_new)
+    v_new = v + dt * ((1 - gamma) * a + gamma * a_new)
+    u, v, a = u_new, v_new, a_new
+    frames.append(u.reshape(nx, ny))
+
+
+fig, ax = plt.subplots(figsize=(6, 5))
+im = ax.pcolormesh(X, Y, frames[0], cmap="RdBu", shading="gouraud", vmin=-0.12, vmax=0.12)
+fig.colorbar(im, ax=ax, label="Displacement")
+ax.set_xlabel("x"); ax.set_ylabel("y")
+title = ax.set_title("2D Wave Equation - Newmark-beta Implicit (t=0.00s)")
+
+
+def update(i):
+    im.set_array(frames[i].ravel())
+    title.set_text(f"2D Wave Equation - Newmark-beta Implicit (t={i*dt:.2f}s)")
+    return im, title
+
+
+ani = animation.FuncAnimation(fig, update, frames=len(frames), interval=40, blit=False)
+ani.save("wave_2d_newmark_beta.gif", writer="pillow", fps=25)
+plt.close(fig)
+
+
+Wave Equation Simulation Code Example 4 invalid (explodes to NaNs)
+
+
+"""
+2D Wave Equation: implicit Newmark-beta scheme (average-acceleration form),
+unconditionally stable, animated as a GIF using a single LU factorization.
+Initial condition: sinusoidal displacement plus a localized initial velocity pulse.
+"""
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+import scipy.sparse as sp
+from scipy.sparse.linalg import splu
+
+
+# Domain and physical parameters
+L, c, nx, ny = 1.0, 1.0, 121, 121
+dx = dy = L / (nx - 1)
+x = np.linspace(0, L, nx)
+y = np.linspace(0, L, ny)
+X, Y = np.meshgrid(x, y, indexing="ij")
+N = nx * ny
+
+
+e = np.ones(nx)  # build sparse 2D Laplacian (Dirichlet BC) via Kronecker sum
+D2x = sp.diags([e[:-1], -2 * e, e[:-1]], [-1, 0, 1]) / dx**2
+Ix = sp.identity(nx)
+Lap = sp.kron(D2x, Ix) + sp.kron(Ix, D2x)
+K = (c**2) * Lap  # positive semi-definite stiffness-like operator
+
+
+u0 = 0.1 * np.sin(np.pi * X) * np.sin(np.pi * Y)  # sinusoidal initial displacement
+sigma = 6 * dx  # pulse width kept well above grid spacing to avoid grid-scale aliasing
+v0 = 3.0 * np.exp(-(((X - 0.3) ** 2 + (Y - 0.7) ** 2)) / (2 * sigma**2))
+u = u0.flatten(); v = v0.flatten()
+a = -K.dot(u)  # initial acceleration from the governing equation
+
+
+beta, gamma, dt, nt = 0.3025, 0.6, 0.01, 150  # gamma>0.5 adds mild damping of grid-scale noise, stays unconditionally stable
+A = sp.identity(N) + (dt**2) * beta * K
+lu = splu(A.tocsc())  # factorize once since the system matrix is constant
+
+
+frames = [u0.copy()]
+for n in range(nt):
+    rhs = u + dt * v + (dt**2) * (0.5 - beta) * a
+    u_new = lu.solve(rhs)
+    a_new = -K.dot(u_new)
+    v_new = v + dt * ((1 - gamma) * a + gamma * a_new)
+    u, v, a = u_new, v_new, a_new
+    frames.append(u.reshape(nx, ny))
+
+
+fig, ax = plt.subplots(figsize=(6, 5))
+im = ax.pcolormesh(X, Y, frames[0], cmap="RdBu", shading="gouraud", vmin=-0.12, vmax=0.12)
+fig.colorbar(im, ax=ax, label="Displacement")
+ax.set_xlabel("x"); ax.set_ylabel("y")
+title = ax.set_title("2D Wave Equation - Newmark-beta Implicit (t=0.00s)")
+
+
+def update(i):
+    im.set_array(frames[i].ravel())
+    title.set_text(f"2D Wave Equation - Newmark-beta Implicit (t={i*dt:.2f}s)")
+    return im, title
+
+
+ani = animation.FuncAnimation(fig, update, frames=len(frames), interval=40, blit=False)
+ani.save("wave_2d_newmark_beta_negstiffness.gif", writer="pillow", fps=25)
+plt.close(fig)
+
+
+
+
+Generate 4 fully runnable, end-to-end Python scripts for solving Burgers' Equation ($\frac{\partial u}{\partial t} + u \nabla u = \nu \nabla^2 u$). Diversity Requirements:
+   * Spatial Dimensions: Mix 1D and 2D spatial domains (e.g., three 1D variations, one 2D vector system).
+   * Viscosity Regimes: Include both Inviscid ($\nu = 0$) shock-capturing behavior and Viscous ($\nu > 0$) smoothing behavior.
+   * Numerical Schemes: Use a mix of numerical schemes (e.g., Godunov/Upwind, Lax-Wendroff, Finite Differences, etc).
+   * Initial Conditions: Mix continuous waves (sinusoidal), discontinuous profiles (shocks/top-hat), and smooth localized pulses (Gaussian).
+Code Formatting Rules:
+   * Each script must be complete, runnable, and save or display a plot of the velocity profile.
+   * Keep comments minimal: strictly 5 to 6 inline/docstring comments per script.
+   * Ensure all stability parameters respect both advective CFL and diffusion stability bounds.
+
+
+Burgers Simulation Code Example 1
+"""
+1D Burgers' Equation (inviscid, nu=0): Godunov's method with exact Riemann flux,
+animated as a GIF. Initial condition: sinusoidal wave that steepens into a shock.
+"""
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+
+
+# Domain and physical parameters
+L, nu = 2.0, 0.0
+nx, nt = 400, 600
+dx = L / nx
+x = np.linspace(0, L, nx, endpoint=False)
+
+
+u = np.sin(2 * np.pi * x / L) + 0.5  # sinusoidal initial condition, positive-biased
+cfl = 0.4
+
+
+def godunov_flux(uL, uR):
+    """Exact Godunov flux for the convex Burgers flux f(u) = u^2/2."""
+    fL, fR = 0.5 * uL**2, 0.5 * uR**2
+    shock_speed = 0.5 * (uL + uR)
+    flux = np.where(uL <= uR,
+                     np.where(uL >= 0, fL, np.where(uR <= 0, fR, 0.0)),
+                     np.where(shock_speed > 0, fL, fR))
+    return flux
+
+
+frames = [u.copy()]
+for n in range(nt):
+    dt = cfl * dx / max(np.max(np.abs(u)), 1e-8)  # CFL re-checked as the profile steepens
+    uL = u
+    uR = np.roll(u, -1)  # periodic boundary conditions
+    F = godunov_flux(uL, uR)
+    F_left = np.roll(F, 1)
+    u = u - dt / dx * (F - F_left)  # conservative finite-volume update
+    if n % 4 == 0:
+        frames.append(u.copy())
+
+
+fig, ax = plt.subplots(figsize=(7, 5))
+line, = ax.plot(x, frames[0])
+ax.set_ylim(-0.7, 1.7)
+ax.set_xlabel("x"); ax.set_ylabel("u(x,t)")
+ax.set_title("1D Inviscid Burgers - Godunov Scheme (Sinusoidal IC)")
+
+
+def update(frame):
+    line.set_ydata(frame)
+    return line,
+
+
+ani = animation.FuncAnimation(fig, update, frames=frames, interval=30, blit=True)
+ani.save("burgers_1d_godunov_sine.gif", writer="pillow", fps=30)
+plt.close(fig)
+
+
+Burgers Simulation Code Example 1 invalid (trajectories oscillate and then blow up once shock forms)
+"""
+1D Burgers' Equation (inviscid, nu=0): Godunov's method with exact Riemann flux,
+animated as a GIF. Initial condition: sinusoidal wave that steepens into a shock.
+"""
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+
+
+# Domain and physical parameters
+L, nu = 2.0, 0.0
+nx, nt = 400, 600
+dx = L / nx
+x = np.linspace(0, L, nx, endpoint=False)
+
+
+u = np.sin(2 * np.pi * x / L) + 0.5  # sinusoidal initial condition, positive-biased
+cfl = 0.4
+
+
+def godunov_flux(uL, uR):
+    """Exact Godunov flux for the convex Burgers flux f(u) = u^2/2."""
+    fL, fR = 0.5 * uL**2, 0.5 * uR**2
+    shock_speed = 0.5 * (uL + uR)
+    flux = np.where(uL <= uR,
+                     np.where(uL >= 0, fL, np.where(uR <= 0, fR, 0.0)),
+                     np.where(shock_speed > 0, fL, fR))
+    return flux
+
+
+frames = [u.copy()]
+for n in range(nt):
+    dt = cfl * dx / max(np.max(np.abs(u)), 1e-8)  # CFL re-checked as the profile steepens
+    uL = u
+    uR = np.roll(u, -1)  # periodic boundary conditions
+    F = godunov_flux(uL, uR)
+    F_left = np.roll(F, -1)
+    u = u - dt / dx * (F - F_left)  # conservative finite-volume update
+    if n % 4 == 0:
+        frames.append(u.copy())
+
+
+fig, ax = plt.subplots(figsize=(7, 5))
+line, = ax.plot(x, frames[0])
+ax.set_ylim(-0.7, 1.7)
+ax.set_xlabel("x"); ax.set_ylabel("u(x,t)")
+ax.set_title("1D Inviscid Burgers - Godunov Scheme (Sinusoidal IC)")
+
+
+def update(frame):
+    line.set_ydata(frame)
+    pad = 0.1 * (np.max(frame) - np.min(frame)) + 0.05
+    ax.set_ylim(np.min(frame) - pad, np.max(frame) + pad)  # rescale so blow-up stays visible
+    return line,
+
+
+ani = animation.FuncAnimation(fig, update, frames=frames, interval=30, blit=False)
+ani.save("burgers_1d_godunov_sine_reversedflux.gif", writer="pillow", fps=30)
+plt.close(fig)
+
+
+
+
+
+
+
+
+Burgers Simulation Code Example 2
+"""
+1D Burgers' Equation (viscous, nu>0): Lax-Wendroff advection with an added
+explicit diffusion term, animated as a GIF. Initial condition: top-hat profile.
+"""
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+
+
+# Domain and physical parameters
+L, nu = 1.0, 0.005
+nx, nt = 300, 1500
+dx = L / nx
+x = np.linspace(0, L, nx, endpoint=False)
+
+
+u = 0.1 + 0.9 * ((x > 0.2) & (x < 0.5))  # top-hat / step initial condition
+cfl, diff_num = 0.5, 0.4
+dt = min(cfl * dx / np.max(np.abs(u)), diff_num * dx**2 / nu)  # advective + diffusive CFL
+
+
+frames = [u.copy()]
+for n in range(nt):
+    f = 0.5 * u**2
+    fp, fm = np.roll(f, -1), np.roll(f, 1)
+    up, um = np.roll(u, -1), np.roll(u, 1)
+    a_half_p = 0.5 * (u + up)  # local wave speed at i+1/2 for the LW correction
+    a_half_m = 0.5 * (u + um)
+    lw_flux_p = 0.5 * (f + fp) - 0.5 * dt / dx * a_half_p * (fp - f)  # Lax-Wendroff flux
+    lw_flux_m = 0.5 * (f + fm) - 0.5 * dt / dx * a_half_m * (f - fm)
+    diffusion = nu * dt / dx**2 * (up - 2 * u + um)  # explicit central diffusion
+    u = u - dt / dx * (lw_flux_p - lw_flux_m) + diffusion
+    if n % 10 == 0:
+        frames.append(u.copy())
+
+
+fig, ax = plt.subplots(figsize=(7, 5))
+line, = ax.plot(x, frames[0])
+ax.set_ylim(-0.1, 1.1)
+ax.set_xlabel("x"); ax.set_ylabel("u(x,t)")
+ax.set_title("1D Viscous Burgers - Lax-Wendroff + Diffusion (Top-Hat IC)")
+
+
+def update(frame):
+    line.set_ydata(frame)
+    return line,
+
+
+ani = animation.FuncAnimation(fig, update, frames=frames, interval=30, blit=True)
+ani.save("burgers_1d_laxwendroff_tophat.gif", writer="pillow", fps=30)
+plt.close(fig)
+
+
+Burgers Simulation Code Example 2 invalid (becomes NaNs almost immediately)
+"""
+1D Burgers' Equation (viscous, nu>0): Lax-Wendroff advection with an added
+explicit diffusion term, animated as a GIF. Initial condition: top-hat profile.
+"""
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+
+
+# Domain and physical parameters
+L, nu = 1.0, 0.005
+nx, nt = 300, 1500
+dx = L / nx
+x = np.linspace(0, L, nx, endpoint=False)
+
+
+u = 0.1 + 0.9 * ((x > 0.2) & (x < 0.5))  # top-hat / step initial condition
+cfl, diff_num = 0.5, 0.4
+dt = min(cfl * dx / np.max(np.abs(u)), diff_num * dx**2 / nu)  # advective + diffusive CFL
+
+
+frames = [u.copy()]
+for n in range(nt):
+    f = 0.5 * u**2
+    fp, fm = np.roll(f, -1), np.roll(f, 1)
+    up, um = np.roll(u, -1), np.roll(u, 1)
+    a_half_p = 0.5 * (u + up)  # local wave speed at i+1/2 for the LW correction
+    a_half_m = 0.5 * (u + um)
+    lw_flux_p = 0.5 * (f + fp) - 0.5 * dt / dx * a_half_p * (fp - f)  # Lax-Wendroff flux
+    lw_flux_m = 0.5 * (f + fm) - 0.5 * dt / dx * a_half_m * (f - fm)
+    diffusion = nu * dt / dx**2 * (up - 2 * u + um)  # explicit central diffusion
+    u = u - dt / dx * (lw_flux_p - lw_flux_m) - diffusion
+    if n < 30 or n % 10 == 0:  # capture densely early on since the blow-up is very fast
+        frames.append(u.copy())
+
+
+fig, ax = plt.subplots(figsize=(7, 5))
+line, = ax.plot(x, frames[0])
+ax.set_ylim(-0.1, 1.1)
+ax.set_xlabel("x"); ax.set_ylabel("u(x,t)")
+ax.set_title("1D Viscous Burgers - Lax-Wendroff + Diffusion (Top-Hat IC)")
+
+
+def update(frame):
+    line.set_ydata(frame)
+    finite = frame[np.isfinite(frame)]
+    if finite.size > 0:
+        pad = 0.1 * (np.max(finite) - np.min(finite)) + 0.05
+        ax.set_ylim(np.min(finite) - pad, np.max(finite) + pad)  # rescale so blow-up stays visible
+    return line,
+
+
+ani = animation.FuncAnimation(fig, update, frames=frames, interval=30, blit=False)
+ani.save("burgers_1d_laxwendroff_tophat_antidiffusion.gif", writer="pillow", fps=15)
+plt.close(fig)
+
+
+
+
+
+
+Burgers Simulation Code Example 3 
+"""
+1D Burgers' Equation (viscous, nu>0): explicit finite differences using
+sign-based upwinding for advection and central differencing for diffusion,
+animated as a GIF. Initial condition: smooth Gaussian pulse.
+"""
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+
+
+# Domain and physical parameters
+L, nu = 1.0, 0.01
+nx, nt = 300, 2000
+dx = L / nx
+x = np.linspace(0, L, nx, endpoint=False)
+
+
+u = 1.5 * np.exp(-((x - 0.3) ** 2) / (2 * 0.05 ** 2))  # Gaussian pulse initial condition
+cfl, diff_num = 0.4, 0.4
+dt = min(cfl * dx / np.max(np.abs(u)), diff_num * dx**2 / nu)  # advective + diffusive CFL
+
+
+frames = [u.copy()]
+for n in range(nt):
+    up, um = np.roll(u, -1), np.roll(u, 1)
+    du_forward = (up - u) / dx
+    du_backward = (u - um) / dx
+    advect = np.where(u >= 0, u * du_backward, u * du_forward)  # upwind based on local sign of u
+    diffuse = nu * (up - 2 * u + um) / dx**2  # central diffusion term
+    u = u + dt * (-advect + diffuse)
+    if n % 13 == 0:
+        frames.append(u.copy())
+
+
+fig, ax = plt.subplots(figsize=(7, 5))
+line, = ax.plot(x, frames[0])
+ax.set_ylim(-0.1, 1.6)
+ax.set_xlabel("x"); ax.set_ylabel("u(x,t)")
+ax.set_title("1D Viscous Burgers - Upwind Finite Difference (Gaussian IC)")
+
+
+def update(frame):
+    line.set_ydata(frame)
+    return line,
+
+
+ani = animation.FuncAnimation(fig, update, frames=frames, interval=30, blit=True)
+ani.save("burgers_1d_upwind_gaussian.gif", writer="pillow", fps=30)
+plt.close(fig)
+
+
+Burgers Simulation Code Example 3 invalid (creates very violent bounded oscillations)
+"""
+1D Burgers' Equation (viscous, nu>0): explicit finite differences using
+sign-based upwinding for advection and central differencing for diffusion,
+animated as a GIF. Initial condition: smooth Gaussian pulse.
+"""
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+
+
+# Domain and physical parameters
+L, nu = 1.0, 0.01
+nx, nt = 300, 2000
+dx = L / nx
+x = np.linspace(0, L, nx, endpoint=False)
+
+
+u = 1.5 * np.exp(-((x - 0.3) ** 2) / (2 * 0.05 ** 2))  # Gaussian pulse initial condition
+cfl, diff_num = 0.4, 0.4
+dt = min(cfl * dx / np.max(np.abs(u)), diff_num * dx**2 / nu)  # advective + diffusive CFL
+
+
+frames = [u.copy()]
+for n in range(nt):
+    up, um = np.roll(u, -1), np.roll(u, 1)
+    du_forward = (up - u) / dx
+    du_backward = (u - um) / dx
+    advect = np.where(u >= 0, u * du_backward, u * du_forward)  # upwind based on local sign of u
+    diffuse = nu * (up - 2 * u + um) / dx**2  # central diffusion term
+    u = u + dt * (-advect - diffuse)
+    if n < 40 or n % 13 == 0:  # capture densely early so the onset is visible
+        frames.append(u.copy())
+
+
+fig, ax = plt.subplots(figsize=(7, 5))
+line, = ax.plot(x, frames[0])
+ax.set_ylim(-0.1, 1.6)
+ax.set_xlabel("x"); ax.set_ylabel("u(x,t)")
+ax.set_title("1D Viscous Burgers - Upwind Finite Difference (Gaussian IC)")
+
+
+def update(frame):
+    line.set_ydata(frame)
+    pad = 0.1 * (np.max(frame) - np.min(frame)) + 0.05
+    ax.set_ylim(np.min(frame) - pad, np.max(frame) + pad)  # rescale to keep the spike visible
+    return line,
+
+
+ani = animation.FuncAnimation(fig, update, frames=frames, interval=30, blit=False)
+ani.save("burgers_1d_upwind_gaussian_antidiffusion.gif", writer="pillow", fps=20)
+plt.close(fig)
+
+
+
+
+Burgers Simulation Code Example 4
+"""
+2D Vector Burgers' Equation (viscous, nu>0) for coupled components (u, v),
+animated as a GIF. Initial condition: smooth sinusoidal shear-layer field.
+"""
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+
+
+# Domain and physical parameters
+L, nu = 1.0, 0.02
+nx = ny = 101
+dx = dy = L / (nx - 1)
+x = np.linspace(0, L, nx)
+y = np.linspace(0, L, ny)
+X, Y = np.meshgrid(x, y, indexing="ij")
+
+
+u = np.sin(2 * np.pi * X) * np.cos(2 * np.pi * Y)  # sinusoidal shear-layer initial condition
+v = -np.cos(2 * np.pi * X) * np.sin(2 * np.pi * Y)
+
+
+cfl, diff_num = 0.3, 0.2
+speed0 = np.sqrt(u**2 + v**2).max()
+dt = min(cfl * dx / speed0, diff_num * dx**2 / nu)  # advective + diffusive CFL, 2D
+nt = 300
+
+
+def upwind_deriv(f, axis, vel):
+    """One-sided difference chosen by the local sign of the advecting velocity."""
+    fp = np.roll(f, -1, axis=axis)
+    fm = np.roll(f, 1, axis=axis)
+    return np.where(vel >= 0, (f - fm) / dx, (fp - f) / dx)
+
+
+skip = 5  # subsample for the quiver overlay so arrows stay readable
+frames = [np.sqrt(u**2 + v**2)]
+for n in range(nt):
+    ux = upwind_deriv(u, 0, u); uy = upwind_deriv(u, 1, v)
+    vx = upwind_deriv(v, 0, u); vy = upwind_deriv(v, 1, v)
+    lap_u = (np.roll(u, -1, 0) + np.roll(u, 1, 0) + np.roll(u, -1, 1) + np.roll(u, 1, 1) - 4 * u) / dx**2
+    lap_v = (np.roll(v, -1, 0) + np.roll(v, 1, 0) + np.roll(v, -1, 1) + np.roll(v, 1, 1) - 4 * v) / dx**2
+    u = u + dt * (-(u * ux + v * uy) + nu * lap_u)  # coupled momentum update
+    v = v + dt * (-(u * vx + v * vy) + nu * lap_v)
+    if n % 2 == 0:
+        frames.append(np.sqrt(u**2 + v**2))
+
+
+fig, ax = plt.subplots(figsize=(6.5, 5.5))
+im = ax.pcolormesh(X, Y, frames[0], cmap="viridis", shading="auto", vmin=0, vmax=speed0)
+fig.colorbar(im, ax=ax, label="|velocity|")
+ax.set_xlabel("x"); ax.set_ylabel("y")
+title = ax.set_title("2D Vector Burgers - Upwind/Central FD (t=0.000s)")
+
+
+def update(i):
+    im.set_array(frames[i].ravel())
+    title.set_text(f"2D Vector Burgers - Upwind/Central FD (t={i*2*dt:.3f}s)")
+    return im, title
+
+
+ani = animation.FuncAnimation(fig, update, frames=len(frames), interval=40, blit=False)
+ani.save("burgers_2d_vector_shearlayer.gif", writer="pillow", fps=25)
+plt.close(fig)
+
+
+Burgers Simulation Code Example 4 invalid (blows up to NaNs)
+
+
+"""
+2D Vector Burgers' Equation (viscous, nu>0) for coupled components (u, v),
+animated as a GIF. Initial condition: smooth sinusoidal shear-layer field.
+"""
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+
+
+# Domain and physical parameters
+L, nu = 1.0, 0.02
+nx = ny = 101
+dx = dy = L / (nx - 1)
+x = np.linspace(0, L, nx)
+y = np.linspace(0, L, ny)
+X, Y = np.meshgrid(x, y, indexing="ij")
+
+
+u = np.sin(2 * np.pi * X) * np.cos(2 * np.pi * Y)  # sinusoidal shear-layer initial condition
+v = -np.cos(2 * np.pi * X) * np.sin(2 * np.pi * Y)
+
+
+cfl, diff_num = 0.3, 0.2
+speed0 = np.sqrt(u**2 + v**2).max()
+dt = min(cfl * dx / speed0, diff_num * dx**2 / nu)  # advective + diffusive CFL, 2D
+nt = 300
+
+
+def upwind_deriv(f, axis, vel):
+    """One-sided difference chosen by the local sign of the advecting velocity."""
+    fp = np.roll(f, -1, axis=axis)
+    fm = np.roll(f, 1, axis=axis)
+    return np.where(vel >= 0, (f - fm) / dx, (fp - f) / dx)
+
+
+skip = 5  # subsample for the quiver overlay so arrows stay readable
+frames = [np.sqrt(u**2 + v**2)]
+for n in range(nt):
+    ux = upwind_deriv(u, 0, u); uy = upwind_deriv(u, 1, v)
+    vx = upwind_deriv(v, 0, u); vy = upwind_deriv(v, 1, v)
+    lap_u = (np.roll(u, -1, 0) + np.roll(u, 1, 0) + np.roll(u, -1, 1) + np.roll(u, 1, 1) - 4 * u) / dx**2
+    lap_v = (np.roll(v, -1, 0) + np.roll(v, 1, 0) + np.roll(v, -1, 1) + np.roll(v, 1, 1) - 4 * v) / dx**2
+    u = u + dt * (-(u * ux + v * uy) - nu * lap_u)  # coupled momentum update
+    v = v + dt * (-(u * vx + v * vy) - nu * lap_v)
+    if n < 40 or n % 2 == 0:  # capture densely early so the blow-up onset is visible
+        frames.append(np.sqrt(u**2 + v**2))
+
+
+fig, ax = plt.subplots(figsize=(6.5, 5.5))
+im = ax.pcolormesh(X, Y, frames[0], cmap="viridis", shading="auto", vmin=0, vmax=speed0)
+fig.colorbar(im, ax=ax, label="|velocity|")
+ax.set_xlabel("x"); ax.set_ylabel("y")
+title = ax.set_title("2D Vector Burgers - Upwind/Central FD (t=0.000s)")
+
+
+def update(i):
+    frame = frames[i]
+    finite = frame[np.isfinite(frame)]
+    vmax = np.max(finite) if finite.size > 0 else 1.0
+    im.set_array(np.nan_to_num(frame, nan=vmax).ravel())
+    im.set_clim(0, max(vmax, 1e-6))  # rescale color limits so the blow-up stays visible
+    title.set_text(f"2D Vector Burgers - Upwind/Central FD (t={i*2*dt:.3f}s)")
+    return im, title
+
+
+ani = animation.FuncAnimation(fig, update, frames=len(frames), interval=40, blit=False)
+ani.save("burgers_2d_vector_shearlayer_antidiffusion.gif", writer="pillow", fps=20)
+plt.close(fig)
+
+
+
+
+Generate 4 fully runnable, end-to-end Python scripts for solving the incompressible/compressible Navier-Stokes Equations: $$\frac{\partial \mathbf{u}}{\partial t} + (\mathbf{u} \cdot \nabla)\mathbf{u} = -\frac{1}{\rho}\nabla p + \nu \nabla^2 \mathbf{u} + \mathbf{f}, \quad \nabla \cdot \mathbf{u} = 0$$ Diversity Requirements:
+   * Spatial Dimensions & Models: Mix 1D and 2D spatial domains
+   * Viscosity & Flow Regimes: Include high Reynolds number / near-inviscid flow ($\nu \to 0$ or Euler equations) highlighting advective/shock features, and moderate-to-low Reynolds number viscous flow ($\nu > 0$) showing boundary layer or diffusion behavior.
+   * Numerical Schemes: Use a mix of numerical schemes (e.g., Projection Method, Finite Differences, spectral methods, etc).
+   * Initial / Boundary Conditions: Mix different flow configurations
+Code Formatting Rules:
+   * Each script must be complete, self-contained, fully runnable (using standard libraries like numpy, scipy, matplotlib), and save or display a plot of the results (e.g., velocity field, pressure field, streamline contour, or vorticity map).
+   * Keep comments minimal: strictly 5 to 6 inline/docstring comments per script.
+   * Ensure all time-stepping parameters strictly respect both advective CFL and viscous diffusion stability bounds.
+
+
+Navier Stokes Simulation Code Example 1 
+"""
+1D Navier-Stokes: pressure-driven channel (Poiseuille) start-up flow, animated as a GIF.
+Explicit FTCS finite differences for the viscous diffusion term.
+Initial condition: fluid at rest, impulsively started by a constant pressure gradient.
+"""
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+
+
+# Domain and physical parameters
+H, nu, dpdx, rho = 1.0, 0.1, -1.0, 1.0
+ny, nt = 51, 60000
+dy = H / (ny - 1)
+y = np.linspace(0, H, ny)
+G = -dpdx / rho  # constant forcing per unit mass driving the flow
+
+
+u = np.zeros(ny)  # fluid starts at rest
+dt = 0.4 * dy**2 / (2 * nu)  # diffusion stability bound for explicit FTCS
+
+
+frames = [u.copy()]
+for n in range(nt):
+    u_new = u.copy()
+    u_new[1:-1] = u[1:-1] + dt * (G + nu * (u[2:] - 2 * u[1:-1] + u[:-2]) / dy**2)
+    u_new[0], u_new[-1] = 0.0, 0.0  # no-slip walls
+    u = u_new
+    if n % 300 == 0:  # store periodically to keep the GIF a manageable length
+        frames.append(u.copy())
+
+
+u_steady = G / (2 * nu) * y * (H - y)  # analytic parabolic steady-state profile
+
+
+fig, ax = plt.subplots(figsize=(7, 5))
+line, = ax.plot(frames[0], y, label="numerical")
+ax.plot(u_steady, y, "k--", label="analytic steady state")
+ax.set_xlim(-0.05, 1.35)
+ax.set_xlabel("u(y,t)"); ax.set_ylabel("y")
+ax.set_title("1D Navier-Stokes - Pressure-Driven Channel Flow (FTCS)")
+ax.legend()
+
+
+def update(frame):
+    line.set_xdata(frame)
+    return line,
+
+
+ani = animation.FuncAnimation(fig, update, frames=frames, interval=30, blit=True)
+ani.save("navierstokes_1d_channel_ftcs.gif", writer="pillow", fps=30)
+plt.close(fig)
+
+
+
+
+Navier Stokes Simulation Code Example 1 invalid (blows up to NaNs)
+"""
+1D Navier-Stokes: pressure-driven channel (Poiseuille) start-up flow, animated as a GIF.
+Explicit FTCS finite differences for the viscous diffusion term.
+Initial condition: fluid at rest, impulsively started by a constant pressure gradient.
+"""
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+
+
+# Domain and physical parameters
+H, nu, dpdx, rho = 1.0, 0.1, -1.0, 1.0
+ny, nt = 51, 60000
+dy = H / (ny - 1)
+y = np.linspace(0, H, ny)
+G = -dpdx / rho  # constant forcing per unit mass driving the flow
+
+
+u = np.zeros(ny)  # fluid starts at rest
+dt = 0.4 * dy**2 / (2 * nu)  # diffusion stability bound for explicit FTCS
+
+
+frames = [u.copy()]
+for n in range(nt):
+    u_new = u.copy()
+    u_new[1:-1] = u[1:-1] + dt * (G - nu * (u[2:] - 2 * u[1:-1] + u[:-2]) / dy**2)
+    u_new[0], u_new[-1] = 0.0, 0.0  # no-slip walls
+    u = u_new
+    if n < 60 or n % 300 == 0:  # store densely early so the blow-up onset is visible
+        frames.append(u.copy())
+
+
+u_steady = G / (2 * nu) * y * (H - y)  # analytic parabolic steady-state profile
+
+
+fig, ax = plt.subplots(figsize=(7, 5))
+line, = ax.plot(frames[0], y, label="numerical")
+ax.plot(u_steady, y, "k--", label="analytic steady state")
+ax.set_xlim(-0.05, 1.35)
+ax.set_xlabel("u(y,t)"); ax.set_ylabel("y")
+ax.set_title("1D Navier-Stokes - Pressure-Driven Channel Flow (FTCS)")
+ax.legend()
+
+
+def update(frame):
+    line.set_xdata(frame)
+    finite = frame[np.isfinite(frame)]
+    if finite.size > 0:
+        pad = 0.1 * (np.max(finite) - np.min(finite)) + 0.05
+        ax.set_xlim(np.min(finite) - pad, np.max(finite) + pad)  # rescale to keep blow-up visible
+    return line,
+
+
+ani = animation.FuncAnimation(fig, update, frames=frames, interval=30, blit=False)
+ani.save("navierstokes_1d_channel_ftcs_antidiffusion.gif", writer="pillow", fps=20)
+plt.close(fig)
+
+
+
+
+Navier Stokes Simulation Code Example 2 
+"""
+1D Navier-Stokes: Stokes' first problem (Rayleigh problem) - impulsively started wall,
+animated as a GIF. Crank-Nicolson implicit finite differences (unconditionally stable).
+Initial condition: fluid at rest, driven only by a no-slip moving wall at y=0.
+"""
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+from scipy.linalg import solve_banded
+
+
+# Domain and physical parameters
+Ymax, nu, U0 = 1.0, 0.01, 1.0
+ny, nt, dt = 201, 4000, 0.0005
+dy = Ymax / (ny - 1)
+y = np.linspace(0, Ymax, ny)
+r = nu * dt / dy**2  # diffusion number; Crank-Nicolson is unconditionally stable
+
+
+u = np.zeros(ny)  # fluid initially at rest
+u[0] = U0  # wall impulsively set into motion at t=0+
+
+
+n_int = ny - 2
+ab = np.zeros((3, n_int))
+ab[0, 1:] = -r / 2
+ab[1, :] = 1 + r
+ab[2, :-1] = -r / 2
+
+
+frames = [u.copy()]
+for n in range(nt):
+    rhs = (r / 2) * u[:-2] + (1 - r) * u[1:-1] + (r / 2) * u[2:]
+    rhs[0] += (r / 2) * U0  # wall boundary contribution folded into the RHS
+    u[1:-1] = solve_banded((1, 1), ab, rhs)
+    u[0], u[-1] = U0, 0.0
+    if n % 20 == 0:
+        frames.append(u.copy())
+
+
+fig, ax = plt.subplots(figsize=(7, 5))
+line, = ax.plot(frames[0], y)
+ax.set_xlim(-0.05, 1.05)
+ax.set_xlabel("u(y,t)"); ax.set_ylabel("y")
+ax.set_title("1D Navier-Stokes - Stokes' First Problem (Crank-Nicolson)")
+
+
+def update(frame):
+    line.set_xdata(frame)
+    return line,
+
+
+ani = animation.FuncAnimation(fig, update, frames=frames, interval=30, blit=True)
+ani.save("navierstokes_1d_stokes_cn.gif", writer="pillow", fps=30)
+plt.close(fig)
+
+
+Navier Stokes Simulation Code Example 2 invalid (values climb up linearly and continuously)
+"""
+1D Navier-Stokes: Stokes' first problem (Rayleigh problem) - impulsively started wall,
+animated as a GIF. Crank-Nicolson implicit finite differences (unconditionally stable).
+Initial condition: fluid at rest, driven only by a no-slip moving wall at y=0.
+"""
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+from scipy.linalg import solve_banded
+
+
+# Domain and physical parameters
+Ymax, nu, U0 = 1.0, 0.01, 1.0
+ny, nt, dt = 201, 4000, 0.0005
+dy = Ymax / (ny - 1)
+y = np.linspace(0, Ymax, ny)
+r = nu * dt / dy**2  # diffusion number; Crank-Nicolson is unconditionally stable
+
+
+u = np.zeros(ny)  # fluid initially at rest
+u[0] = U0  # wall impulsively set into motion at t=0+
+
+
+n_int = ny - 2
+ab = np.zeros((3, n_int))
+ab[0, 1:] = -r / 2
+ab[1, :] = 1 + r
+ab[2, :-1] = -r / 2
+
+
+frames = [u.copy()]
+for n in range(nt):
+    rhs = -(r / 2) * u[:-2] + (1 + r) * u[1:-1] - (r / 2) * u[2:]
+    rhs[0] += -(r / 2) * U0  # wall boundary contribution folded into the RHS
+    u[1:-1] = solve_banded((1, 1), ab, rhs)
+    u[0], u[-1] = U0, 0.0
+    if n % 20 == 0:
+        frames.append(u.copy())
+
+
+fig, ax = plt.subplots(figsize=(7, 5))
+line, = ax.plot(frames[0], y)
+ax.set_xlim(-0.05, 1.05)
+ax.set_xlabel("u(y,t)"); ax.set_ylabel("y")
+ax.set_title("1D Navier-Stokes - Stokes' First Problem (Crank-Nicolson)")
+
+
+def update(frame):
+    line.set_xdata(frame)
+    pad = 0.1 * (np.max(frame) - np.min(frame)) + 0.05
+    ax.set_xlim(np.min(frame) - pad, np.max(frame) + pad)  # rescale so unbounded growth stays visible
+    return line,
+
+
+ani = animation.FuncAnimation(fig, update, frames=frames, interval=30, blit=False)
+ani.save("navierstokes_1d_stokes_cn_signflip.gif", writer="pillow", fps=25)
+plt.close(fig)
+
+
+
+
+Navier Stoked Simulation Code Example 3 
+
+
+"""
+2D Incompressible Navier-Stokes: Chorin's projection method on a collocated grid,
+animated as a GIF. Lid-driven cavity flow, moderate Reynolds number.
+"""
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+
+
+# Domain and physical parameters
+nx, ny, nu, rho = 71, 71, 0.05, 1.0
+Lx, Ly = 1.0, 1.0
+dx, dy = Lx / (nx - 1), Ly / (ny - 1)
+x = np.linspace(0, Lx, nx)
+y = np.linspace(0, Ly, ny)
+X, Y = np.meshgrid(x, y, indexing="ij")
+
+
+u = np.zeros((nx, ny)); v = np.zeros((nx, ny)); p = np.zeros((nx, ny))
+u_lid = 1.0
+dt = 0.2 * min(dx / u_lid, dx**2 / (4 * nu))  # advective + diffusive stability bound
+nt, nit = 6200, 60
+
+
+def pressure_poisson(p, b):
+    """Jacobi-iterate the pressure Poisson equation with Neumann walls and one Dirichlet reference."""
+    for _ in range(nit):
+        pn = p.copy()
+        p[1:-1, 1:-1] = ((pn[2:, 1:-1] + pn[:-2, 1:-1]) * dy**2
+                          + (pn[1:-1, 2:] + pn[1:-1, :-2]) * dx**2
+                          - b[1:-1, 1:-1] * dx**2 * dy**2) / (2 * (dx**2 + dy**2))
+        p[:, -1] = p[:, -2]
+        p[:, 0] = p[:, 1]
+        p[0, :] = p[1, :]
+        p[-1, :] = 0.0  # reference pressure to fix the null space
+    return p
+
+
+frames_speed = [np.sqrt(u**2 + v**2)]
+frames_uv = [(u.copy(), v.copy())]
+for n in range(nt):
+    un, vn = u.copy(), v.copy()
+    b = np.zeros((nx, ny))
+    b[1:-1, 1:-1] = rho * (  # RHS built from the divergence of the tentative velocity
+        (1 / dt) * ((un[2:, 1:-1] - un[:-2, 1:-1]) / (2 * dx) + (vn[1:-1, 2:] - vn[1:-1, :-2]) / (2 * dy))
+        - ((un[2:, 1:-1] - un[:-2, 1:-1]) / (2 * dx)) ** 2
+        - 2 * ((un[1:-1, 2:] - un[1:-1, :-2]) / (2 * dy) * (vn[2:, 1:-1] - vn[:-2, 1:-1]) / (2 * dx))
+        - ((vn[1:-1, 2:] - vn[1:-1, :-2]) / (2 * dy)) ** 2
+    )
+    p = pressure_poisson(p, b)
+
+
+    u[1:-1, 1:-1] = (un[1:-1, 1:-1]
+        - dt / (2 * dx) * un[1:-1, 1:-1] * (un[2:, 1:-1] - un[:-2, 1:-1])
+        - dt / (2 * dy) * vn[1:-1, 1:-1] * (un[1:-1, 2:] - un[1:-1, :-2])
+        - dt / (2 * rho * dx) * (p[2:, 1:-1] - p[:-2, 1:-1])
+        + nu * dt * ((un[2:, 1:-1] - 2 * un[1:-1, 1:-1] + un[:-2, 1:-1]) / dx**2
+                     + (un[1:-1, 2:] - 2 * un[1:-1, 1:-1] + un[1:-1, :-2]) / dy**2))  # projected velocity update
+
+
+    v[1:-1, 1:-1] = (vn[1:-1, 1:-1]
+        - dt / (2 * dx) * un[1:-1, 1:-1] * (vn[2:, 1:-1] - vn[:-2, 1:-1])
+        - dt / (2 * dy) * vn[1:-1, 1:-1] * (vn[1:-1, 2:] - vn[1:-1, :-2])
+        - dt / (2 * rho * dy) * (p[1:-1, 2:] - p[1:-1, :-2])
+        + nu * dt * ((vn[2:, 1:-1] - 2 * vn[1:-1, 1:-1] + vn[:-2, 1:-1]) / dx**2
+                     + (vn[1:-1, 2:] - 2 * vn[1:-1, 1:-1] + vn[1:-1, :-2]) / dy**2))
+
+
+    u[0, :] = 0; u[-1, :] = 0; u[:, 0] = 0; u[:, -1] = u_lid  # no-slip walls, moving lid
+    v[0, :] = 0; v[-1, :] = 0; v[:, 0] = 0; v[:, -1] = 0
+    if n % 62 == 0:
+        frames_speed.append(np.sqrt(u**2 + v**2))
+        frames_uv.append((u.copy(), v.copy()))
+
+
+skip = 4  # subsample the vector field so quiver arrows stay legible
+fig, ax = plt.subplots(figsize=(6, 5))
+im = ax.pcolormesh(X, Y, frames_speed[0], cmap="viridis", shading="auto", vmin=0, vmax=1.0)
+fig.colorbar(im, ax=ax, label="|velocity|")
+quiv = ax.quiver(X[::skip, ::skip], Y[::skip, ::skip],
+                  frames_uv[0][0][::skip, ::skip], frames_uv[0][1][::skip, ::skip],
+                  color="white", scale=8, width=0.005)  # arrows reveal the recirculating vortex
+ax.set_xlabel("x"); ax.set_ylabel("y")
+title = ax.set_title(f"Lid-Driven Cavity - Projection Method (Re={u_lid*Lx/nu:.0f}), t=0.00s")
+
+
+def update(i):
+    im.set_array(frames_speed[i].ravel())
+    uu, vv = frames_uv[i]
+    quiv.set_UVC(uu[::skip, ::skip], vv[::skip, ::skip])
+    title.set_text(f"Lid-Driven Cavity - Projection Method (Re={u_lid*Lx/nu:.0f}), t={i*62*dt:.2f}s")
+    return im, quiv, title
+
+
+ani = animation.FuncAnimation(fig, update, frames=len(frames_speed), interval=40, blit=False)
+ani.save("navierstokes_2d_cavity_projection.gif", writer="pillow", fps=25)
+plt.close(fig)
+
+
+Navier Stokes Simulation Code Example 3 invalid (NaNs very early on)
+"""
+2D Incompressible Navier-Stokes: Chorin's projection method on a collocated grid,
+animated as a GIF. Lid-driven cavity flow, moderate Reynolds number.
+"""
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+
+
+# Domain and physical parameters
+nx, ny, nu, rho = 71, 71, 0.05, 1.0
+Lx, Ly = 1.0, 1.0
+dx, dy = Lx / (nx - 1), Ly / (ny - 1)
+x = np.linspace(0, Lx, nx)
+y = np.linspace(0, Ly, ny)
+X, Y = np.meshgrid(x, y, indexing="ij")
+
+
+u = np.zeros((nx, ny)); v = np.zeros((nx, ny)); p = np.zeros((nx, ny))
+u_lid = 1.0
+dt = 0.2 * min(dx / u_lid, dx**2 / (4 * nu))  # advective + diffusive stability bound
+nt, nit = 6200, 60
+
+
+def pressure_poisson(p, b):
+    """Jacobi-iterate the pressure Poisson equation with Neumann walls and one Dirichlet reference."""
+    for _ in range(nit):
+        pn = p.copy()
+        p[1:-1, 1:-1] = ((pn[2:, 1:-1] + pn[:-2, 1:-1]) * dy**2
+                          + (pn[1:-1, 2:] + pn[1:-1, :-2]) * dx**2
+                          - b[1:-1, 1:-1] * dx**2 * dy**2) / (2 * (dx**2 + dy**2))
+        p[:, -1] = p[:, -2]
+        p[:, 0] = p[:, 1]
+        p[0, :] = p[1, :]
+        p[-1, :] = 0.0  # reference pressure to fix the null space
+    return p
+
+
+frames_speed = [np.sqrt(u**2 + v**2)]
+frames_uv = [(u.copy(), v.copy())]
+for n in range(nt):
+    un, vn = u.copy(), v.copy()
+    b = np.zeros((nx, ny))
+    b[1:-1, 1:-1] = rho * (  # RHS built from the divergence of the tentative velocity
+        (1 / dt) * ((un[2:, 1:-1] - un[:-2, 1:-1]) / (2 * dx) + (vn[1:-1, 2:] - vn[1:-1, :-2]) / (2 * dy))
+        - ((un[2:, 1:-1] - un[:-2, 1:-1]) / (2 * dx)) ** 2
+        - 2 * ((un[1:-1, 2:] - un[1:-1, :-2]) / (2 * dy) * (vn[2:, 1:-1] - vn[:-2, 1:-1]) / (2 * dx))
+        - ((vn[1:-1, 2:] - vn[1:-1, :-2]) / (2 * dy)) ** 2
+    )
+    p = pressure_poisson(p, b)
+
+
+    u[1:-1, 1:-1] = (un[1:-1, 1:-1]
+        - dt / (2 * dx) * un[1:-1, 1:-1] * (un[2:, 1:-1] - un[:-2, 1:-1])
+        - dt / (2 * dy) * vn[1:-1, 1:-1] * (un[1:-1, 2:] - un[1:-1, :-2])
+        + dt / (2 * rho * dx) * (p[2:, 1:-1] - p[:-2, 1:-1])
+        + nu * dt * ((un[2:, 1:-1] - 2 * un[1:-1, 1:-1] + un[:-2, 1:-1]) / dx**2
+                     + (un[1:-1, 2:] - 2 * un[1:-1, 1:-1] + un[1:-1, :-2]) / dy**2))  # projected velocity update
+
+
+    v[1:-1, 1:-1] = (vn[1:-1, 1:-1]
+        - dt / (2 * dx) * un[1:-1, 1:-1] * (vn[2:, 1:-1] - vn[:-2, 1:-1])
+        - dt / (2 * dy) * vn[1:-1, 1:-1] * (vn[1:-1, 2:] - vn[1:-1, :-2])
+        + dt / (2 * rho * dy) * (p[1:-1, 2:] - p[1:-1, :-2])
+        + nu * dt * ((vn[2:, 1:-1] - 2 * vn[1:-1, 1:-1] + vn[:-2, 1:-1]) / dx**2
+                     + (vn[1:-1, 2:] - 2 * vn[1:-1, 1:-1] + vn[1:-1, :-2]) / dy**2))
+
+
+    u[0, :] = 0; u[-1, :] = 0; u[:, 0] = 0; u[:, -1] = u_lid  # no-slip walls, moving lid
+    v[0, :] = 0; v[-1, :] = 0; v[:, 0] = 0; v[:, -1] = 0
+    if n < 30 or n % 62 == 0:  # capture densely early since blow-up is very fast
+        frames_speed.append(np.sqrt(u**2 + v**2))
+        frames_uv.append((u.copy(), v.copy()))
+
+
+skip = 4  # subsample the vector field so quiver arrows stay legible
+fig, ax = plt.subplots(figsize=(6, 5))
+im = ax.pcolormesh(X, Y, frames_speed[0], cmap="viridis", shading="auto", vmin=0, vmax=1.0)
+fig.colorbar(im, ax=ax, label="|velocity|")
+quiv = ax.quiver(X[::skip, ::skip], Y[::skip, ::skip],
+                  frames_uv[0][0][::skip, ::skip], frames_uv[0][1][::skip, ::skip],
+                  color="white", scale=8, width=0.005)  # arrows reveal the recirculating vortex
+ax.set_xlabel("x"); ax.set_ylabel("y")
+title = ax.set_title(f"Lid-Driven Cavity - Projection Method (Re={u_lid*Lx/nu:.0f}), t=0.00s")
+
+
+def update(i):
+    speed = frames_speed[i]
+    finite = speed[np.isfinite(speed)]
+    vmax = np.max(finite) if finite.size > 0 else 1.0
+    im.set_array(np.nan_to_num(speed, nan=vmax).ravel())
+    im.set_clim(0, max(vmax, 1e-6))  # rescale color limits so blow-up stays visible
+    uu, vv = frames_uv[i]
+    quiv.set_UVC(np.nan_to_num(uu[::skip, ::skip]), np.nan_to_num(vv[::skip, ::skip]))
+    title.set_text(f"Lid-Driven Cavity - Projection Method (Re={u_lid*Lx/nu:.0f}), t={i*62*dt:.2f}s")
+    return im, quiv, title
+
+
+ani = animation.FuncAnimation(fig, update, frames=len(frames_speed), interval=40, blit=False)
+ani.save("navierstokes_2d_cavity_projection_pgradflip.gif", writer="pillow", fps=20)
+plt.close(fig)
+
+
+
+
+
+
+Navier Stokes Simulation Code Example 4 
+
+
+"""
+2D Navier-Stokes (vorticity-streamfunction form), near-inviscid high-Reynolds regime,
+animated as a GIF. Pseudo-spectral FFT method with 2/3 dealiasing.
+Initial condition: double shear layer (Kelvin-Helmholtz roll-up test case).
+"""
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+
+
+# Domain and physical parameters
+N, L, nu = 256, 2 * np.pi, 1e-4  # near-inviscid: high Reynolds number regime
+x = np.linspace(0, L, N, endpoint=False)
+y = np.linspace(0, L, N, endpoint=False)
+X, Y = np.meshgrid(x, y, indexing="ij")
+
+
+delta, eps = 0.08, 0.05
+u0 = np.where(Y <= np.pi, np.tanh((Y - np.pi / 2) / delta), np.tanh((3 * np.pi / 2 - Y) / delta))
+v0 = eps * np.sin(X)  # small perturbation that seeds the Kelvin-Helmholtz roll-up
+
+
+k = np.fft.fftfreq(N, d=L / N) * 2 * np.pi
+KX, KY = np.meshgrid(k, k, indexing="ij")
+K2 = KX**2 + KY**2
+K2safe = np.where(K2 == 0, 1.0, K2)
+kmax = N // 3
+mask = (np.abs(KX) <= kmax) & (np.abs(KY) <= kmax)  # 2/3 dealiasing rule
+
+
+def deriv(f_hat, K):
+    return np.real(np.fft.ifft2(1j * K * f_hat))
+
+
+omega_hat = np.fft.fft2(deriv(np.fft.fft2(v0), KX) - deriv(np.fft.fft2(u0), KY))
+
+
+def velocity(omega_hat):
+    psi_hat = omega_hat / K2safe
+    psi_hat[0, 0] = 0.0
+    return deriv(psi_hat, KY), -deriv(psi_hat, KX)
+
+
+def rhs(omega_hat):
+    u, v = velocity(omega_hat)
+    omega_x = deriv(omega_hat, KX)
+    omega_y = deriv(omega_hat, KY)
+    nonlinear_hat = np.fft.fft2(u * omega_x + v * omega_y) * mask
+    return -nonlinear_hat - nu * K2 * omega_hat
+
+
+dx = L / N
+nt = 400
+frames = [np.real(np.fft.ifft2(omega_hat))]
+
+
+for step in range(nt):
+    u, v = velocity(omega_hat)
+    speed_max = max(np.max(np.sqrt(u**2 + v**2)), 1e-6)
+    dt = 0.3 * dx / speed_max  # CFL re-checked every step as the layer rolls up and speeds change
+    k1 = rhs(omega_hat)
+    k2 = rhs(omega_hat + dt * k1)
+    omega_hat = omega_hat + dt / 2 * (k1 + k2)  # RK2 (Heun) time integration
+    if step % 4 == 0:
+        frames.append(np.real(np.fft.ifft2(omega_hat)))
+
+
+fig, ax = plt.subplots(figsize=(6, 5))
+im = ax.pcolormesh(X, Y, frames[0], cmap="RdBu_r", shading="gouraud", vmin=-12, vmax=12)
+fig.colorbar(im, ax=ax, label="Vorticity")
+ax.set_xlabel("x"); ax.set_ylabel("y")
+ax.set_title("2D Navier-Stokes - Pseudo-Spectral Double Shear Layer")
+
+
+def update(frame):
+    im.set_array(frame.ravel())
+    return im,
+
+
+ani = animation.FuncAnimation(fig, update, frames=frames, interval=40, blit=True)
+ani.save("navierstokes_2d_spectral_shearlayer.gif", writer="pillow", fps=25)
+plt.close(fig)
+
+
+Navier Stokes Simulation Code Example 4 invalid (stays bounded but oscillating heavily between values)
+
+
+"""
+2D Navier-Stokes (vorticity-streamfunction form), near-inviscid high-Reynolds regime,
+animated as a GIF. Pseudo-spectral FFT method with 2/3 dealiasing.
+Initial condition: double shear layer (Kelvin-Helmholtz roll-up test case).
+"""
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+
+
+# Domain and physical parameters
+N, L, nu = 256, 2 * np.pi, 1e-4  # near-inviscid: high Reynolds number regime
+x = np.linspace(0, L, N, endpoint=False)
+y = np.linspace(0, L, N, endpoint=False)
+X, Y = np.meshgrid(x, y, indexing="ij")
+
+
+delta, eps = 0.08, 0.05
+u0 = np.where(Y <= np.pi, np.tanh((Y - np.pi / 2) / delta), np.tanh((3 * np.pi / 2 - Y) / delta))
+v0 = eps * np.sin(X)  # small perturbation that seeds the Kelvin-Helmholtz roll-up
+
+
+k = np.fft.fftfreq(N, d=L / N) * 2 * np.pi
+KX, KY = np.meshgrid(k, k, indexing="ij")
+K2 = KX**2 + KY**2
+K2safe = np.where(K2 == 0, 1.0, K2)
+kmax = N // 3
+mask = (np.abs(KX) <= kmax) & (np.abs(KY) <= kmax)  # 2/3 dealiasing rule
+
+
+def deriv(f_hat, K):
+    return np.real(np.fft.ifft2(1j * K * f_hat))
+
+
+omega_hat = np.fft.fft2(deriv(np.fft.fft2(v0), KX) - deriv(np.fft.fft2(u0), KY))
+
+
+def velocity(omega_hat):
+    psi_hat = omega_hat * K2
+    psi_hat[0, 0] = 0.0
+    return deriv(psi_hat, KY), -deriv(psi_hat, KX)
+
+
+def rhs(omega_hat):
+    u, v = velocity(omega_hat)
+    omega_x = deriv(omega_hat, KX)
+    omega_y = deriv(omega_hat, KY)
+    nonlinear_hat = np.fft.fft2(u * omega_x + v * omega_y) * mask
+    return -nonlinear_hat - nu * K2 * omega_hat
+
+
+dx = L / N
+nt = 400
+frames = [np.real(np.fft.ifft2(omega_hat))]
+
+
+for step in range(nt):
+    u, v = velocity(omega_hat)
+    speed_max = max(np.max(np.sqrt(u**2 + v**2)), 1e-6)
+    dt = 0.3 * dx / speed_max  # CFL re-checked every step as the layer rolls up and speeds change
+    k1 = rhs(omega_hat)
+    k2 = rhs(omega_hat + dt * k1)
+    omega_hat = omega_hat + dt / 2 * (k1 + k2)  # RK2 (Heun) time integration
+    if step % 4 == 0:
+        frames.append(np.real(np.fft.ifft2(omega_hat)))
+
+
+fig, ax = plt.subplots(figsize=(6, 5))
+im = ax.pcolormesh(X, Y, frames[0], cmap="RdBu_r", shading="gouraud", vmin=-12, vmax=12)
+fig.colorbar(im, ax=ax, label="Vorticity")
+ax.set_xlabel("x"); ax.set_ylabel("y")
+ax.set_title("2D Navier-Stokes - Pseudo-Spectral Double Shear Layer")
+
+
+def update(frame):
+    im.set_array(frame.ravel())
+    return im,
+
+
+ani = animation.FuncAnimation(fig, update, frames=frames, interval=40, blit=True)
+ani.save("navierstokes_2d_spectral_shearlayer_invertedpsi.gif", writer="pillow", fps=25)
+plt.close(fig)
