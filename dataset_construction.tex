@@ -1,0 +1,320 @@
+% dataset_construction.tex — construction of the jul28 PDE code-understanding benchmark.
+%
+% Compiles standalone:  tectonic dataset_construction.tex   (or pdflatex twice)
+%
+% To fold into writeup.tex instead, delete everything above \section and the final
+% \end{document}; the body is preamble-free apart from \fpath, defined below.
+%
+% Every count was measured against data/merged_mod_jul28.csv on 2026-07-29. See
+% data/descriptions/dataset_overview.md for the full record and datagen/build_jul28.py
+% for the build.
+
+\documentclass[11pt]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{listings}
+\usepackage[margin=1in]{geometry}
+\usepackage[hidelinks]{hyperref}
+
+% Robust, unlike url.sty's \path, which breaks inside \caption. \detokenize lets
+% underscores be typed literally, which needs T1 fontenc.
+\DeclareRobustCommand{\fpath}[1]{\texttt{\detokenize{#1}}}
+\setlength{\emergencystretch}{3em}
+
+\lstset{basicstyle=\ttfamily\small, columns=fullflexible, keepspaces=true,
+        breaklines=true, showstringspaces=false}
+
+\title{PDE Code-Understanding Benchmark: Dataset Construction}
+\date{2026-07-29}
+
+\begin{document}
+\maketitle
+
+\section{Dataset Construction}
+\label{app:dataset}
+
+\subsection{Design}
+
+The benchmark tests whether a model recovers the \emph{physics} a numerical solver
+implements rather than recognizing its surface form. Each item is a self-contained Python
+script integrating one of four PDE families, labeled with its PDE class, physical process,
+numerical method, and whether the implementation is physically valid.
+
+Every base problem appears under eight conditions crossing physical validity with four
+surface treatments, holding the underlying program fixed (Table~\ref{tab:modtypes}).
+\texttt{CorrComm} and \texttt{NoComm\_CorrVar} are the discriminating conditions: a model
+that reads code should be comparatively unaffected, while one keying on identifiers and prose
+degrades. Both exist in valid and invalid variants, which removes the confound between
+surface corruption and validity present in earlier versions.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{@{}llll@{}}
+\toprule
+\texttt{mod\_type} & Comments & Variable names & \texttt{phys\_valid} \\
+\midrule
+\texttt{Comm\_Valid}              & ground truth & author's   & True \\
+\texttt{NoComm\_Valid}            & none         & author's   & True \\
+\texttt{CorrComm}                 & donor's      & author's   & True \\
+\texttt{NoComm\_CorrVar}          & none         & obfuscated & True \\
+\texttt{Comm\_InValid}            & ground truth & author's   & False \\
+\texttt{NoComm\_InValid}          & none         & author's   & False \\
+\texttt{CorrComm\_Invalid}        & donor's      & author's   & False \\
+\texttt{NoComm\_CorrVar\_InValid} & none         & obfuscated & False \\
+\bottomrule
+\end{tabular}
+\caption{The eight conditions. 32 base problems $\times$ 8 = 256 items.}
+\label{tab:modtypes}
+\end{table}
+
+\subsection{Sources and repairs}
+
+The 32 base problems come from two independently tracked sources of 16 each, four per PDE
+class --- wave (oscillation), heat (diffusion), burgers (advection + diffusion), and
+navier-stokes (advection + diffusion + restoration) --- spanning explicit, implicit, and
+spectral methods:
+
+\begin{itemize}\itemsep1pt \parskip0pt
+  \item \textbf{human} --- hand-written, from \fpath{Physics_Code_HumanGen.xlsx}
+  \item \textbf{synthetic} --- LLM-generated and human-verified, from \fpath{newcode_jul28.txt}
+\end{itemize}
+
+Sources are kept separate because a model may have memorized idioms typical of generated
+code; the \texttt{source} column allows every analysis to run within source as well as
+pooled. Neither source was usable as delivered, and no metadata field is trusted from it
+(Table~\ref{tab:repairs}).
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{@{}p{0.26\linewidth}p{0.67\linewidth}@{}}
+\toprule
+Defect & Repair \\
+\midrule
+Literal \texttt{\textbackslash n} artifacts &
+Every human Wave/Heat row carried a literal backslash-\texttt{n} before its real newline.
+Removed in three passes; verified by reproducing a row's own stated line count. \\
+Wrong metadata &
+\texttt{Num characters} wrong on 37/40 rows, \texttt{Num Lines} empty on 16. All counts
+recomputed from code at build time. \\
+Inconsistent labels &
+\texttt{Yes}/\texttt{yes}/\texttt{No}/\texttt{no} $\to$ boolean; prose PDE names $\to$ slugs;
+trailing whitespace stripped; \texttt{num\_method} token order canonicalized. \\
+Generation residue &
+Synthetic docstrings name the PDE and method, and trailing plot code spells both out in
+titles and filenames. Both stripped (docstrings first mined for tags, then discarded), since
+otherwise no obfuscation could hide problem identity. \\
+Trailing comments &
+The generation prompt produced inline (\texttt{code~\# comment}) rather than whole-line
+comments, which the comment machinery does not detect --- leaving \texttt{NoComm\_*} not
+comment-free and \texttt{CorrComm} nearly a no-op for half the dataset. Normalized onto their
+own lines via \texttt{tokenize}. \\
+Masking self-check &
+A Navier--Stokes script ended in an energy-conservation \texttt{assert} against a hard-coded
+constant, which every invalid variant fails by construction, crashing before any anomaly
+could be observed. Stripped before condition derivation. \\
+Trailing whitespace &
+Insignificant to Python but not to a diff: it made one sample's valid and invalid twins
+differ on two otherwise identical lines. Stripped globally (54 rows, 9 samples). \\
+\bottomrule
+\end{tabular}
+\caption{Source defects repaired before any condition is derived.}
+\label{tab:repairs}
+\end{table}
+
+\subsection{Deriving the conditions}
+
+\paragraph{Derive, never transcribe.} Wherever a variant can be produced mechanically from
+another, it is, because hand-authored variants drift and the drift correlates with the label.
+
+\texttt{NoComm\_Valid} is always derived from \texttt{Comm\_Valid} by stripping comments.
+Diffing every pair revealed one separately authored row that had drifted by a real numeric
+value (\texttt{t\_steps} 1000 vs.\ 1001) --- a physics difference, not a formatting one.
+
+\texttt{Comm\_InValid} is derived as \texttt{Comm\_Valid}'s comments injected at their
+original positions into \texttt{NoComm\_InValid}'s code. This matters more than it sounds.
+The condition's purpose is \emph{correct comments, broken code}, which holds only if the
+comments are inherited from the valid variant. Where they were instead authored alongside the
+invalid code, the author's knowledge of the failure leaked in: five generated samples carried
+comments such as \texttt{\# capture densely early on since the blow-up is very fast}, which
+announce the label rather than describing the intent. Injection makes this structurally
+impossible, since the comments come from a variant that never saw the failure. Comment lists
+are now identical between \texttt{Comm\_Valid} and \texttt{Comm\_InValid} for all 32 problems.
+A comment may consequently describe code the invalid variant removed --- one Burgers sample
+inherits \texttt{\# Lax-Friedrichs dissipation} though that term is gone. This is on-design:
+it is exactly the intended comments-say-one-thing, code-does-another contrast.
+
+\paragraph{Donor comments.} \texttt{CorrComm} injects another problem's comments at the
+receiver's own comment positions, preserving density and placement while making content
+misleading. Donors are drawn under a seeded RNG from \texttt{Comm\_Valid} rows with both a
+different \texttt{pde\_class} and a different \texttt{num\_method}, subject to three rules: no
+donor crosses the human/synthetic boundary, so each single-source file is independently
+reproducible; the same donor serves a receiver's valid and invalid variant, leaving
+\texttt{phys\_valid} the only axis of variation; and donor classes are spread, capped at
+$\lfloor n_{\text{receivers}}/n_{\text{classes}} \rfloor = 4$ uses per class. The cap relaxes
+when no candidate remains, which happens once per source, giving 5/4/4/3 rather than 4/4/4/4.
+Earlier versions selected the alphabetically first qualifying donor, which gave every receiver
+of a class the same donor and created a fingerprint shortcut.
+
+\paragraph{Variable obfuscation.} Every identifier the author declared is renamed by AST
+transformation to \texttt{foobar\_N} (\texttt{fnN} for functions). The rule is: \emph{rename
+every identifier the author declared; never rename a keyword name belonging to a callee the
+author did not write.} The second clause is a hard constraint --- library keyword names are
+the library's API, and renaming \texttt{np.zeros(shape=...)} raises \texttt{TypeError}.
+
+Renaming a parameter obliges renaming its own call sites, or the two desync:
+
+\begin{lstlisting}
+def run_ns2d(key, Nx, Ny, viscosity, drag, ...):        # parameter renamed
+ns_fn = partial(run_ns2d, Nx=Nx, viscosity=viscosity)   # keyword must follow
+\end{lstlisting}
+
+\noindent The renamer therefore rewrites keyword names exactly when the callee is defined in
+the same module, reached directly or through \texttt{functools.partial}; external callees are
+untouched. Only two of the 32 snippets call their own functions by keyword.
+
+The mapping is derived from \texttt{NoComm\_Valid} and applied to \texttt{NoComm\_InValid},
+extended only for identifiers the invalid code introduces, so shared variables receive
+identical obfuscated names and name identity cannot act as a validity shortcut.
+
+\subsection{Balance, determinism, and auditing}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{@{}lr@{}}
+\toprule
+Rows / base problems / conditions & 256 / 32 / 8 (32 rows each) \\
+Per \texttt{pde\_class} & 64 each \\
+Valid / invalid & 128 / 128 \\
+Human / synthetic & 128 / 128 \\
+\texttt{invalidity\_note} coverage & 128/128 invalid, 0/128 valid \\
+Code length & mean 53 lines, 1946 chars (range 15--177 lines) \\
+Comment density (\texttt{Comm\_Valid}) & human 6.12, synthetic 5.81 (ratio 0.95) \\
+\bottomrule
+\end{tabular}
+\caption{Balance of the canonical evaluation file. Comment density matters because
+\texttt{CorrComm} transplants comments within a source; a large mismatch would make the
+condition qualitatively different for each half.}
+\end{table}
+
+\paragraph{Determinism.} \fpath{datagen/build_jul28.py} is byte-reproducible: consecutive runs
+produce identical CSVs, confirmed across macOS (pandas 3.0.3, 3.0.5) and Linux (3.0.2). This
+required an explicit sort tiebreaker --- the base files have no \texttt{mod\_type} column, so
+they sorted on \texttt{gt\_sample} alone with two tied rows per value under an unstable sort,
+shuffling pair order between runs. Content was never affected.
+
+\paragraph{Auditing.} \fpath{datagen/full_audit.py} restates every property claimed here as an
+executable assertion: 49 checks over structure, recomputed metadata, metadata consistency,
+condition semantics, donor constraints, label leakage, cross-condition program identity, and
+parseability. It confirms mechanically that \texttt{Comm\_X} stripped of comments is byte-equal
+to \texttt{NoComm\_X}; that \texttt{CorrComm} leaves the receiver's code untouched and
+genuinely replaced its comments; that both obfuscated conditions are AST-identical to their
+sources with no author-declared identifier surviving; and that no donor shares its receiver's
+class, crosses the source boundary, or shares its method set. \textbf{All 49 checks pass.}
+
+\fpath{datagen/full_audit_exec.py} executes all 256 rows, each in its own subprocess under a
+timeout, and checks that every row runs, that no valid row trips a NaN/magnitude heuristic,
+and --- the strongest check available --- that a problem's four surface conditions produce
+\emph{identical numbers}. Since those four are the same program with different comments and
+identifiers, any numerical difference means a surface transform corrupted the physics.
+Comparison uses a rename-invariant fingerprint over every float array in the namespace.
+
+Results: 248 of 256 rows execute; \textbf{0 of 124 valid rows are falsely flagged}; and
+cross-condition numerical identity \textbf{passes for both the valid and the invalid
+conditions across 31 base problems}, establishing that no surface transform perturbs the
+physics. The 8 non-executing rows are all eight conditions of one Navier--Stokes sample,
+which fails with \texttt{cannot load MPI library} --- an environment gap rather than a data
+defect, since that sample requires an \texttt{mpi4py\_fft} toolchain. It is the one problem
+whose cross-condition identity is therefore unverified.
+
+36 of the 124 executed invalid rows do not trip the heuristic, being exactly 9 base problems
+$\times$ their 4 invalid conditions. All 9 \texttt{invalidity\_note}s describe bounded,
+physics-level wrongness that by construction cannot produce a NaN or magnitude spike ---
+``very \emph{bounded} oscillations'', ``breaks symmetry'', ``spreads unevenly by direction'',
+``looking like just diffusion''. The heuristic's silence is correct, and validity labels must
+be read from \texttt{phys\_valid} rather than inferred from execution behavior.
+
+Reproducing the execution audit requires two native libraries the host cluster does not
+provide: FFTW3 development files (only single-precision runtime files are installed, so
+\texttt{mpi4py-fft} cannot build) and \texttt{libmpi} (available only through environment
+modules, so a pip-installed \texttt{mpi4py} cannot load it at runtime). Only one
+Navier--Stokes sample needs either. Both are provisioned by
+\fpath{sbatch/setup_fftw_mpi.sbatch}, and the audit itself runs as a CPU-only batch job
+(\fpath{sbatch/run_dataset_audit.sbatch}) rather than on a login node. Note that
+\emph{nothing in the benchmark requires executing the code} --- models are shown it as text;
+execution exists solely to validate the dataset.
+
+\subsection{Known limitations}
+\label{app:limits}
+
+\paragraph{Validity leaked through sampling cadence (repaired).} Five generated samples
+widened a snapshot guard in the invalid variant only: \texttt{if n \% 10 == 0:} became
+\texttt{if n < 30 or n \% 10 == 0:}. This is not the physical error --- each of the five has a
+single sign flip that is. It was instrumentation added because the author knew the run
+diverges early, so it correlated perfectly with the label (5/5 invalid, 0/5 valid) across 20
+of 256 rows, and unlike a comment leak it survived every surface condition including
+obfuscation, where it read \texttt{if foobar\_15 < 30 or foobar\_15 \% 10 == 0:}. Aligning the
+guard to the valid twin is behavior-preserving rather than merely harmless: the list each
+guard gates is write-only, confirmed by AST over all five --- zero genuine load references
+once the \texttt{append} receiver is excluded --- because the plotting code that once consumed
+it is stripped during parsing.
+
+\paragraph{One sample also changed grid resolution (repaired).} A Heat sample's invalid
+variant changed \texttt{n = 100} to \texttt{n = 1000} alongside its sign flip. The refinement
+is not part of the error and is not needed to produce it: the flip negates the entire
+right-hand side, so the operator's eigenvalues turn positive and the solution grows
+exponentially. That is ill-posedness, not a stability threshold, and is therefore
+grid-independent. Measured against the sample's own recorded failure mode --- spiking negative
+temperatures at the second grid point --- aligning the grid \emph{strengthens} it: negative
+temperatures appear on 45 of 300 timesteps rather than 1, across 4465 cells rather than 51.
+The tenfold refinement made the system a hundred times stiffer, pushing the adaptive
+integrator into tiny steps and truncating the very behavior the label describes.
+
+Both repairs land before any condition is derived, so each reaches all four invalid conditions
+of its sample: 24 of 256 rows change, no valid row and no non-code column moves, and the
+static audit goes from 48/49 to \textbf{49 of 49}. Because removing a leak also destroys the
+evidence of it, \fpath{data/leak_ablation_jul28.csv} ships the pre- and post-repair code side
+by side (6 samples $\times$ 4 invalid conditions $\times$ 2 variants), asserted at build time
+to differ in code alone, so the leak's effect on model accuracy can be measured rather than
+assumed.
+
+\paragraph{Names obfuscation cannot reach.} Twenty names survive somewhere in the dataset, all
+keyword arguments of library calls: \texttt{shape}, \texttt{endpoint}, \texttt{indexing},
+\texttt{args}, \texttt{d}, \texttt{axis}, \texttt{dtype}, \texttt{collapse}, \texttt{out},
+\texttt{rank}, \texttt{sparse}, \texttt{view}, \texttt{divide}, \texttt{invalid}, \texttt{s},
+\texttt{length}, \texttt{static\_argnums}, \texttt{domain}, \texttt{maximum\_velocity}, and
+\texttt{peak\_wavenumber}. None is an author-declared identifier in any snippet. Seventeen are
+inert plumbing any numpy/JAX user writes regardless of the problem, and \texttt{domain} is
+generic PDE vocabulary shared by all four classes. Only \texttt{maximum\_velocity} and
+\texttt{peak\_wavenumber} leak fluid-dynamics vocabulary, both confined to one Navier--Stokes
+snippet. Obfuscation also operates per occurrence, not per name: a word that is both an
+author-declared identifier and a library keyword is renamed in the first role and preserved in
+the second.
+
+\paragraph{Leaks renaming cannot reach.} Import lines name the problem domain in every
+condition (\texttt{jax\_cfd}, \texttt{mpi4py\_fft}); no renaming hides an import path, so the
+two Navier--Stokes snippets depending on domain-specific libraries are weaker
+\texttt{NoComm\_*} items and are candidates for exclusion from obfuscation-specific analyses.
+One Heat snippet retains \texttt{print(f'CFL: \{...\} < 0.5')} through all four
+\texttt{NoComm\_*} rows, a numerical-method hint that survives comment stripping.
+
+\subsection{Files}
+
+All six evaluation files, plus the ablation file, are regenerated end to end by
+\texttt{python datagen/build\_jul28.py}, which
+reads only the two source files plus a tag-review sheet and audits the result before writing.
+\fpath{merged_mod_jul28.csv} (256 rows) is the canonical evaluation set;
+\fpath{human_mod_jul28.csv} and \fpath{synthetic_mod_jul28.csv} (128 each) are its
+single-source halves. The corresponding \fpath{*_base_jul28.csv} files (64, 32, 32) hold the
+pre-expansion form, one row per (problem, validity). Because donors never cross the source
+boundary, each merged file is a straight concatenation of its halves rather than a fresh
+build. Pre-jul28 versions are retained under \fpath{data/archive/} and are not read by any
+current build script.
+
+\end{document}

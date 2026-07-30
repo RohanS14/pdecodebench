@@ -606,7 +606,7 @@ def fn(u, t, A, b, k, dx):
 
 # Solves using the scipy method odeint, which is a wrapper for the method LSODA from ODEPACK Fortran Library
 u = odeint(fn, Uinit, t, args=(A, b, k, dx))"
-Heat_InValid_2,Heat_2,heat,diffusion,False,explicit/implicit,47,785,5,Has spiking negative temperatures at u[1],"import numpy as np
+Heat_InValid_2,Heat_2,heat,diffusion,False,explicit/implicit,47,784,5,Has spiking negative temperatures at u[1],"import numpy as np
 from scipy.integrate import odeint
 from scipy.linalg import toeplitz
 
@@ -618,7 +618,7 @@ Uc = 300
 
 x0 = 0.0
 xn = 1.0
-n = 1000
+n = 100
 dx = (xn - x0)/n
 x = np.linspace(x0, xn, n)
 

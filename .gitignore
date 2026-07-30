@@ -29,3 +29,18 @@ probe/hidden_states/
 probe/results/
 probe/venv/
 TODO.md
+
+# Derived from the dataset by eval/extract_code.py — regenerate, don't track
+data/extracted_codes/
+
+# Audit scratch (datagen/full_audit_exec.py writes one .py per row plus results)
+_audit_exec/
+_audit_exec.log
+_audit_exec_results.csv
+_verify/
+
+# Build byproducts of dataset_construction.tex
+*.aux
+*.log
+*.out
+*.synctex.gz

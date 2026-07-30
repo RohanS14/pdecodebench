@@ -1,0 +1,1833 @@
+gt_sample,mod_type,title,code,num_lines,num_char,pde_class,phys_process,phys_valid,num_method,corruption_source_id,corruption_source_pde,injected_comments,delta_comments,num_comments,invalidity_note,source,leak_variant
+Burgers_6,Comm_InValid,Burgers_Comm_InValid_6,"import numpy as np
+
+
+# Domain and physical parameters
+L, nu = 1.0, 0.005
+nx, nt = 300, 1500
+dx = L / nx
+x = np.linspace(0, L, nx, endpoint=False)
+
+
+u = 0.1 + 0.9 * ((x > 0.2) & (x < 0.5))
+# top-hat / step initial condition
+cfl, diff_num = 0.5, 0.4
+dt = min(cfl * dx / np.max(np.abs(u)), diff_num * dx**2 / nu)
+
+# advective + diffusive CFL
+
+frames = [u.copy()]
+for n in range(nt):
+    f = 0.5 * u**2
+    fp, fm = np.roll(f, -1), np.roll(f, 1)
+    up, um = np.roll(u, -1), np.roll(u, 1)
+    a_half_p = 0.5 * (u + up)
+    a_half_m = 0.5 * (u + um)
+    lw_flux_p = 0.5 * (f + fp) - 0.5 * dt / dx * a_half_p * (fp - f)
+    # local wave speed at i+1/2 for the LW correction
+    lw_flux_m = 0.5 * (f + fm) - 0.5 * dt / dx * a_half_m * (f - fm)
+    diffusion = nu * dt / dx**2 * (up - 2 * u + um)
+    u = u - dt / dx * (lw_flux_p - lw_flux_m) - diffusion
+    # Lax-Wendroff flux
+    if n % 10 == 0:
+        frames.append(u.copy())
+
+    # explicit central diffusion",34,956,burgers,advection/diffusion,False,explicit,,,,,6,becomes NaNs almost immediately,synthetic,aligned
+Burgers_6,Comm_InValid,Burgers_Comm_InValid_6,"import numpy as np
+
+
+# Domain and physical parameters
+L, nu = 1.0, 0.005
+nx, nt = 300, 1500
+dx = L / nx
+x = np.linspace(0, L, nx, endpoint=False)
+
+
+u = 0.1 + 0.9 * ((x > 0.2) & (x < 0.5))
+# top-hat / step initial condition
+cfl, diff_num = 0.5, 0.4
+dt = min(cfl * dx / np.max(np.abs(u)), diff_num * dx**2 / nu)
+
+# advective + diffusive CFL
+
+frames = [u.copy()]
+for n in range(nt):
+    f = 0.5 * u**2
+    fp, fm = np.roll(f, -1), np.roll(f, 1)
+    up, um = np.roll(u, -1), np.roll(u, 1)
+    a_half_p = 0.5 * (u + up)
+    a_half_m = 0.5 * (u + um)
+    lw_flux_p = 0.5 * (f + fp) - 0.5 * dt / dx * a_half_p * (fp - f)
+    # local wave speed at i+1/2 for the LW correction
+    lw_flux_m = 0.5 * (f + fm) - 0.5 * dt / dx * a_half_m * (f - fm)
+    diffusion = nu * dt / dx**2 * (up - 2 * u + um)
+    u = u - dt / dx * (lw_flux_p - lw_flux_m) - diffusion
+    # Lax-Wendroff flux
+    if n < 30 or n % 10 == 0:
+        frames.append(u.copy())
+
+    # explicit central diffusion",34,966,burgers,advection/diffusion,False,explicit,,,,,6,becomes NaNs almost immediately,synthetic,widened
+Burgers_6,CorrComm_Invalid,Burgers_CorrComm_InValid_6,"import numpy as np
+
+
+# Domain and physical parameters
+L, nu = 1.0, 0.005
+nx, nt = 300, 1500
+dx = L / nx
+x = np.linspace(0, L, nx, endpoint=False)
+
+
+u = 0.1 + 0.9 * ((x > 0.2) & (x < 0.5))
+# advective + diffusive stability bound
+cfl, diff_num = 0.5, 0.4
+dt = min(cfl * dx / np.max(np.abs(u)), diff_num * dx**2 / nu)
+
+# reference pressure to fix the null space
+
+frames = [u.copy()]
+for n in range(nt):
+    f = 0.5 * u**2
+    fp, fm = np.roll(f, -1), np.roll(f, 1)
+    up, um = np.roll(u, -1), np.roll(u, 1)
+    a_half_p = 0.5 * (u + up)
+    a_half_m = 0.5 * (u + um)
+    lw_flux_p = 0.5 * (f + fp) - 0.5 * dt / dx * a_half_p * (fp - f)
+    # RHS built from the divergence of the tentative velocity
+    lw_flux_m = 0.5 * (f + fm) - 0.5 * dt / dx * a_half_m * (f - fm)
+    diffusion = nu * dt / dx**2 * (up - 2 * u + um)
+    u = u - dt / dx * (lw_flux_p - lw_flux_m) - diffusion
+    # projected velocity update
+    if n % 10 == 0:
+        frames.append(u.copy())
+
+    # no-slip walls, moving lid",34,991,burgers,advection/diffusion,False,explicit,NavierStokes_Comm_Valid_7,navier-stokes,"[{'donor_text': '# Domain and physical parameters', 'gt_position': 4, 'source_line_in_donor': 4, 'line_inserted': 4}, {'donor_text': '# advective + diffusive stability bound', 'gt_position': 12, 'source_line_in_donor': 15, 'line_inserted': 12}, {'donor_text': '# reference pressure to fix the null space', 'gt_position': 16, 'source_line_in_donor': 29, 'line_inserted': 16}, {'donor_text': '# RHS built from the divergence of the tentative velocity', 'gt_position': 26, 'source_line_in_donor': 39, 'line_inserted': 26}, {'donor_text': '# projected velocity update', 'gt_position': 30, 'source_line_in_donor': 54, 'line_inserted': 30}, {'donor_text': '# no-slip walls, moving lid', 'gt_position': 34, 'source_line_in_donor': 66, 'line_inserted': 34}]",1.0,6,becomes NaNs almost immediately,synthetic,aligned
+Burgers_6,CorrComm_Invalid,Burgers_CorrComm_InValid_6,"import numpy as np
+
+
+# Domain and physical parameters
+L, nu = 1.0, 0.005
+nx, nt = 300, 1500
+dx = L / nx
+x = np.linspace(0, L, nx, endpoint=False)
+
+
+u = 0.1 + 0.9 * ((x > 0.2) & (x < 0.5))
+# advective + diffusive stability bound
+cfl, diff_num = 0.5, 0.4
+dt = min(cfl * dx / np.max(np.abs(u)), diff_num * dx**2 / nu)
+
+# reference pressure to fix the null space
+
+frames = [u.copy()]
+for n in range(nt):
+    f = 0.5 * u**2
+    fp, fm = np.roll(f, -1), np.roll(f, 1)
+    up, um = np.roll(u, -1), np.roll(u, 1)
+    a_half_p = 0.5 * (u + up)
+    a_half_m = 0.5 * (u + um)
+    lw_flux_p = 0.5 * (f + fp) - 0.5 * dt / dx * a_half_p * (fp - f)
+    # RHS built from the divergence of the tentative velocity
+    lw_flux_m = 0.5 * (f + fm) - 0.5 * dt / dx * a_half_m * (f - fm)
+    diffusion = nu * dt / dx**2 * (up - 2 * u + um)
+    u = u - dt / dx * (lw_flux_p - lw_flux_m) - diffusion
+    # projected velocity update
+    if n < 30 or n % 10 == 0:
+        frames.append(u.copy())
+
+    # no-slip walls, moving lid",34,1001,burgers,advection/diffusion,False,explicit,NavierStokes_Comm_Valid_7,navier-stokes,"[{'donor_text': '# Domain and physical parameters', 'gt_position': 4, 'source_line_in_donor': 4, 'line_inserted': 4}, {'donor_text': '# advective + diffusive stability bound', 'gt_position': 12, 'source_line_in_donor': 15, 'line_inserted': 12}, {'donor_text': '# reference pressure to fix the null space', 'gt_position': 16, 'source_line_in_donor': 29, 'line_inserted': 16}, {'donor_text': '# RHS built from the divergence of the tentative velocity', 'gt_position': 26, 'source_line_in_donor': 39, 'line_inserted': 26}, {'donor_text': '# projected velocity update', 'gt_position': 30, 'source_line_in_donor': 54, 'line_inserted': 30}, {'donor_text': '# no-slip walls, moving lid', 'gt_position': 34, 'source_line_in_donor': 66, 'line_inserted': 34}]",1.0,6,becomes NaNs almost immediately,synthetic,widened
+Burgers_6,NoComm_CorrVar_InValid,Burgers_NoComm_CorrVar_InValid_6,"import numpy as np
+foobar_1, foobar_17 = (1.0, 0.005)
+foobar_18, foobar_16 = (300, 1500)
+foobar_8 = foobar_1 / foobar_18
+foobar_22 = np.linspace(0, foobar_1, foobar_18, endpoint=False)
+foobar_19 = 0.1 + 0.9 * ((foobar_22 > 0.2) & (foobar_22 < 0.5))
+foobar_4, foobar_5 = (0.5, 0.4)
+foobar_7 = min(foobar_4 * foobar_8 / np.max(np.abs(foobar_19)), foobar_5 * foobar_8 ** 2 / foobar_17)
+foobar_12 = [foobar_19.copy()]
+for foobar_15 in range(foobar_16):
+    foobar_9 = 0.5 * foobar_19 ** 2
+    foobar_11, foobar_10 = (np.roll(foobar_9, -1), np.roll(foobar_9, 1))
+    foobar_21, foobar_20 = (np.roll(foobar_19, -1), np.roll(foobar_19, 1))
+    foobar_3 = 0.5 * (foobar_19 + foobar_21)
+    foobar_2 = 0.5 * (foobar_19 + foobar_20)
+    foobar_14 = 0.5 * (foobar_9 + foobar_11) - 0.5 * foobar_7 / foobar_8 * foobar_3 * (foobar_11 - foobar_9)
+    foobar_13 = 0.5 * (foobar_9 + foobar_10) - 0.5 * foobar_7 / foobar_8 * foobar_2 * (foobar_9 - foobar_10)
+    foobar_6 = foobar_17 * foobar_7 / foobar_8 ** 2 * (foobar_21 - 2 * foobar_19 + foobar_20)
+    foobar_19 = foobar_19 - foobar_7 / foobar_8 * (foobar_14 - foobar_13) - foobar_6
+    if foobar_15 % 10 == 0:
+        foobar_12.append(foobar_19.copy())",21,1190,burgers,advection/diffusion,False,explicit,,,,,0,becomes NaNs almost immediately,synthetic,aligned
+Burgers_6,NoComm_CorrVar_InValid,Burgers_NoComm_CorrVar_InValid_6,"import numpy as np
+foobar_1, foobar_17 = (1.0, 0.005)
+foobar_18, foobar_16 = (300, 1500)
+foobar_8 = foobar_1 / foobar_18
+foobar_22 = np.linspace(0, foobar_1, foobar_18, endpoint=False)
+foobar_19 = 0.1 + 0.9 * ((foobar_22 > 0.2) & (foobar_22 < 0.5))
+foobar_4, foobar_5 = (0.5, 0.4)
+foobar_7 = min(foobar_4 * foobar_8 / np.max(np.abs(foobar_19)), foobar_5 * foobar_8 ** 2 / foobar_17)
+foobar_12 = [foobar_19.copy()]
+for foobar_15 in range(foobar_16):
+    foobar_9 = 0.5 * foobar_19 ** 2
+    foobar_11, foobar_10 = (np.roll(foobar_9, -1), np.roll(foobar_9, 1))
+    foobar_21, foobar_20 = (np.roll(foobar_19, -1), np.roll(foobar_19, 1))
+    foobar_3 = 0.5 * (foobar_19 + foobar_21)
+    foobar_2 = 0.5 * (foobar_19 + foobar_20)
+    foobar_14 = 0.5 * (foobar_9 + foobar_11) - 0.5 * foobar_7 / foobar_8 * foobar_3 * (foobar_11 - foobar_9)
+    foobar_13 = 0.5 * (foobar_9 + foobar_10) - 0.5 * foobar_7 / foobar_8 * foobar_2 * (foobar_9 - foobar_10)
+    foobar_6 = foobar_17 * foobar_7 / foobar_8 ** 2 * (foobar_21 - 2 * foobar_19 + foobar_20)
+    foobar_19 = foobar_19 - foobar_7 / foobar_8 * (foobar_14 - foobar_13) - foobar_6
+    if foobar_15 < 30 or foobar_15 % 10 == 0:
+        foobar_12.append(foobar_19.copy())",21,1208,burgers,advection/diffusion,False,explicit,,,,,0,becomes NaNs almost immediately,synthetic,widened
+Burgers_6,NoComm_InValid,Burgers_NoComm_InValid_6,"import numpy as np
+
+
+L, nu = 1.0, 0.005
+nx, nt = 300, 1500
+dx = L / nx
+x = np.linspace(0, L, nx, endpoint=False)
+
+
+u = 0.1 + 0.9 * ((x > 0.2) & (x < 0.5))
+cfl, diff_num = 0.5, 0.4
+dt = min(cfl * dx / np.max(np.abs(u)), diff_num * dx**2 / nu)
+
+
+frames = [u.copy()]
+for n in range(nt):
+    f = 0.5 * u**2
+    fp, fm = np.roll(f, -1), np.roll(f, 1)
+    up, um = np.roll(u, -1), np.roll(u, 1)
+    a_half_p = 0.5 * (u + up)
+    a_half_m = 0.5 * (u + um)
+    lw_flux_p = 0.5 * (f + fp) - 0.5 * dt / dx * a_half_p * (fp - f)
+    lw_flux_m = 0.5 * (f + fm) - 0.5 * dt / dx * a_half_m * (f - fm)
+    diffusion = nu * dt / dx**2 * (up - 2 * u + um)
+    u = u - dt / dx * (lw_flux_p - lw_flux_m) - diffusion
+    if n % 10 == 0:
+        frames.append(u.copy())
+",28,749,burgers,advection/diffusion,False,explicit,,,,,0,becomes NaNs almost immediately,synthetic,aligned
+Burgers_6,NoComm_InValid,Burgers_NoComm_InValid_6,"import numpy as np
+
+
+L, nu = 1.0, 0.005
+nx, nt = 300, 1500
+dx = L / nx
+x = np.linspace(0, L, nx, endpoint=False)
+
+
+u = 0.1 + 0.9 * ((x > 0.2) & (x < 0.5))
+cfl, diff_num = 0.5, 0.4
+dt = min(cfl * dx / np.max(np.abs(u)), diff_num * dx**2 / nu)
+
+
+frames = [u.copy()]
+for n in range(nt):
+    f = 0.5 * u**2
+    fp, fm = np.roll(f, -1), np.roll(f, 1)
+    up, um = np.roll(u, -1), np.roll(u, 1)
+    a_half_p = 0.5 * (u + up)
+    a_half_m = 0.5 * (u + um)
+    lw_flux_p = 0.5 * (f + fp) - 0.5 * dt / dx * a_half_p * (fp - f)
+    lw_flux_m = 0.5 * (f + fm) - 0.5 * dt / dx * a_half_m * (f - fm)
+    diffusion = nu * dt / dx**2 * (up - 2 * u + um)
+    u = u - dt / dx * (lw_flux_p - lw_flux_m) - diffusion
+    if n < 30 or n % 10 == 0:
+        frames.append(u.copy())
+",28,759,burgers,advection/diffusion,False,explicit,,,,,0,becomes NaNs almost immediately,synthetic,widened
+Burgers_7,Comm_InValid,Burgers_Comm_InValid_7,"import numpy as np
+
+
+# Domain and physical parameters
+L, nu = 1.0, 0.01
+nx, nt = 300, 2000
+dx = L / nx
+x = np.linspace(0, L, nx, endpoint=False)
+
+
+u = 1.5 * np.exp(-((x - 0.3) ** 2) / (2 * 0.05 ** 2))
+# Gaussian pulse initial condition
+cfl, diff_num = 0.4, 0.4
+dt = min(cfl * dx / np.max(np.abs(u)), diff_num * dx**2 / nu)
+
+# advective + diffusive CFL
+
+frames = [u.copy()]
+for n in range(nt):
+    up, um = np.roll(u, -1), np.roll(u, 1)
+    du_forward = (up - u) / dx
+    du_backward = (u - um) / dx
+    advect = np.where(u >= 0, u * du_backward, u * du_forward)
+    diffuse = nu * (up - 2 * u + um) / dx**2
+    u = u + dt * (-advect - diffuse)
+    # upwind based on local sign of u
+    if n % 13 == 0:
+        frames.append(u.copy())
+    # central diffusion term
+",30,763,burgers,advection/diffusion,False,explicit,,,,,5,creates very violent bounded oscillations,synthetic,aligned
+Burgers_7,Comm_InValid,Burgers_Comm_InValid_7,"import numpy as np
+
+
+# Domain and physical parameters
+L, nu = 1.0, 0.01
+nx, nt = 300, 2000
+dx = L / nx
+x = np.linspace(0, L, nx, endpoint=False)
+
+
+u = 1.5 * np.exp(-((x - 0.3) ** 2) / (2 * 0.05 ** 2))
+# Gaussian pulse initial condition
+cfl, diff_num = 0.4, 0.4
+dt = min(cfl * dx / np.max(np.abs(u)), diff_num * dx**2 / nu)
+
+# advective + diffusive CFL
+
+frames = [u.copy()]
+for n in range(nt):
+    up, um = np.roll(u, -1), np.roll(u, 1)
+    du_forward = (up - u) / dx
+    du_backward = (u - um) / dx
+    advect = np.where(u >= 0, u * du_backward, u * du_forward)
+    diffuse = nu * (up - 2 * u + um) / dx**2
+    u = u + dt * (-advect - diffuse)
+    # upwind based on local sign of u
+    if n < 40 or n % 13 == 0:
+        frames.append(u.copy())
+    # central diffusion term
+",30,773,burgers,advection/diffusion,False,explicit,,,,,5,creates very violent bounded oscillations,synthetic,widened
+Burgers_7,CorrComm_Invalid,Burgers_CorrComm_InValid_7,"import numpy as np
+
+
+# Domain and physical parameters
+L, nu = 1.0, 0.01
+nx, nt = 300, 2000
+dx = L / nx
+x = np.linspace(0, L, nx, endpoint=False)
+
+
+u = 1.5 * np.exp(-((x - 0.3) ** 2) / (2 * 0.05 ** 2))
+# No CFL restriction needed; Crank-Nicolson is unconditionally stable
+cfl, diff_num = 0.4, 0.4
+dt = min(cfl * dx / np.max(np.abs(u)), diff_num * dx**2 / nu)
+
+# top-hat initial condition
+
+frames = [u.copy()]
+for n in range(nt):
+    up, um = np.roll(u, -1), np.roll(u, 1)
+    du_forward = (up - u) / dx
+    du_backward = (u - um) / dx
+    advect = np.where(u >= 0, u * du_backward, u * du_forward)
+    diffuse = nu * (up - 2 * u + um) / dx**2
+    u = u + dt * (-advect - diffuse)
+    # Build tridiagonal system (I - r/2 * D2) u_new = (I + r/2 * D2) u_old
+    if n % 13 == 0:
+        frames.append(u.copy())
+    # explicit half-step RHS
+",30,835,burgers,advection/diffusion,False,explicit,Heat_Comm_Valid_6,heat,"[{'donor_text': '# Domain and physical parameters', 'gt_position': 4, 'source_line_in_donor': 5, 'line_inserted': 4}, {'donor_text': '# No CFL restriction needed; Crank-Nicolson is unconditionally stable', 'gt_position': 12, 'source_line_in_donor': 9, 'line_inserted': 12}, {'donor_text': '# top-hat initial condition', 'gt_position': 16, 'source_line_in_donor': 16, 'line_inserted': 16}, {'donor_text': '# Build tridiagonal system (I - r/2 * D2) u_new = (I + r/2 * D2) u_old', 'gt_position': 26, 'source_line_in_donor': 21, 'line_inserted': 26}, {'donor_text': '# explicit half-step RHS', 'gt_position': 29, 'source_line_in_donor': 34, 'line_inserted': 29}]",0.0,5,creates very violent bounded oscillations,synthetic,aligned
+Burgers_7,CorrComm_Invalid,Burgers_CorrComm_InValid_7,"import numpy as np
+
+
+# Domain and physical parameters
+L, nu = 1.0, 0.01
+nx, nt = 300, 2000
+dx = L / nx
+x = np.linspace(0, L, nx, endpoint=False)
+
+
+u = 1.5 * np.exp(-((x - 0.3) ** 2) / (2 * 0.05 ** 2))
+# No CFL restriction needed; Crank-Nicolson is unconditionally stable
+cfl, diff_num = 0.4, 0.4
+dt = min(cfl * dx / np.max(np.abs(u)), diff_num * dx**2 / nu)
+
+# top-hat initial condition
+
+frames = [u.copy()]
+for n in range(nt):
+    up, um = np.roll(u, -1), np.roll(u, 1)
+    du_forward = (up - u) / dx
+    du_backward = (u - um) / dx
+    advect = np.where(u >= 0, u * du_backward, u * du_forward)
+    diffuse = nu * (up - 2 * u + um) / dx**2
+    u = u + dt * (-advect - diffuse)
+    # Build tridiagonal system (I - r/2 * D2) u_new = (I + r/2 * D2) u_old
+    if n < 40 or n % 13 == 0:
+        frames.append(u.copy())
+    # explicit half-step RHS
+",30,845,burgers,advection/diffusion,False,explicit,Heat_Comm_Valid_6,heat,"[{'donor_text': '# Domain and physical parameters', 'gt_position': 4, 'source_line_in_donor': 5, 'line_inserted': 4}, {'donor_text': '# No CFL restriction needed; Crank-Nicolson is unconditionally stable', 'gt_position': 12, 'source_line_in_donor': 9, 'line_inserted': 12}, {'donor_text': '# top-hat initial condition', 'gt_position': 16, 'source_line_in_donor': 16, 'line_inserted': 16}, {'donor_text': '# Build tridiagonal system (I - r/2 * D2) u_new = (I + r/2 * D2) u_old', 'gt_position': 26, 'source_line_in_donor': 21, 'line_inserted': 26}, {'donor_text': '# explicit half-step RHS', 'gt_position': 29, 'source_line_in_donor': 34, 'line_inserted': 29}]",0.0,5,creates very violent bounded oscillations,synthetic,widened
+Burgers_7,NoComm_CorrVar_InValid,Burgers_NoComm_CorrVar_InValid_7,"import numpy as np
+foobar_1, foobar_13 = (1.0, 0.01)
+foobar_14, foobar_12 = (300, 2000)
+foobar_9 = foobar_1 / foobar_14
+foobar_18 = np.linspace(0, foobar_1, foobar_14, endpoint=False)
+foobar_15 = 1.5 * np.exp(-(foobar_18 - 0.3) ** 2 / (2 * 0.05 ** 2))
+foobar_3, foobar_4 = (0.4, 0.4)
+foobar_6 = min(foobar_3 * foobar_9 / np.max(np.abs(foobar_15)), foobar_4 * foobar_9 ** 2 / foobar_13)
+foobar_10 = [foobar_15.copy()]
+for foobar_11 in range(foobar_12):
+    foobar_17, foobar_16 = (np.roll(foobar_15, -1), np.roll(foobar_15, 1))
+    foobar_8 = (foobar_17 - foobar_15) / foobar_9
+    foobar_7 = (foobar_15 - foobar_16) / foobar_9
+    foobar_2 = np.where(foobar_15 >= 0, foobar_15 * foobar_7, foobar_15 * foobar_8)
+    foobar_5 = foobar_13 * (foobar_17 - 2 * foobar_15 + foobar_16) / foobar_9 ** 2
+    foobar_15 = foobar_15 + foobar_6 * (-foobar_2 - foobar_5)
+    if foobar_11 % 13 == 0:
+        foobar_10.append(foobar_15.copy())",18,926,burgers,advection/diffusion,False,explicit,,,,,0,creates very violent bounded oscillations,synthetic,aligned
+Burgers_7,NoComm_CorrVar_InValid,Burgers_NoComm_CorrVar_InValid_7,"import numpy as np
+foobar_1, foobar_13 = (1.0, 0.01)
+foobar_14, foobar_12 = (300, 2000)
+foobar_9 = foobar_1 / foobar_14
+foobar_18 = np.linspace(0, foobar_1, foobar_14, endpoint=False)
+foobar_15 = 1.5 * np.exp(-(foobar_18 - 0.3) ** 2 / (2 * 0.05 ** 2))
+foobar_3, foobar_4 = (0.4, 0.4)
+foobar_6 = min(foobar_3 * foobar_9 / np.max(np.abs(foobar_15)), foobar_4 * foobar_9 ** 2 / foobar_13)
+foobar_10 = [foobar_15.copy()]
+for foobar_11 in range(foobar_12):
+    foobar_17, foobar_16 = (np.roll(foobar_15, -1), np.roll(foobar_15, 1))
+    foobar_8 = (foobar_17 - foobar_15) / foobar_9
+    foobar_7 = (foobar_15 - foobar_16) / foobar_9
+    foobar_2 = np.where(foobar_15 >= 0, foobar_15 * foobar_7, foobar_15 * foobar_8)
+    foobar_5 = foobar_13 * (foobar_17 - 2 * foobar_15 + foobar_16) / foobar_9 ** 2
+    foobar_15 = foobar_15 + foobar_6 * (-foobar_2 - foobar_5)
+    if foobar_11 < 40 or foobar_11 % 13 == 0:
+        foobar_10.append(foobar_15.copy())",18,944,burgers,advection/diffusion,False,explicit,,,,,0,creates very violent bounded oscillations,synthetic,widened
+Burgers_7,NoComm_InValid,Burgers_NoComm_InValid_7,"import numpy as np
+
+
+L, nu = 1.0, 0.01
+nx, nt = 300, 2000
+dx = L / nx
+x = np.linspace(0, L, nx, endpoint=False)
+
+
+u = 1.5 * np.exp(-((x - 0.3) ** 2) / (2 * 0.05 ** 2))
+cfl, diff_num = 0.4, 0.4
+dt = min(cfl * dx / np.max(np.abs(u)), diff_num * dx**2 / nu)
+
+
+frames = [u.copy()]
+for n in range(nt):
+    up, um = np.roll(u, -1), np.roll(u, 1)
+    du_forward = (up - u) / dx
+    du_backward = (u - um) / dx
+    advect = np.where(u >= 0, u * du_backward, u * du_forward)
+    diffuse = nu * (up - 2 * u + um) / dx**2
+    u = u + dt * (-advect - diffuse)
+    if n % 13 == 0:
+        frames.append(u.copy())
+",25,600,burgers,advection/diffusion,False,explicit,,,,,0,creates very violent bounded oscillations,synthetic,aligned
+Burgers_7,NoComm_InValid,Burgers_NoComm_InValid_7,"import numpy as np
+
+
+L, nu = 1.0, 0.01
+nx, nt = 300, 2000
+dx = L / nx
+x = np.linspace(0, L, nx, endpoint=False)
+
+
+u = 1.5 * np.exp(-((x - 0.3) ** 2) / (2 * 0.05 ** 2))
+cfl, diff_num = 0.4, 0.4
+dt = min(cfl * dx / np.max(np.abs(u)), diff_num * dx**2 / nu)
+
+
+frames = [u.copy()]
+for n in range(nt):
+    up, um = np.roll(u, -1), np.roll(u, 1)
+    du_forward = (up - u) / dx
+    du_backward = (u - um) / dx
+    advect = np.where(u >= 0, u * du_backward, u * du_forward)
+    diffuse = nu * (up - 2 * u + um) / dx**2
+    u = u + dt * (-advect - diffuse)
+    if n < 40 or n % 13 == 0:
+        frames.append(u.copy())
+",25,610,burgers,advection/diffusion,False,explicit,,,,,0,creates very violent bounded oscillations,synthetic,widened
+Burgers_8,Comm_InValid,Burgers_Comm_InValid_8,"import numpy as np
+
+
+# Domain and physical parameters
+L, nu = 1.0, 0.02
+nx = ny = 101
+dx = dy = L / (nx - 1)
+x = np.linspace(0, L, nx)
+y = np.linspace(0, L, ny)
+X, Y = np.meshgrid(x, y, indexing=""ij"")
+
+
+u = np.sin(2 * np.pi * X) * np.cos(2 * np.pi * Y)
+# sinusoidal shear-layer initial condition
+v = -np.cos(2 * np.pi * X) * np.sin(2 * np.pi * Y)
+
+
+cfl, diff_num = 0.3, 0.2
+speed0 = np.sqrt(u**2 + v**2).max()
+dt = min(cfl * dx / speed0, diff_num * dx**2 / nu)
+nt = 300
+# advective + diffusive CFL, 2D
+
+
+def upwind_deriv(f, axis, vel):
+    fp = np.roll(f, -1, axis=axis)
+    fm = np.roll(f, 1, axis=axis)
+    return np.where(vel >= 0, (f - fm) / dx, (fp - f) / dx)
+
+
+skip = 5
+frames = [np.sqrt(u**2 + v**2)]
+for n in range(nt):
+# subsample for the quiver overlay so arrows stay readable
+    ux = upwind_deriv(u, 0, u); uy = upwind_deriv(u, 1, v)
+    vx = upwind_deriv(v, 0, u); vy = upwind_deriv(v, 1, v)
+    lap_u = (np.roll(u, -1, 0) + np.roll(u, 1, 0) + np.roll(u, -1, 1) + np.roll(u, 1, 1) - 4 * u) / dx**2
+    lap_v = (np.roll(v, -1, 0) + np.roll(v, 1, 0) + np.roll(v, -1, 1) + np.roll(v, 1, 1) - 4 * v) / dx**2
+    u = u + dt * (-(u * ux + v * uy) - nu * lap_u)
+    v = v + dt * (-(u * vx + v * vy) - nu * lap_v)
+    if n % 2 == 0:
+        frames.append(np.sqrt(u**2 + v**2))
+    # coupled momentum update
+",44,1312,burgers,advection/diffusion,False,explicit,,,,,5,blows up to NaNs,synthetic,aligned
+Burgers_8,Comm_InValid,Burgers_Comm_InValid_8,"import numpy as np
+
+
+# Domain and physical parameters
+L, nu = 1.0, 0.02
+nx = ny = 101
+dx = dy = L / (nx - 1)
+x = np.linspace(0, L, nx)
+y = np.linspace(0, L, ny)
+X, Y = np.meshgrid(x, y, indexing=""ij"")
+
+
+u = np.sin(2 * np.pi * X) * np.cos(2 * np.pi * Y)
+# sinusoidal shear-layer initial condition
+v = -np.cos(2 * np.pi * X) * np.sin(2 * np.pi * Y)
+
+
+cfl, diff_num = 0.3, 0.2
+speed0 = np.sqrt(u**2 + v**2).max()
+dt = min(cfl * dx / speed0, diff_num * dx**2 / nu)
+nt = 300
+# advective + diffusive CFL, 2D
+
+
+def upwind_deriv(f, axis, vel):
+    fp = np.roll(f, -1, axis=axis)
+    fm = np.roll(f, 1, axis=axis)
+    return np.where(vel >= 0, (f - fm) / dx, (fp - f) / dx)
+
+
+skip = 5
+frames = [np.sqrt(u**2 + v**2)]
+for n in range(nt):
+# subsample for the quiver overlay so arrows stay readable
+    ux = upwind_deriv(u, 0, u); uy = upwind_deriv(u, 1, v)
+    vx = upwind_deriv(v, 0, u); vy = upwind_deriv(v, 1, v)
+    lap_u = (np.roll(u, -1, 0) + np.roll(u, 1, 0) + np.roll(u, -1, 1) + np.roll(u, 1, 1) - 4 * u) / dx**2
+    lap_v = (np.roll(v, -1, 0) + np.roll(v, 1, 0) + np.roll(v, -1, 1) + np.roll(v, 1, 1) - 4 * v) / dx**2
+    u = u + dt * (-(u * ux + v * uy) - nu * lap_u)
+    v = v + dt * (-(u * vx + v * vy) - nu * lap_v)
+    if n < 40 or n % 2 == 0:
+        frames.append(np.sqrt(u**2 + v**2))
+    # coupled momentum update
+",44,1322,burgers,advection/diffusion,False,explicit,,,,,5,blows up to NaNs,synthetic,widened
+Burgers_8,CorrComm_Invalid,Burgers_CorrComm_InValid_8,"import numpy as np
+
+
+# Domain and physical parameters
+L, nu = 1.0, 0.02
+nx = ny = 101
+dx = dy = L / (nx - 1)
+x = np.linspace(0, L, nx)
+y = np.linspace(0, L, ny)
+X, Y = np.meshgrid(x, y, indexing=""ij"")
+
+
+u = np.sin(2 * np.pi * X) * np.cos(2 * np.pi * Y)
+# diffusion number; Crank-Nicolson is unconditionally stable
+v = -np.cos(2 * np.pi * X) * np.sin(2 * np.pi * Y)
+
+
+cfl, diff_num = 0.3, 0.2
+speed0 = np.sqrt(u**2 + v**2).max()
+dt = min(cfl * dx / speed0, diff_num * dx**2 / nu)
+nt = 300
+# fluid initially at rest
+
+
+def upwind_deriv(f, axis, vel):
+    fp = np.roll(f, -1, axis=axis)
+    fm = np.roll(f, 1, axis=axis)
+    return np.where(vel >= 0, (f - fm) / dx, (fp - f) / dx)
+
+
+skip = 5
+frames = [np.sqrt(u**2 + v**2)]
+for n in range(nt):
+# wall impulsively set into motion at t=0+
+    ux = upwind_deriv(u, 0, u); uy = upwind_deriv(u, 1, v)
+    vx = upwind_deriv(v, 0, u); vy = upwind_deriv(v, 1, v)
+    lap_u = (np.roll(u, -1, 0) + np.roll(u, 1, 0) + np.roll(u, -1, 1) + np.roll(u, 1, 1) - 4 * u) / dx**2
+    lap_v = (np.roll(v, -1, 0) + np.roll(v, 1, 0) + np.roll(v, -1, 1) + np.roll(v, 1, 1) - 4 * v) / dx**2
+    u = u + dt * (-(u * ux + v * uy) - nu * lap_u)
+    v = v + dt * (-(u * vx + v * vy) - nu * lap_v)
+    if n % 2 == 0:
+        frames.append(np.sqrt(u**2 + v**2))
+    # wall boundary contribution folded into the RHS
+",44,1331,burgers,advection/diffusion,False,explicit,NavierStokes_Comm_Valid_6,navier-stokes,"[{'donor_text': '# Domain and physical parameters', 'gt_position': 4, 'source_line_in_donor': 5, 'line_inserted': 4}, {'donor_text': '# diffusion number; Crank-Nicolson is unconditionally stable', 'gt_position': 14, 'source_line_in_donor': 10, 'line_inserted': 14}, {'donor_text': '# fluid initially at rest', 'gt_position': 22, 'source_line_in_donor': 14, 'line_inserted': 22}, {'donor_text': '# wall impulsively set into motion at t=0+', 'gt_position': 34, 'source_line_in_donor': 16, 'line_inserted': 34}, {'donor_text': '# wall boundary contribution folded into the RHS', 'gt_position': 43, 'source_line_in_donor': 30, 'line_inserted': 43}]",0.0,5,blows up to NaNs,synthetic,aligned
+Burgers_8,CorrComm_Invalid,Burgers_CorrComm_InValid_8,"import numpy as np
+
+
+# Domain and physical parameters
+L, nu = 1.0, 0.02
+nx = ny = 101
+dx = dy = L / (nx - 1)
+x = np.linspace(0, L, nx)
+y = np.linspace(0, L, ny)
+X, Y = np.meshgrid(x, y, indexing=""ij"")
+
+
+u = np.sin(2 * np.pi * X) * np.cos(2 * np.pi * Y)
+# diffusion number; Crank-Nicolson is unconditionally stable
+v = -np.cos(2 * np.pi * X) * np.sin(2 * np.pi * Y)
+
+
+cfl, diff_num = 0.3, 0.2
+speed0 = np.sqrt(u**2 + v**2).max()
+dt = min(cfl * dx / speed0, diff_num * dx**2 / nu)
+nt = 300
+# fluid initially at rest
+
+
+def upwind_deriv(f, axis, vel):
+    fp = np.roll(f, -1, axis=axis)
+    fm = np.roll(f, 1, axis=axis)
+    return np.where(vel >= 0, (f - fm) / dx, (fp - f) / dx)
+
+
+skip = 5
+frames = [np.sqrt(u**2 + v**2)]
+for n in range(nt):
+# wall impulsively set into motion at t=0+
+    ux = upwind_deriv(u, 0, u); uy = upwind_deriv(u, 1, v)
+    vx = upwind_deriv(v, 0, u); vy = upwind_deriv(v, 1, v)
+    lap_u = (np.roll(u, -1, 0) + np.roll(u, 1, 0) + np.roll(u, -1, 1) + np.roll(u, 1, 1) - 4 * u) / dx**2
+    lap_v = (np.roll(v, -1, 0) + np.roll(v, 1, 0) + np.roll(v, -1, 1) + np.roll(v, 1, 1) - 4 * v) / dx**2
+    u = u + dt * (-(u * ux + v * uy) - nu * lap_u)
+    v = v + dt * (-(u * vx + v * vy) - nu * lap_v)
+    if n < 40 or n % 2 == 0:
+        frames.append(np.sqrt(u**2 + v**2))
+    # wall boundary contribution folded into the RHS
+",44,1341,burgers,advection/diffusion,False,explicit,NavierStokes_Comm_Valid_6,navier-stokes,"[{'donor_text': '# Domain and physical parameters', 'gt_position': 4, 'source_line_in_donor': 5, 'line_inserted': 4}, {'donor_text': '# diffusion number; Crank-Nicolson is unconditionally stable', 'gt_position': 14, 'source_line_in_donor': 10, 'line_inserted': 14}, {'donor_text': '# fluid initially at rest', 'gt_position': 22, 'source_line_in_donor': 14, 'line_inserted': 22}, {'donor_text': '# wall impulsively set into motion at t=0+', 'gt_position': 34, 'source_line_in_donor': 16, 'line_inserted': 34}, {'donor_text': '# wall boundary contribution folded into the RHS', 'gt_position': 43, 'source_line_in_donor': 30, 'line_inserted': 43}]",0.0,5,blows up to NaNs,synthetic,widened
+Burgers_8,NoComm_CorrVar_InValid,Burgers_NoComm_CorrVar_InValid_8,"import numpy as np
+foobar_1, foobar_18 = (1.0, 0.02)
+foobar_19 = foobar_20 = 101
+foobar_8 = foobar_9 = foobar_1 / (foobar_19 - 1)
+foobar_30 = np.linspace(0, foobar_1, foobar_19)
+foobar_31 = np.linspace(0, foobar_1, foobar_20)
+foobar_2, foobar_3 = np.meshgrid(foobar_30, foobar_31, indexing='ij')
+foobar_23 = np.sin(2 * np.pi * foobar_2) * np.cos(2 * np.pi * foobar_3)
+foobar_26 = -np.cos(2 * np.pi * foobar_2) * np.sin(2 * np.pi * foobar_3)
+foobar_5, foobar_6 = (0.3, 0.2)
+foobar_22 = np.sqrt(foobar_23 ** 2 + foobar_26 ** 2).max()
+foobar_7 = min(foobar_5 * foobar_8 / foobar_22, foobar_6 * foobar_8 ** 2 / foobar_18)
+foobar_17 = 300
+
+def fn1(foobar_10, foobar_4, foobar_27):
+    foobar_12 = np.roll(foobar_10, -1, axis=foobar_4)
+    foobar_11 = np.roll(foobar_10, 1, axis=foobar_4)
+    return np.where(foobar_27 >= 0, (foobar_10 - foobar_11) / foobar_8, (foobar_12 - foobar_10) / foobar_8)
+foobar_21 = 5
+foobar_13 = [np.sqrt(foobar_23 ** 2 + foobar_26 ** 2)]
+for foobar_16 in range(foobar_17):
+    foobar_24 = fn1(foobar_23, 0, foobar_23)
+    foobar_25 = fn1(foobar_23, 1, foobar_26)
+    foobar_28 = fn1(foobar_26, 0, foobar_23)
+    foobar_29 = fn1(foobar_26, 1, foobar_26)
+    foobar_14 = (np.roll(foobar_23, -1, 0) + np.roll(foobar_23, 1, 0) + np.roll(foobar_23, -1, 1) + np.roll(foobar_23, 1, 1) - 4 * foobar_23) / foobar_8 ** 2
+    foobar_15 = (np.roll(foobar_26, -1, 0) + np.roll(foobar_26, 1, 0) + np.roll(foobar_26, -1, 1) + np.roll(foobar_26, 1, 1) - 4 * foobar_26) / foobar_8 ** 2
+    foobar_23 = foobar_23 + foobar_7 * (-(foobar_23 * foobar_24 + foobar_26 * foobar_25) - foobar_18 * foobar_14)
+    foobar_26 = foobar_26 + foobar_7 * (-(foobar_23 * foobar_28 + foobar_26 * foobar_29) - foobar_18 * foobar_15)
+    if foobar_16 % 2 == 0:
+        foobar_13.append(np.sqrt(foobar_23 ** 2 + foobar_26 ** 2))",31,1812,burgers,advection/diffusion,False,explicit,,,,,0,blows up to NaNs,synthetic,aligned
+Burgers_8,NoComm_CorrVar_InValid,Burgers_NoComm_CorrVar_InValid_8,"import numpy as np
+foobar_1, foobar_18 = (1.0, 0.02)
+foobar_19 = foobar_20 = 101
+foobar_8 = foobar_9 = foobar_1 / (foobar_19 - 1)
+foobar_30 = np.linspace(0, foobar_1, foobar_19)
+foobar_31 = np.linspace(0, foobar_1, foobar_20)
+foobar_2, foobar_3 = np.meshgrid(foobar_30, foobar_31, indexing='ij')
+foobar_23 = np.sin(2 * np.pi * foobar_2) * np.cos(2 * np.pi * foobar_3)
+foobar_26 = -np.cos(2 * np.pi * foobar_2) * np.sin(2 * np.pi * foobar_3)
+foobar_5, foobar_6 = (0.3, 0.2)
+foobar_22 = np.sqrt(foobar_23 ** 2 + foobar_26 ** 2).max()
+foobar_7 = min(foobar_5 * foobar_8 / foobar_22, foobar_6 * foobar_8 ** 2 / foobar_18)
+foobar_17 = 300
+
+def fn1(foobar_10, foobar_4, foobar_27):
+    foobar_12 = np.roll(foobar_10, -1, axis=foobar_4)
+    foobar_11 = np.roll(foobar_10, 1, axis=foobar_4)
+    return np.where(foobar_27 >= 0, (foobar_10 - foobar_11) / foobar_8, (foobar_12 - foobar_10) / foobar_8)
+foobar_21 = 5
+foobar_13 = [np.sqrt(foobar_23 ** 2 + foobar_26 ** 2)]
+for foobar_16 in range(foobar_17):
+    foobar_24 = fn1(foobar_23, 0, foobar_23)
+    foobar_25 = fn1(foobar_23, 1, foobar_26)
+    foobar_28 = fn1(foobar_26, 0, foobar_23)
+    foobar_29 = fn1(foobar_26, 1, foobar_26)
+    foobar_14 = (np.roll(foobar_23, -1, 0) + np.roll(foobar_23, 1, 0) + np.roll(foobar_23, -1, 1) + np.roll(foobar_23, 1, 1) - 4 * foobar_23) / foobar_8 ** 2
+    foobar_15 = (np.roll(foobar_26, -1, 0) + np.roll(foobar_26, 1, 0) + np.roll(foobar_26, -1, 1) + np.roll(foobar_26, 1, 1) - 4 * foobar_26) / foobar_8 ** 2
+    foobar_23 = foobar_23 + foobar_7 * (-(foobar_23 * foobar_24 + foobar_26 * foobar_25) - foobar_18 * foobar_14)
+    foobar_26 = foobar_26 + foobar_7 * (-(foobar_23 * foobar_28 + foobar_26 * foobar_29) - foobar_18 * foobar_15)
+    if foobar_16 < 40 or foobar_16 % 2 == 0:
+        foobar_13.append(np.sqrt(foobar_23 ** 2 + foobar_26 ** 2))",31,1830,burgers,advection/diffusion,False,explicit,,,,,0,blows up to NaNs,synthetic,widened
+Burgers_8,NoComm_InValid,Burgers_NoComm_InValid_8,"import numpy as np
+
+
+L, nu = 1.0, 0.02
+nx = ny = 101
+dx = dy = L / (nx - 1)
+x = np.linspace(0, L, nx)
+y = np.linspace(0, L, ny)
+X, Y = np.meshgrid(x, y, indexing=""ij"")
+
+
+u = np.sin(2 * np.pi * X) * np.cos(2 * np.pi * Y)
+v = -np.cos(2 * np.pi * X) * np.sin(2 * np.pi * Y)
+
+
+cfl, diff_num = 0.3, 0.2
+speed0 = np.sqrt(u**2 + v**2).max()
+dt = min(cfl * dx / speed0, diff_num * dx**2 / nu)
+nt = 300
+
+
+def upwind_deriv(f, axis, vel):
+    fp = np.roll(f, -1, axis=axis)
+    fm = np.roll(f, 1, axis=axis)
+    return np.where(vel >= 0, (f - fm) / dx, (fp - f) / dx)
+
+
+skip = 5
+frames = [np.sqrt(u**2 + v**2)]
+for n in range(nt):
+    ux = upwind_deriv(u, 0, u); uy = upwind_deriv(u, 1, v)
+    vx = upwind_deriv(v, 0, u); vy = upwind_deriv(v, 1, v)
+    lap_u = (np.roll(u, -1, 0) + np.roll(u, 1, 0) + np.roll(u, -1, 1) + np.roll(u, 1, 1) - 4 * u) / dx**2
+    lap_v = (np.roll(v, -1, 0) + np.roll(v, 1, 0) + np.roll(v, -1, 1) + np.roll(v, 1, 1) - 4 * v) / dx**2
+    u = u + dt * (-(u * ux + v * uy) - nu * lap_u)
+    v = v + dt * (-(u * vx + v * vy) - nu * lap_v)
+    if n % 2 == 0:
+        frames.append(np.sqrt(u**2 + v**2))
+",39,1115,burgers,advection/diffusion,False,explicit,,,,,0,blows up to NaNs,synthetic,aligned
+Burgers_8,NoComm_InValid,Burgers_NoComm_InValid_8,"import numpy as np
+
+
+L, nu = 1.0, 0.02
+nx = ny = 101
+dx = dy = L / (nx - 1)
+x = np.linspace(0, L, nx)
+y = np.linspace(0, L, ny)
+X, Y = np.meshgrid(x, y, indexing=""ij"")
+
+
+u = np.sin(2 * np.pi * X) * np.cos(2 * np.pi * Y)
+v = -np.cos(2 * np.pi * X) * np.sin(2 * np.pi * Y)
+
+
+cfl, diff_num = 0.3, 0.2
+speed0 = np.sqrt(u**2 + v**2).max()
+dt = min(cfl * dx / speed0, diff_num * dx**2 / nu)
+nt = 300
+
+
+def upwind_deriv(f, axis, vel):
+    fp = np.roll(f, -1, axis=axis)
+    fm = np.roll(f, 1, axis=axis)
+    return np.where(vel >= 0, (f - fm) / dx, (fp - f) / dx)
+
+
+skip = 5
+frames = [np.sqrt(u**2 + v**2)]
+for n in range(nt):
+    ux = upwind_deriv(u, 0, u); uy = upwind_deriv(u, 1, v)
+    vx = upwind_deriv(v, 0, u); vy = upwind_deriv(v, 1, v)
+    lap_u = (np.roll(u, -1, 0) + np.roll(u, 1, 0) + np.roll(u, -1, 1) + np.roll(u, 1, 1) - 4 * u) / dx**2
+    lap_v = (np.roll(v, -1, 0) + np.roll(v, 1, 0) + np.roll(v, -1, 1) + np.roll(v, 1, 1) - 4 * v) / dx**2
+    u = u + dt * (-(u * ux + v * uy) - nu * lap_u)
+    v = v + dt * (-(u * vx + v * vy) - nu * lap_v)
+    if n < 40 or n % 2 == 0:
+        frames.append(np.sqrt(u**2 + v**2))
+",39,1125,burgers,advection/diffusion,False,explicit,,,,,0,blows up to NaNs,synthetic,widened
+Heat_2,Comm_InValid,Heat_Comm_InValid_2,"import numpy as np
+from scipy.integrate import odeint
+from scipy.linalg import toeplitz
+
+alpha = 0.0012
+beta = -0.0015
+Uc = 300
+
+# Spacial domain
+
+x0 = 0.0
+xn = 1.0
+n = 100
+dx = (xn - x0)/n
+x = np.linspace(x0, xn, n)
+
+# Time steps
+
+t0 = 0.0
+tn = 300.0
+t_steps = 300
+dt = (tn - t0)/t_steps
+t = np.linspace(t0, tn, t_steps)
+
+# Boundary conditions
+
+B0 = 325
+B1 = 10
+
+# Initial condition, T(x,0)=325 for all x in [0,1]
+
+Uinit = np.ones(shape=(n,)) * 325
+
+# Discretization matrix A
+
+A = toeplitz([(-2*alpha / dx**2 + beta), (alpha / dx**2)] + [0.0]*(n-2))
+A[n-1,n-1] = -alpha / dx**2 + beta
+
+b = np.ones(shape=(n)) * -beta * Uc
+
+b[0] = -beta * Uc + alpha / dx**2 * B0
+b[n-1] = -beta * Uc + B1/dx
+
+def fn(u, t, A, b):
+    return (np.matmul(A, -u) - b)
+
+u = odeint(fn, Uinit, t, args=(A, b))",47,784,heat,diffusion,False,explicit/implicit,,,,,5,Has spiking negative temperatures at u[1],human,aligned
+Heat_2,Comm_InValid,Heat_Comm_InValid_2,"import numpy as np
+from scipy.integrate import odeint
+from scipy.linalg import toeplitz
+
+alpha = 0.0012
+beta = -0.0015
+Uc = 300
+
+# Spacial domain
+
+x0 = 0.0
+xn = 1.0
+n = 1000
+dx = (xn - x0)/n
+x = np.linspace(x0, xn, n)
+
+# Time steps
+
+t0 = 0.0
+tn = 300.0
+t_steps = 300
+dt = (tn - t0)/t_steps
+t = np.linspace(t0, tn, t_steps)
+
+# Boundary conditions
+
+B0 = 325
+B1 = 10
+
+# Initial condition, T(x,0)=325 for all x in [0,1]
+
+Uinit = np.ones(shape=(n,)) * 325
+
+# Discretization matrix A
+
+A = toeplitz([(-2*alpha / dx**2 + beta), (alpha / dx**2)] + [0.0]*(n-2))
+A[n-1,n-1] = -alpha / dx**2 + beta
+
+b = np.ones(shape=(n)) * -beta * Uc
+
+b[0] = -beta * Uc + alpha / dx**2 * B0
+b[n-1] = -beta * Uc + B1/dx
+
+def fn(u, t, A, b):
+    return (np.matmul(A, -u) - b)
+
+u = odeint(fn, Uinit, t, args=(A, b))",47,785,heat,diffusion,False,explicit/implicit,,,,,5,Has spiking negative temperatures at u[1],human,widened
+Heat_2,CorrComm_Invalid,Heat_CorrComm_InValid_2,"import numpy as np
+from scipy.integrate import odeint
+from scipy.linalg import toeplitz
+
+alpha = 0.0012
+beta = -0.0015
+Uc = 300
+
+#Def of the initial conditions, velocity, and acceleration
+
+x0 = 0.0
+xn = 1.0
+n = 100
+dx = (xn - x0)/n
+x = np.linspace(x0, xn, n)
+
+# Spatial and temporal meshes
+
+t0 = 0.0
+tn = 300.0
+t_steps = 300
+dt = (tn - t0)/t_steps
+t = np.linspace(t0, tn, t_steps)
+
+# Velocity array for calculation (finite elements), and a few time and spatial derivatives
+
+B0 = 325
+B1 = 10
+
+# Loop running the process of integrating the system over the space and time mesh
+
+Uinit = np.ones(shape=(n,)) * 325
+
+# Process loop (on time mesh)
+
+A = toeplitz([(-2*alpha / dx**2 + beta), (alpha / dx**2)] + [0.0]*(n-2))
+A[n-1,n-1] = -alpha / dx**2 + beta
+
+b = np.ones(shape=(n)) * -beta * Uc
+
+b[0] = -beta * Uc + alpha / dx**2 * B0
+b[n-1] = -beta * Uc + B1/dx
+
+def fn(u, t, A, b):
+    return (np.matmul(A, -u) - b)
+
+u = odeint(fn, Uinit, t, args=(A, b))",47,947,heat,diffusion,False,explicit/implicit,Wave_Comm_Valid_1,wave,"[{'donor_text': '#Def of the initial conditions, velocity, and acceleration', 'gt_position': 9, 'source_line_in_donor': 2, 'line_inserted': 9}, {'donor_text': '# Spatial and temporal meshes', 'gt_position': 17, 'source_line_in_donor': 14, 'line_inserted': 17}, {'donor_text': '# Velocity array for calculation (finite elements), and a few time and spatial derivatives', 'gt_position': 25, 'source_line_in_donor': 27, 'line_inserted': 25}, {'donor_text': '# Loop running the process of integrating the system over the space and time mesh', 'gt_position': 30, 'source_line_in_donor': 34, 'line_inserted': 30}, {'donor_text': '# Process loop (on time mesh)', 'gt_position': 34, 'source_line_in_donor': 72, 'line_inserted': 34}]",0.0,5,Has spiking negative temperatures at u[1],human,aligned
+Heat_2,CorrComm_Invalid,Heat_CorrComm_InValid_2,"import numpy as np
+from scipy.integrate import odeint
+from scipy.linalg import toeplitz
+
+alpha = 0.0012
+beta = -0.0015
+Uc = 300
+
+#Def of the initial conditions, velocity, and acceleration
+
+x0 = 0.0
+xn = 1.0
+n = 1000
+dx = (xn - x0)/n
+x = np.linspace(x0, xn, n)
+
+# Spatial and temporal meshes
+
+t0 = 0.0
+tn = 300.0
+t_steps = 300
+dt = (tn - t0)/t_steps
+t = np.linspace(t0, tn, t_steps)
+
+# Velocity array for calculation (finite elements), and a few time and spatial derivatives
+
+B0 = 325
+B1 = 10
+
+# Loop running the process of integrating the system over the space and time mesh
+
+Uinit = np.ones(shape=(n,)) * 325
+
+# Process loop (on time mesh)
+
+A = toeplitz([(-2*alpha / dx**2 + beta), (alpha / dx**2)] + [0.0]*(n-2))
+A[n-1,n-1] = -alpha / dx**2 + beta
+
+b = np.ones(shape=(n)) * -beta * Uc
+
+b[0] = -beta * Uc + alpha / dx**2 * B0
+b[n-1] = -beta * Uc + B1/dx
+
+def fn(u, t, A, b):
+    return (np.matmul(A, -u) - b)
+
+u = odeint(fn, Uinit, t, args=(A, b))",47,948,heat,diffusion,False,explicit/implicit,Wave_Comm_Valid_1,wave,"[{'donor_text': '#Def of the initial conditions, velocity, and acceleration', 'gt_position': 9, 'source_line_in_donor': 2, 'line_inserted': 9}, {'donor_text': '# Spatial and temporal meshes', 'gt_position': 17, 'source_line_in_donor': 14, 'line_inserted': 17}, {'donor_text': '# Velocity array for calculation (finite elements), and a few time and spatial derivatives', 'gt_position': 25, 'source_line_in_donor': 27, 'line_inserted': 25}, {'donor_text': '# Loop running the process of integrating the system over the space and time mesh', 'gt_position': 30, 'source_line_in_donor': 34, 'line_inserted': 30}, {'donor_text': '# Process loop (on time mesh)', 'gt_position': 34, 'source_line_in_donor': 72, 'line_inserted': 34}]",0.0,5,Has spiking negative temperatures at u[1],human,widened
+Heat_2,NoComm_CorrVar_InValid,Heat_NoComm_CorrVar_InValid_2,"import numpy as np
+from scipy.integrate import odeint
+from scipy.linalg import toeplitz
+foobar_6 = 0.0012
+foobar_8 = -0.0015
+foobar_4 = 300
+foobar_18 = 0.0
+foobar_19 = 1.0
+foobar_11 = 100
+foobar_10 = (foobar_19 - foobar_18) / foobar_11
+foobar_17 = np.linspace(foobar_18, foobar_19, foobar_11)
+foobar_13 = 0.0
+foobar_15 = 300.0
+foobar_14 = 300
+foobar_9 = (foobar_15 - foobar_13) / foobar_14
+foobar_12 = np.linspace(foobar_13, foobar_15, foobar_14)
+foobar_2 = 325
+foobar_3 = 10
+foobar_5 = np.ones(shape=(foobar_11,)) * 325
+foobar_1 = toeplitz([-2 * foobar_6 / foobar_10 ** 2 + foobar_8, foobar_6 / foobar_10 ** 2] + [0.0] * (foobar_11 - 2))
+foobar_1[foobar_11 - 1, foobar_11 - 1] = -foobar_6 / foobar_10 ** 2 + foobar_8
+foobar_7 = np.ones(shape=foobar_11) * -foobar_8 * foobar_4
+foobar_7[0] = -foobar_8 * foobar_4 + foobar_6 / foobar_10 ** 2 * foobar_2
+foobar_7[foobar_11 - 1] = -foobar_8 * foobar_4 + foobar_3 / foobar_10
+
+def fn1(foobar_16, foobar_12, foobar_1, foobar_7):
+    return np.matmul(foobar_1, -foobar_16) - foobar_7
+foobar_16 = odeint(fn1, foobar_5, foobar_12, args=(foobar_1, foobar_7))",28,1098,heat,diffusion,False,explicit/implicit,,,,,0,Has spiking negative temperatures at u[1],human,aligned
+Heat_2,NoComm_CorrVar_InValid,Heat_NoComm_CorrVar_InValid_2,"import numpy as np
+from scipy.integrate import odeint
+from scipy.linalg import toeplitz
+foobar_6 = 0.0012
+foobar_8 = -0.0015
+foobar_4 = 300
+foobar_18 = 0.0
+foobar_19 = 1.0
+foobar_11 = 1000
+foobar_10 = (foobar_19 - foobar_18) / foobar_11
+foobar_17 = np.linspace(foobar_18, foobar_19, foobar_11)
+foobar_13 = 0.0
+foobar_15 = 300.0
+foobar_14 = 300
+foobar_9 = (foobar_15 - foobar_13) / foobar_14
+foobar_12 = np.linspace(foobar_13, foobar_15, foobar_14)
+foobar_2 = 325
+foobar_3 = 10
+foobar_5 = np.ones(shape=(foobar_11,)) * 325
+foobar_1 = toeplitz([-2 * foobar_6 / foobar_10 ** 2 + foobar_8, foobar_6 / foobar_10 ** 2] + [0.0] * (foobar_11 - 2))
+foobar_1[foobar_11 - 1, foobar_11 - 1] = -foobar_6 / foobar_10 ** 2 + foobar_8
+foobar_7 = np.ones(shape=foobar_11) * -foobar_8 * foobar_4
+foobar_7[0] = -foobar_8 * foobar_4 + foobar_6 / foobar_10 ** 2 * foobar_2
+foobar_7[foobar_11 - 1] = -foobar_8 * foobar_4 + foobar_3 / foobar_10
+
+def fn1(foobar_16, foobar_12, foobar_1, foobar_7):
+    return np.matmul(foobar_1, -foobar_16) - foobar_7
+foobar_16 = odeint(fn1, foobar_5, foobar_12, args=(foobar_1, foobar_7))",28,1099,heat,diffusion,False,explicit/implicit,,,,,0,Has spiking negative temperatures at u[1],human,widened
+Heat_2,NoComm_InValid,Heat_NoComm_InValid_2,"import numpy as np
+from scipy.integrate import odeint
+from scipy.linalg import toeplitz
+
+alpha = 0.0012
+beta = -0.0015
+Uc = 300
+
+
+x0 = 0.0
+xn = 1.0
+n = 100
+dx = (xn - x0)/n
+x = np.linspace(x0, xn, n)
+
+
+t0 = 0.0
+tn = 300.0
+t_steps = 300
+dt = (tn - t0)/t_steps
+t = np.linspace(t0, tn, t_steps)
+
+
+B0 = 325
+B1 = 10
+
+
+Uinit = np.ones(shape=(n,)) * 325
+
+
+A = toeplitz([(-2*alpha / dx**2 + beta), (alpha / dx**2)] + [0.0]*(n-2))
+A[n-1,n-1] = -alpha / dx**2 + beta
+
+b = np.ones(shape=(n)) * -beta * Uc
+
+b[0] = -beta * Uc + alpha / dx**2 * B0
+b[n-1] = -beta * Uc + B1/dx
+
+def fn(u, t, A, b):
+    return (np.matmul(A, -u) - b)
+
+u = odeint(fn, Uinit, t, args=(A, b))",42,655,heat,diffusion,False,explicit/implicit,,,,,0,Has spiking negative temperatures at u[1],human,aligned
+Heat_2,NoComm_InValid,Heat_NoComm_InValid_2,"import numpy as np
+from scipy.integrate import odeint
+from scipy.linalg import toeplitz
+
+alpha = 0.0012
+beta = -0.0015
+Uc = 300
+
+
+x0 = 0.0
+xn = 1.0
+n = 1000
+dx = (xn - x0)/n
+x = np.linspace(x0, xn, n)
+
+
+t0 = 0.0
+tn = 300.0
+t_steps = 300
+dt = (tn - t0)/t_steps
+t = np.linspace(t0, tn, t_steps)
+
+
+B0 = 325
+B1 = 10
+
+
+Uinit = np.ones(shape=(n,)) * 325
+
+
+A = toeplitz([(-2*alpha / dx**2 + beta), (alpha / dx**2)] + [0.0]*(n-2))
+A[n-1,n-1] = -alpha / dx**2 + beta
+
+b = np.ones(shape=(n)) * -beta * Uc
+
+b[0] = -beta * Uc + alpha / dx**2 * B0
+b[n-1] = -beta * Uc + B1/dx
+
+def fn(u, t, A, b):
+    return (np.matmul(A, -u) - b)
+
+u = odeint(fn, Uinit, t, args=(A, b))",42,656,heat,diffusion,False,explicit/implicit,,,,,0,Has spiking negative temperatures at u[1],human,widened
+NavierStokes_5,Comm_InValid,NavierStokes_Comm_InValid_5,"import numpy as np
+
+
+# Domain and physical parameters
+H, nu, dpdx, rho = 1.0, 0.1, -1.0, 1.0
+ny, nt = 51, 60000
+dy = H / (ny - 1)
+y = np.linspace(0, H, ny)
+G = -dpdx / rho
+# constant forcing per unit mass driving the flow
+
+
+u = np.zeros(ny)
+dt = 0.4 * dy**2 / (2 * nu)
+# fluid starts at rest
+
+
+# diffusion stability bound for explicit FTCS
+frames = [u.copy()]
+for n in range(nt):
+    u_new = u.copy()
+    u_new[1:-1] = u[1:-1] + dt * (G - nu * (u[2:] - 2 * u[1:-1] + u[:-2]) / dy**2)
+    u_new[0], u_new[-1] = 0.0, 0.0
+    u = u_new
+    if n % 300 == 0:
+        frames.append(u.copy())
+    # no-slip walls
+
+
+u_steady = G / (2 * nu) * y * (H - y)
+    # store periodically to keep the GIF a manageable length
+
+# analytic parabolic steady-state profile",33,749,navier-stokes,diffusion/restoration,False,explicit,,,,,7,blows up to NaNs,synthetic,aligned
+NavierStokes_5,Comm_InValid,NavierStokes_Comm_InValid_5,"import numpy as np
+
+
+# Domain and physical parameters
+H, nu, dpdx, rho = 1.0, 0.1, -1.0, 1.0
+ny, nt = 51, 60000
+dy = H / (ny - 1)
+y = np.linspace(0, H, ny)
+G = -dpdx / rho
+# constant forcing per unit mass driving the flow
+
+
+u = np.zeros(ny)
+dt = 0.4 * dy**2 / (2 * nu)
+# fluid starts at rest
+
+
+# diffusion stability bound for explicit FTCS
+frames = [u.copy()]
+for n in range(nt):
+    u_new = u.copy()
+    u_new[1:-1] = u[1:-1] + dt * (G - nu * (u[2:] - 2 * u[1:-1] + u[:-2]) / dy**2)
+    u_new[0], u_new[-1] = 0.0, 0.0
+    u = u_new
+    if n < 60 or n % 300 == 0:
+        frames.append(u.copy())
+    # no-slip walls
+
+
+u_steady = G / (2 * nu) * y * (H - y)
+    # store periodically to keep the GIF a manageable length
+
+# analytic parabolic steady-state profile",33,759,navier-stokes,diffusion/restoration,False,explicit,,,,,7,blows up to NaNs,synthetic,widened
+NavierStokes_5,CorrComm_Invalid,NavierStokes_CorrComm_InValid_5,"import numpy as np
+
+
+# Domain and physical parameters
+H, nu, dpdx, rho = 1.0, 0.1, -1.0, 1.0
+ny, nt = 51, 60000
+dy = H / (ny - 1)
+y = np.linspace(0, H, ny)
+G = -dpdx / rho
+# sinusoidal initial condition
+
+
+u = np.zeros(ny)
+dt = 0.4 * dy**2 / (2 * nu)
+# Laplacian eigenvalues in Fourier space
+
+
+# No CFL restriction: solution advances via exact spectral decay factor
+frames = [u.copy()]
+for n in range(nt):
+    u_new = u.copy()
+    u_new[1:-1] = u[1:-1] + dt * (G - nu * (u[2:] - 2 * u[1:-1] + u[:-2]) / dy**2)
+    u_new[0], u_new[-1] = 0.0, 0.0
+    u = u_new
+    if n % 300 == 0:
+        frames.append(u.copy())
+    # Domain and physical parameters
+
+
+u_steady = G / (2 * nu) * y * (H - y)
+    # sinusoidal initial condition
+
+# Laplacian eigenvalues in Fourier space",33,764,navier-stokes,diffusion/restoration,False,explicit,Heat_Comm_Valid_8,heat,"[{'donor_text': '# Domain and physical parameters', 'gt_position': 4, 'source_line_in_donor': 4, 'line_inserted': 4}, {'donor_text': '# sinusoidal initial condition', 'gt_position': 10, 'source_line_in_donor': 12, 'line_inserted': 10}, {'donor_text': '# Laplacian eigenvalues in Fourier space', 'gt_position': 15, 'source_line_in_donor': 19, 'line_inserted': 15}, {'donor_text': '# No CFL restriction: solution advances via exact spectral decay factor', 'gt_position': 18, 'source_line_in_donor': 26, 'line_inserted': 18}, {'donor_text': '# Domain and physical parameters', 'gt_position': 27, 'source_line_in_donor': 4, 'line_inserted': 27}, {'donor_text': '# sinusoidal initial condition', 'gt_position': 31, 'source_line_in_donor': 12, 'line_inserted': 31}, {'donor_text': '# Laplacian eigenvalues in Fourier space', 'gt_position': 33, 'source_line_in_donor': 19, 'line_inserted': 33}]",-3.0,7,blows up to NaNs,synthetic,aligned
+NavierStokes_5,CorrComm_Invalid,NavierStokes_CorrComm_InValid_5,"import numpy as np
+
+
+# Domain and physical parameters
+H, nu, dpdx, rho = 1.0, 0.1, -1.0, 1.0
+ny, nt = 51, 60000
+dy = H / (ny - 1)
+y = np.linspace(0, H, ny)
+G = -dpdx / rho
+# sinusoidal initial condition
+
+
+u = np.zeros(ny)
+dt = 0.4 * dy**2 / (2 * nu)
+# Laplacian eigenvalues in Fourier space
+
+
+# No CFL restriction: solution advances via exact spectral decay factor
+frames = [u.copy()]
+for n in range(nt):
+    u_new = u.copy()
+    u_new[1:-1] = u[1:-1] + dt * (G - nu * (u[2:] - 2 * u[1:-1] + u[:-2]) / dy**2)
+    u_new[0], u_new[-1] = 0.0, 0.0
+    u = u_new
+    if n < 60 or n % 300 == 0:
+        frames.append(u.copy())
+    # Domain and physical parameters
+
+
+u_steady = G / (2 * nu) * y * (H - y)
+    # sinusoidal initial condition
+
+# Laplacian eigenvalues in Fourier space",33,774,navier-stokes,diffusion/restoration,False,explicit,Heat_Comm_Valid_8,heat,"[{'donor_text': '# Domain and physical parameters', 'gt_position': 4, 'source_line_in_donor': 4, 'line_inserted': 4}, {'donor_text': '# sinusoidal initial condition', 'gt_position': 10, 'source_line_in_donor': 12, 'line_inserted': 10}, {'donor_text': '# Laplacian eigenvalues in Fourier space', 'gt_position': 15, 'source_line_in_donor': 19, 'line_inserted': 15}, {'donor_text': '# No CFL restriction: solution advances via exact spectral decay factor', 'gt_position': 18, 'source_line_in_donor': 26, 'line_inserted': 18}, {'donor_text': '# Domain and physical parameters', 'gt_position': 27, 'source_line_in_donor': 4, 'line_inserted': 27}, {'donor_text': '# sinusoidal initial condition', 'gt_position': 31, 'source_line_in_donor': 12, 'line_inserted': 31}, {'donor_text': '# Laplacian eigenvalues in Fourier space', 'gt_position': 33, 'source_line_in_donor': 19, 'line_inserted': 33}]",-3.0,7,blows up to NaNs,synthetic,widened
+NavierStokes_5,NoComm_CorrVar_InValid,NavierStokes_NoComm_CorrVar_InValid_5,"import numpy as np
+foobar_2, foobar_9, foobar_3, foobar_11 = (1.0, 0.1, -1.0, 1.0)
+foobar_10, foobar_8 = (51, 60000)
+foobar_5 = foobar_2 / (foobar_10 - 1)
+foobar_15 = np.linspace(0, foobar_2, foobar_10)
+foobar_1 = -foobar_3 / foobar_11
+foobar_12 = np.zeros(foobar_10)
+foobar_4 = 0.4 * foobar_5 ** 2 / (2 * foobar_9)
+foobar_6 = [foobar_12.copy()]
+for foobar_7 in range(foobar_8):
+    foobar_13 = foobar_12.copy()
+    foobar_13[1:-1] = foobar_12[1:-1] + foobar_4 * (foobar_1 - foobar_9 * (foobar_12[2:] - 2 * foobar_12[1:-1] + foobar_12[:-2]) / foobar_5 ** 2)
+    foobar_13[0], foobar_13[-1] = (0.0, 0.0)
+    foobar_12 = foobar_13
+    if foobar_7 % 300 == 0:
+        foobar_6.append(foobar_12.copy())
+foobar_14 = foobar_1 / (2 * foobar_9) * foobar_15 * (foobar_2 - foobar_15)",17,773,navier-stokes,diffusion/restoration,False,explicit,,,,,0,blows up to NaNs,synthetic,aligned
+NavierStokes_5,NoComm_CorrVar_InValid,NavierStokes_NoComm_CorrVar_InValid_5,"import numpy as np
+foobar_2, foobar_9, foobar_3, foobar_11 = (1.0, 0.1, -1.0, 1.0)
+foobar_10, foobar_8 = (51, 60000)
+foobar_5 = foobar_2 / (foobar_10 - 1)
+foobar_15 = np.linspace(0, foobar_2, foobar_10)
+foobar_1 = -foobar_3 / foobar_11
+foobar_12 = np.zeros(foobar_10)
+foobar_4 = 0.4 * foobar_5 ** 2 / (2 * foobar_9)
+foobar_6 = [foobar_12.copy()]
+for foobar_7 in range(foobar_8):
+    foobar_13 = foobar_12.copy()
+    foobar_13[1:-1] = foobar_12[1:-1] + foobar_4 * (foobar_1 - foobar_9 * (foobar_12[2:] - 2 * foobar_12[1:-1] + foobar_12[:-2]) / foobar_5 ** 2)
+    foobar_13[0], foobar_13[-1] = (0.0, 0.0)
+    foobar_12 = foobar_13
+    if foobar_7 < 60 or foobar_7 % 300 == 0:
+        foobar_6.append(foobar_12.copy())
+foobar_14 = foobar_1 / (2 * foobar_9) * foobar_15 * (foobar_2 - foobar_15)",17,790,navier-stokes,diffusion/restoration,False,explicit,,,,,0,blows up to NaNs,synthetic,widened
+NavierStokes_5,NoComm_InValid,NavierStokes_NoComm_InValid_5,"import numpy as np
+
+
+H, nu, dpdx, rho = 1.0, 0.1, -1.0, 1.0
+ny, nt = 51, 60000
+dy = H / (ny - 1)
+y = np.linspace(0, H, ny)
+G = -dpdx / rho
+
+
+u = np.zeros(ny)
+dt = 0.4 * dy**2 / (2 * nu)
+
+
+frames = [u.copy()]
+for n in range(nt):
+    u_new = u.copy()
+    u_new[1:-1] = u[1:-1] + dt * (G - nu * (u[2:] - 2 * u[1:-1] + u[:-2]) / dy**2)
+    u_new[0], u_new[-1] = 0.0, 0.0
+    u = u_new
+    if n % 300 == 0:
+        frames.append(u.copy())
+
+
+u_steady = G / (2 * nu) * y * (H - y)
+",26,474,navier-stokes,diffusion/restoration,False,explicit,,,,,0,blows up to NaNs,synthetic,aligned
+NavierStokes_5,NoComm_InValid,NavierStokes_NoComm_InValid_5,"import numpy as np
+
+
+H, nu, dpdx, rho = 1.0, 0.1, -1.0, 1.0
+ny, nt = 51, 60000
+dy = H / (ny - 1)
+y = np.linspace(0, H, ny)
+G = -dpdx / rho
+
+
+u = np.zeros(ny)
+dt = 0.4 * dy**2 / (2 * nu)
+
+
+frames = [u.copy()]
+for n in range(nt):
+    u_new = u.copy()
+    u_new[1:-1] = u[1:-1] + dt * (G - nu * (u[2:] - 2 * u[1:-1] + u[:-2]) / dy**2)
+    u_new[0], u_new[-1] = 0.0, 0.0
+    u = u_new
+    if n < 60 or n % 300 == 0:
+        frames.append(u.copy())
+
+
+u_steady = G / (2 * nu) * y * (H - y)
+",26,484,navier-stokes,diffusion/restoration,False,explicit,,,,,0,blows up to NaNs,synthetic,widened
+NavierStokes_7,Comm_InValid,NavierStokes_Comm_InValid_7,"import numpy as np
+
+
+# Domain and physical parameters
+nx, ny, nu, rho = 71, 71, 0.05, 1.0
+Lx, Ly = 1.0, 1.0
+dx, dy = Lx / (nx - 1), Ly / (ny - 1)
+x = np.linspace(0, Lx, nx)
+y = np.linspace(0, Ly, ny)
+X, Y = np.meshgrid(x, y, indexing=""ij"")
+
+
+u = np.zeros((nx, ny)); v = np.zeros((nx, ny)); p = np.zeros((nx, ny))
+u_lid = 1.0
+dt = 0.2 * min(dx / u_lid, dx**2 / (4 * nu))
+# advective + diffusive stability bound
+nt, nit = 6200, 60
+
+
+def pressure_poisson(p, b):
+    for _ in range(nit):
+        pn = p.copy()
+        p[1:-1, 1:-1] = ((pn[2:, 1:-1] + pn[:-2, 1:-1]) * dy**2
+                          + (pn[1:-1, 2:] + pn[1:-1, :-2]) * dx**2
+                          - b[1:-1, 1:-1] * dx**2 * dy**2) / (2 * (dx**2 + dy**2))
+        p[:, -1] = p[:, -2]
+        p[:, 0] = p[:, 1]
+        p[0, :] = p[1, :]
+        p[-1, :] = 0.0
+    return p
+        # reference pressure to fix the null space
+
+
+frames_speed = [np.sqrt(u**2 + v**2)]
+frames_uv = [(u.copy(), v.copy())]
+for n in range(nt):
+    un, vn = u.copy(), v.copy()
+    b = np.zeros((nx, ny))
+    b[1:-1, 1:-1] = rho * (
+        (1 / dt) * ((un[2:, 1:-1] - un[:-2, 1:-1]) / (2 * dx) + (vn[1:-1, 2:] - vn[1:-1, :-2]) / (2 * dy))
+        - ((un[2:, 1:-1] - un[:-2, 1:-1]) / (2 * dx)) ** 2
+    # RHS built from the divergence of the tentative velocity
+        - 2 * ((un[1:-1, 2:] - un[1:-1, :-2]) / (2 * dy) * (vn[2:, 1:-1] - vn[:-2, 1:-1]) / (2 * dx))
+        - ((vn[1:-1, 2:] - vn[1:-1, :-2]) / (2 * dy)) ** 2
+    )
+    p = pressure_poisson(p, b)
+
+
+    u[1:-1, 1:-1] = (un[1:-1, 1:-1]
+        - dt / (2 * dx) * un[1:-1, 1:-1] * (un[2:, 1:-1] - un[:-2, 1:-1])
+        - dt / (2 * dy) * vn[1:-1, 1:-1] * (un[1:-1, 2:] - un[1:-1, :-2])
+        + dt / (2 * rho * dx) * (p[2:, 1:-1] - p[:-2, 1:-1])
+        + nu * dt * ((un[2:, 1:-1] - 2 * un[1:-1, 1:-1] + un[:-2, 1:-1]) / dx**2
+                     + (un[1:-1, 2:] - 2 * un[1:-1, 1:-1] + un[1:-1, :-2]) / dy**2))
+
+
+    v[1:-1, 1:-1] = (vn[1:-1, 1:-1]
+                     # projected velocity update
+        - dt / (2 * dx) * un[1:-1, 1:-1] * (vn[2:, 1:-1] - vn[:-2, 1:-1])
+        - dt / (2 * dy) * vn[1:-1, 1:-1] * (vn[1:-1, 2:] - vn[1:-1, :-2])
+        + dt / (2 * rho * dy) * (p[1:-1, 2:] - p[1:-1, :-2])
+        + nu * dt * ((vn[2:, 1:-1] - 2 * vn[1:-1, 1:-1] + vn[:-2, 1:-1]) / dx**2
+                     + (vn[1:-1, 2:] - 2 * vn[1:-1, 1:-1] + vn[1:-1, :-2]) / dy**2))
+
+
+    u[0, :] = 0; u[-1, :] = 0; u[:, 0] = 0; u[:, -1] = u_lid
+    v[0, :] = 0; v[-1, :] = 0; v[:, 0] = 0; v[:, -1] = 0
+    if n % 62 == 0:
+        frames_speed.append(np.sqrt(u**2 + v**2))
+        frames_uv.append((u.copy(), v.copy()))
+    # no-slip walls, moving lid
+
+
+skip = 4
+
+# subsample the vector field so quiver arrows stay legible",76,2709,navier-stokes,advection/diffusion,False,explicit/implicit,,,,,7,NaNs very early on,synthetic,aligned
+NavierStokes_7,Comm_InValid,NavierStokes_Comm_InValid_7,"import numpy as np
+
+
+# Domain and physical parameters
+nx, ny, nu, rho = 71, 71, 0.05, 1.0
+Lx, Ly = 1.0, 1.0
+dx, dy = Lx / (nx - 1), Ly / (ny - 1)
+x = np.linspace(0, Lx, nx)
+y = np.linspace(0, Ly, ny)
+X, Y = np.meshgrid(x, y, indexing=""ij"")
+
+
+u = np.zeros((nx, ny)); v = np.zeros((nx, ny)); p = np.zeros((nx, ny))
+u_lid = 1.0
+dt = 0.2 * min(dx / u_lid, dx**2 / (4 * nu))
+# advective + diffusive stability bound
+nt, nit = 6200, 60
+
+
+def pressure_poisson(p, b):
+    for _ in range(nit):
+        pn = p.copy()
+        p[1:-1, 1:-1] = ((pn[2:, 1:-1] + pn[:-2, 1:-1]) * dy**2
+                          + (pn[1:-1, 2:] + pn[1:-1, :-2]) * dx**2
+                          - b[1:-1, 1:-1] * dx**2 * dy**2) / (2 * (dx**2 + dy**2))
+        p[:, -1] = p[:, -2]
+        p[:, 0] = p[:, 1]
+        p[0, :] = p[1, :]
+        p[-1, :] = 0.0
+    return p
+        # reference pressure to fix the null space
+
+
+frames_speed = [np.sqrt(u**2 + v**2)]
+frames_uv = [(u.copy(), v.copy())]
+for n in range(nt):
+    un, vn = u.copy(), v.copy()
+    b = np.zeros((nx, ny))
+    b[1:-1, 1:-1] = rho * (
+        (1 / dt) * ((un[2:, 1:-1] - un[:-2, 1:-1]) / (2 * dx) + (vn[1:-1, 2:] - vn[1:-1, :-2]) / (2 * dy))
+        - ((un[2:, 1:-1] - un[:-2, 1:-1]) / (2 * dx)) ** 2
+    # RHS built from the divergence of the tentative velocity
+        - 2 * ((un[1:-1, 2:] - un[1:-1, :-2]) / (2 * dy) * (vn[2:, 1:-1] - vn[:-2, 1:-1]) / (2 * dx))
+        - ((vn[1:-1, 2:] - vn[1:-1, :-2]) / (2 * dy)) ** 2
+    )
+    p = pressure_poisson(p, b)
+
+
+    u[1:-1, 1:-1] = (un[1:-1, 1:-1]
+        - dt / (2 * dx) * un[1:-1, 1:-1] * (un[2:, 1:-1] - un[:-2, 1:-1])
+        - dt / (2 * dy) * vn[1:-1, 1:-1] * (un[1:-1, 2:] - un[1:-1, :-2])
+        + dt / (2 * rho * dx) * (p[2:, 1:-1] - p[:-2, 1:-1])
+        + nu * dt * ((un[2:, 1:-1] - 2 * un[1:-1, 1:-1] + un[:-2, 1:-1]) / dx**2
+                     + (un[1:-1, 2:] - 2 * un[1:-1, 1:-1] + un[1:-1, :-2]) / dy**2))
+
+
+    v[1:-1, 1:-1] = (vn[1:-1, 1:-1]
+                     # projected velocity update
+        - dt / (2 * dx) * un[1:-1, 1:-1] * (vn[2:, 1:-1] - vn[:-2, 1:-1])
+        - dt / (2 * dy) * vn[1:-1, 1:-1] * (vn[1:-1, 2:] - vn[1:-1, :-2])
+        + dt / (2 * rho * dy) * (p[1:-1, 2:] - p[1:-1, :-2])
+        + nu * dt * ((vn[2:, 1:-1] - 2 * vn[1:-1, 1:-1] + vn[:-2, 1:-1]) / dx**2
+                     + (vn[1:-1, 2:] - 2 * vn[1:-1, 1:-1] + vn[1:-1, :-2]) / dy**2))
+
+
+    u[0, :] = 0; u[-1, :] = 0; u[:, 0] = 0; u[:, -1] = u_lid
+    v[0, :] = 0; v[-1, :] = 0; v[:, 0] = 0; v[:, -1] = 0
+    if n < 30 or n % 62 == 0:
+        frames_speed.append(np.sqrt(u**2 + v**2))
+        frames_uv.append((u.copy(), v.copy()))
+    # no-slip walls, moving lid
+
+
+skip = 4
+
+# subsample the vector field so quiver arrows stay legible",76,2719,navier-stokes,advection/diffusion,False,explicit/implicit,,,,,7,NaNs very early on,synthetic,widened
+NavierStokes_7,CorrComm_Invalid,NavierStokes_CorrComm_InValid_7,"import numpy as np
+
+
+# Domain and physical parameters
+nx, ny, nu, rho = 71, 71, 0.05, 1.0
+Lx, Ly = 1.0, 1.0
+dx, dy = Lx / (nx - 1), Ly / (ny - 1)
+x = np.linspace(0, Lx, nx)
+y = np.linspace(0, Ly, ny)
+X, Y = np.meshgrid(x, y, indexing=""ij"")
+
+
+u = np.zeros((nx, ny)); v = np.zeros((nx, ny)); p = np.zeros((nx, ny))
+u_lid = 1.0
+dt = 0.2 * min(dx / u_lid, dx**2 / (4 * nu))
+# sinusoidal shear-layer initial condition
+nt, nit = 6200, 60
+
+
+def pressure_poisson(p, b):
+    for _ in range(nit):
+        pn = p.copy()
+        p[1:-1, 1:-1] = ((pn[2:, 1:-1] + pn[:-2, 1:-1]) * dy**2
+                          + (pn[1:-1, 2:] + pn[1:-1, :-2]) * dx**2
+                          - b[1:-1, 1:-1] * dx**2 * dy**2) / (2 * (dx**2 + dy**2))
+        p[:, -1] = p[:, -2]
+        p[:, 0] = p[:, 1]
+        p[0, :] = p[1, :]
+        p[-1, :] = 0.0
+    return p
+        # advective + diffusive CFL, 2D
+
+
+frames_speed = [np.sqrt(u**2 + v**2)]
+frames_uv = [(u.copy(), v.copy())]
+for n in range(nt):
+    un, vn = u.copy(), v.copy()
+    b = np.zeros((nx, ny))
+    b[1:-1, 1:-1] = rho * (
+        (1 / dt) * ((un[2:, 1:-1] - un[:-2, 1:-1]) / (2 * dx) + (vn[1:-1, 2:] - vn[1:-1, :-2]) / (2 * dy))
+        - ((un[2:, 1:-1] - un[:-2, 1:-1]) / (2 * dx)) ** 2
+    # subsample for the quiver overlay so arrows stay readable
+        - 2 * ((un[1:-1, 2:] - un[1:-1, :-2]) / (2 * dy) * (vn[2:, 1:-1] - vn[:-2, 1:-1]) / (2 * dx))
+        - ((vn[1:-1, 2:] - vn[1:-1, :-2]) / (2 * dy)) ** 2
+    )
+    p = pressure_poisson(p, b)
+
+
+    u[1:-1, 1:-1] = (un[1:-1, 1:-1]
+        - dt / (2 * dx) * un[1:-1, 1:-1] * (un[2:, 1:-1] - un[:-2, 1:-1])
+        - dt / (2 * dy) * vn[1:-1, 1:-1] * (un[1:-1, 2:] - un[1:-1, :-2])
+        + dt / (2 * rho * dx) * (p[2:, 1:-1] - p[:-2, 1:-1])
+        + nu * dt * ((un[2:, 1:-1] - 2 * un[1:-1, 1:-1] + un[:-2, 1:-1]) / dx**2
+                     + (un[1:-1, 2:] - 2 * un[1:-1, 1:-1] + un[1:-1, :-2]) / dy**2))
+
+
+    v[1:-1, 1:-1] = (vn[1:-1, 1:-1]
+                     # coupled momentum update
+        - dt / (2 * dx) * un[1:-1, 1:-1] * (vn[2:, 1:-1] - vn[:-2, 1:-1])
+        - dt / (2 * dy) * vn[1:-1, 1:-1] * (vn[1:-1, 2:] - vn[1:-1, :-2])
+        + dt / (2 * rho * dy) * (p[1:-1, 2:] - p[1:-1, :-2])
+        + nu * dt * ((vn[2:, 1:-1] - 2 * vn[1:-1, 1:-1] + vn[:-2, 1:-1]) / dx**2
+                     + (vn[1:-1, 2:] - 2 * vn[1:-1, 1:-1] + vn[1:-1, :-2]) / dy**2))
+
+
+    u[0, :] = 0; u[-1, :] = 0; u[:, 0] = 0; u[:, -1] = u_lid
+    v[0, :] = 0; v[-1, :] = 0; v[:, 0] = 0; v[:, -1] = 0
+    if n % 62 == 0:
+        frames_speed.append(np.sqrt(u**2 + v**2))
+        frames_uv.append((u.copy(), v.copy()))
+    # Domain and physical parameters
+
+
+skip = 4
+
+# sinusoidal shear-layer initial condition",76,2689,navier-stokes,advection/diffusion,False,explicit/implicit,Burgers_Comm_Valid_8,burgers,"[{'donor_text': '# Domain and physical parameters', 'gt_position': 4, 'source_line_in_donor': 4, 'line_inserted': 4}, {'donor_text': '# sinusoidal shear-layer initial condition', 'gt_position': 16, 'source_line_in_donor': 13, 'line_inserted': 16}, {'donor_text': '# advective + diffusive CFL, 2D', 'gt_position': 31, 'source_line_in_donor': 20, 'line_inserted': 31}, {'donor_text': '# subsample for the quiver overlay so arrows stay readable', 'gt_position': 42, 'source_line_in_donor': 31, 'line_inserted': 42}, {'donor_text': '# coupled momentum update', 'gt_position': 58, 'source_line_in_donor': 39, 'line_inserted': 58}, {'donor_text': '# Domain and physical parameters', 'gt_position': 71, 'source_line_in_donor': 4, 'line_inserted': 71}, {'donor_text': '# sinusoidal shear-layer initial condition', 'gt_position': 76, 'source_line_in_donor': 13, 'line_inserted': 76}]",-2.0,7,NaNs very early on,synthetic,aligned
+NavierStokes_7,CorrComm_Invalid,NavierStokes_CorrComm_InValid_7,"import numpy as np
+
+
+# Domain and physical parameters
+nx, ny, nu, rho = 71, 71, 0.05, 1.0
+Lx, Ly = 1.0, 1.0
+dx, dy = Lx / (nx - 1), Ly / (ny - 1)
+x = np.linspace(0, Lx, nx)
+y = np.linspace(0, Ly, ny)
+X, Y = np.meshgrid(x, y, indexing=""ij"")
+
+
+u = np.zeros((nx, ny)); v = np.zeros((nx, ny)); p = np.zeros((nx, ny))
+u_lid = 1.0
+dt = 0.2 * min(dx / u_lid, dx**2 / (4 * nu))
+# sinusoidal shear-layer initial condition
+nt, nit = 6200, 60
+
+
+def pressure_poisson(p, b):
+    for _ in range(nit):
+        pn = p.copy()
+        p[1:-1, 1:-1] = ((pn[2:, 1:-1] + pn[:-2, 1:-1]) * dy**2
+                          + (pn[1:-1, 2:] + pn[1:-1, :-2]) * dx**2
+                          - b[1:-1, 1:-1] * dx**2 * dy**2) / (2 * (dx**2 + dy**2))
+        p[:, -1] = p[:, -2]
+        p[:, 0] = p[:, 1]
+        p[0, :] = p[1, :]
+        p[-1, :] = 0.0
+    return p
+        # advective + diffusive CFL, 2D
+
+
+frames_speed = [np.sqrt(u**2 + v**2)]
+frames_uv = [(u.copy(), v.copy())]
+for n in range(nt):
+    un, vn = u.copy(), v.copy()
+    b = np.zeros((nx, ny))
+    b[1:-1, 1:-1] = rho * (
+        (1 / dt) * ((un[2:, 1:-1] - un[:-2, 1:-1]) / (2 * dx) + (vn[1:-1, 2:] - vn[1:-1, :-2]) / (2 * dy))
+        - ((un[2:, 1:-1] - un[:-2, 1:-1]) / (2 * dx)) ** 2
+    # subsample for the quiver overlay so arrows stay readable
+        - 2 * ((un[1:-1, 2:] - un[1:-1, :-2]) / (2 * dy) * (vn[2:, 1:-1] - vn[:-2, 1:-1]) / (2 * dx))
+        - ((vn[1:-1, 2:] - vn[1:-1, :-2]) / (2 * dy)) ** 2
+    )
+    p = pressure_poisson(p, b)
+
+
+    u[1:-1, 1:-1] = (un[1:-1, 1:-1]
+        - dt / (2 * dx) * un[1:-1, 1:-1] * (un[2:, 1:-1] - un[:-2, 1:-1])
+        - dt / (2 * dy) * vn[1:-1, 1:-1] * (un[1:-1, 2:] - un[1:-1, :-2])
+        + dt / (2 * rho * dx) * (p[2:, 1:-1] - p[:-2, 1:-1])
+        + nu * dt * ((un[2:, 1:-1] - 2 * un[1:-1, 1:-1] + un[:-2, 1:-1]) / dx**2
+                     + (un[1:-1, 2:] - 2 * un[1:-1, 1:-1] + un[1:-1, :-2]) / dy**2))
+
+
+    v[1:-1, 1:-1] = (vn[1:-1, 1:-1]
+                     # coupled momentum update
+        - dt / (2 * dx) * un[1:-1, 1:-1] * (vn[2:, 1:-1] - vn[:-2, 1:-1])
+        - dt / (2 * dy) * vn[1:-1, 1:-1] * (vn[1:-1, 2:] - vn[1:-1, :-2])
+        + dt / (2 * rho * dy) * (p[1:-1, 2:] - p[1:-1, :-2])
+        + nu * dt * ((vn[2:, 1:-1] - 2 * vn[1:-1, 1:-1] + vn[:-2, 1:-1]) / dx**2
+                     + (vn[1:-1, 2:] - 2 * vn[1:-1, 1:-1] + vn[1:-1, :-2]) / dy**2))
+
+
+    u[0, :] = 0; u[-1, :] = 0; u[:, 0] = 0; u[:, -1] = u_lid
+    v[0, :] = 0; v[-1, :] = 0; v[:, 0] = 0; v[:, -1] = 0
+    if n < 30 or n % 62 == 0:
+        frames_speed.append(np.sqrt(u**2 + v**2))
+        frames_uv.append((u.copy(), v.copy()))
+    # Domain and physical parameters
+
+
+skip = 4
+
+# sinusoidal shear-layer initial condition",76,2699,navier-stokes,advection/diffusion,False,explicit/implicit,Burgers_Comm_Valid_8,burgers,"[{'donor_text': '# Domain and physical parameters', 'gt_position': 4, 'source_line_in_donor': 4, 'line_inserted': 4}, {'donor_text': '# sinusoidal shear-layer initial condition', 'gt_position': 16, 'source_line_in_donor': 13, 'line_inserted': 16}, {'donor_text': '# advective + diffusive CFL, 2D', 'gt_position': 31, 'source_line_in_donor': 20, 'line_inserted': 31}, {'donor_text': '# subsample for the quiver overlay so arrows stay readable', 'gt_position': 42, 'source_line_in_donor': 31, 'line_inserted': 42}, {'donor_text': '# coupled momentum update', 'gt_position': 58, 'source_line_in_donor': 39, 'line_inserted': 58}, {'donor_text': '# Domain and physical parameters', 'gt_position': 71, 'source_line_in_donor': 4, 'line_inserted': 71}, {'donor_text': '# sinusoidal shear-layer initial condition', 'gt_position': 76, 'source_line_in_donor': 13, 'line_inserted': 76}]",-2.0,7,NaNs very early on,synthetic,widened
+NavierStokes_7,NoComm_CorrVar_InValid,NavierStokes_NoComm_CorrVar_InValid_7,"import numpy as np
+foobar_16, foobar_17, foobar_15, foobar_20 = (71, 71, 0.05, 1.0)
+foobar_1, foobar_2 = (1.0, 1.0)
+foobar_8, foobar_9 = (foobar_1 / (foobar_16 - 1), foobar_2 / (foobar_17 - 1))
+foobar_27 = np.linspace(0, foobar_1, foobar_16)
+foobar_28 = np.linspace(0, foobar_2, foobar_17)
+foobar_3, foobar_4 = np.meshgrid(foobar_27, foobar_28, indexing='ij')
+foobar_22 = np.zeros((foobar_16, foobar_17))
+foobar_25 = np.zeros((foobar_16, foobar_17))
+foobar_18 = np.zeros((foobar_16, foobar_17))
+foobar_23 = 1.0
+foobar_7 = 0.2 * min(foobar_8 / foobar_23, foobar_8 ** 2 / (4 * foobar_15))
+foobar_14, foobar_13 = (6200, 60)
+
+def fn1(foobar_18, foobar_6):
+    for foobar_5 in range(foobar_13):
+        foobar_19 = foobar_18.copy()
+        foobar_18[1:-1, 1:-1] = ((foobar_19[2:, 1:-1] + foobar_19[:-2, 1:-1]) * foobar_9 ** 2 + (foobar_19[1:-1, 2:] + foobar_19[1:-1, :-2]) * foobar_8 ** 2 - foobar_6[1:-1, 1:-1] * foobar_8 ** 2 * foobar_9 ** 2) / (2 * (foobar_8 ** 2 + foobar_9 ** 2))
+        foobar_18[:, -1] = foobar_18[:, -2]
+        foobar_18[:, 0] = foobar_18[:, 1]
+        foobar_18[0, :] = foobar_18[1, :]
+        foobar_18[-1, :] = 0.0
+    return foobar_18
+foobar_10 = [np.sqrt(foobar_22 ** 2 + foobar_25 ** 2)]
+foobar_11 = [(foobar_22.copy(), foobar_25.copy())]
+for foobar_12 in range(foobar_14):
+    foobar_24, foobar_26 = (foobar_22.copy(), foobar_25.copy())
+    foobar_6 = np.zeros((foobar_16, foobar_17))
+    foobar_6[1:-1, 1:-1] = foobar_20 * (1 / foobar_7 * ((foobar_24[2:, 1:-1] - foobar_24[:-2, 1:-1]) / (2 * foobar_8) + (foobar_26[1:-1, 2:] - foobar_26[1:-1, :-2]) / (2 * foobar_9)) - ((foobar_24[2:, 1:-1] - foobar_24[:-2, 1:-1]) / (2 * foobar_8)) ** 2 - 2 * ((foobar_24[1:-1, 2:] - foobar_24[1:-1, :-2]) / (2 * foobar_9) * (foobar_26[2:, 1:-1] - foobar_26[:-2, 1:-1]) / (2 * foobar_8)) - ((foobar_26[1:-1, 2:] - foobar_26[1:-1, :-2]) / (2 * foobar_9)) ** 2)
+    foobar_18 = fn1(foobar_18, foobar_6)
+    foobar_22[1:-1, 1:-1] = foobar_24[1:-1, 1:-1] - foobar_7 / (2 * foobar_8) * foobar_24[1:-1, 1:-1] * (foobar_24[2:, 1:-1] - foobar_24[:-2, 1:-1]) - foobar_7 / (2 * foobar_9) * foobar_26[1:-1, 1:-1] * (foobar_24[1:-1, 2:] - foobar_24[1:-1, :-2]) + foobar_7 / (2 * foobar_20 * foobar_8) * (foobar_18[2:, 1:-1] - foobar_18[:-2, 1:-1]) + foobar_15 * foobar_7 * ((foobar_24[2:, 1:-1] - 2 * foobar_24[1:-1, 1:-1] + foobar_24[:-2, 1:-1]) / foobar_8 ** 2 + (foobar_24[1:-1, 2:] - 2 * foobar_24[1:-1, 1:-1] + foobar_24[1:-1, :-2]) / foobar_9 ** 2)
+    foobar_25[1:-1, 1:-1] = foobar_26[1:-1, 1:-1] - foobar_7 / (2 * foobar_8) * foobar_24[1:-1, 1:-1] * (foobar_26[2:, 1:-1] - foobar_26[:-2, 1:-1]) - foobar_7 / (2 * foobar_9) * foobar_26[1:-1, 1:-1] * (foobar_26[1:-1, 2:] - foobar_26[1:-1, :-2]) + foobar_7 / (2 * foobar_20 * foobar_9) * (foobar_18[1:-1, 2:] - foobar_18[1:-1, :-2]) + foobar_15 * foobar_7 * ((foobar_26[2:, 1:-1] - 2 * foobar_26[1:-1, 1:-1] + foobar_26[:-2, 1:-1]) / foobar_8 ** 2 + (foobar_26[1:-1, 2:] - 2 * foobar_26[1:-1, 1:-1] + foobar_26[1:-1, :-2]) / foobar_9 ** 2)
+    foobar_22[0, :] = 0
+    foobar_22[-1, :] = 0
+    foobar_22[:, 0] = 0
+    foobar_22[:, -1] = foobar_23
+    foobar_25[0, :] = 0
+    foobar_25[-1, :] = 0
+    foobar_25[:, 0] = 0
+    foobar_25[:, -1] = 0
+    if foobar_12 % 62 == 0:
+        foobar_10.append(np.sqrt(foobar_22 ** 2 + foobar_25 ** 2))
+        foobar_11.append((foobar_22.copy(), foobar_25.copy()))
+foobar_21 = 4",44,3373,navier-stokes,advection/diffusion,False,explicit/implicit,,,,,0,NaNs very early on,synthetic,aligned
+NavierStokes_7,NoComm_CorrVar_InValid,NavierStokes_NoComm_CorrVar_InValid_7,"import numpy as np
+foobar_16, foobar_17, foobar_15, foobar_20 = (71, 71, 0.05, 1.0)
+foobar_1, foobar_2 = (1.0, 1.0)
+foobar_8, foobar_9 = (foobar_1 / (foobar_16 - 1), foobar_2 / (foobar_17 - 1))
+foobar_27 = np.linspace(0, foobar_1, foobar_16)
+foobar_28 = np.linspace(0, foobar_2, foobar_17)
+foobar_3, foobar_4 = np.meshgrid(foobar_27, foobar_28, indexing='ij')
+foobar_22 = np.zeros((foobar_16, foobar_17))
+foobar_25 = np.zeros((foobar_16, foobar_17))
+foobar_18 = np.zeros((foobar_16, foobar_17))
+foobar_23 = 1.0
+foobar_7 = 0.2 * min(foobar_8 / foobar_23, foobar_8 ** 2 / (4 * foobar_15))
+foobar_14, foobar_13 = (6200, 60)
+
+def fn1(foobar_18, foobar_6):
+    for foobar_5 in range(foobar_13):
+        foobar_19 = foobar_18.copy()
+        foobar_18[1:-1, 1:-1] = ((foobar_19[2:, 1:-1] + foobar_19[:-2, 1:-1]) * foobar_9 ** 2 + (foobar_19[1:-1, 2:] + foobar_19[1:-1, :-2]) * foobar_8 ** 2 - foobar_6[1:-1, 1:-1] * foobar_8 ** 2 * foobar_9 ** 2) / (2 * (foobar_8 ** 2 + foobar_9 ** 2))
+        foobar_18[:, -1] = foobar_18[:, -2]
+        foobar_18[:, 0] = foobar_18[:, 1]
+        foobar_18[0, :] = foobar_18[1, :]
+        foobar_18[-1, :] = 0.0
+    return foobar_18
+foobar_10 = [np.sqrt(foobar_22 ** 2 + foobar_25 ** 2)]
+foobar_11 = [(foobar_22.copy(), foobar_25.copy())]
+for foobar_12 in range(foobar_14):
+    foobar_24, foobar_26 = (foobar_22.copy(), foobar_25.copy())
+    foobar_6 = np.zeros((foobar_16, foobar_17))
+    foobar_6[1:-1, 1:-1] = foobar_20 * (1 / foobar_7 * ((foobar_24[2:, 1:-1] - foobar_24[:-2, 1:-1]) / (2 * foobar_8) + (foobar_26[1:-1, 2:] - foobar_26[1:-1, :-2]) / (2 * foobar_9)) - ((foobar_24[2:, 1:-1] - foobar_24[:-2, 1:-1]) / (2 * foobar_8)) ** 2 - 2 * ((foobar_24[1:-1, 2:] - foobar_24[1:-1, :-2]) / (2 * foobar_9) * (foobar_26[2:, 1:-1] - foobar_26[:-2, 1:-1]) / (2 * foobar_8)) - ((foobar_26[1:-1, 2:] - foobar_26[1:-1, :-2]) / (2 * foobar_9)) ** 2)
+    foobar_18 = fn1(foobar_18, foobar_6)
+    foobar_22[1:-1, 1:-1] = foobar_24[1:-1, 1:-1] - foobar_7 / (2 * foobar_8) * foobar_24[1:-1, 1:-1] * (foobar_24[2:, 1:-1] - foobar_24[:-2, 1:-1]) - foobar_7 / (2 * foobar_9) * foobar_26[1:-1, 1:-1] * (foobar_24[1:-1, 2:] - foobar_24[1:-1, :-2]) + foobar_7 / (2 * foobar_20 * foobar_8) * (foobar_18[2:, 1:-1] - foobar_18[:-2, 1:-1]) + foobar_15 * foobar_7 * ((foobar_24[2:, 1:-1] - 2 * foobar_24[1:-1, 1:-1] + foobar_24[:-2, 1:-1]) / foobar_8 ** 2 + (foobar_24[1:-1, 2:] - 2 * foobar_24[1:-1, 1:-1] + foobar_24[1:-1, :-2]) / foobar_9 ** 2)
+    foobar_25[1:-1, 1:-1] = foobar_26[1:-1, 1:-1] - foobar_7 / (2 * foobar_8) * foobar_24[1:-1, 1:-1] * (foobar_26[2:, 1:-1] - foobar_26[:-2, 1:-1]) - foobar_7 / (2 * foobar_9) * foobar_26[1:-1, 1:-1] * (foobar_26[1:-1, 2:] - foobar_26[1:-1, :-2]) + foobar_7 / (2 * foobar_20 * foobar_9) * (foobar_18[1:-1, 2:] - foobar_18[1:-1, :-2]) + foobar_15 * foobar_7 * ((foobar_26[2:, 1:-1] - 2 * foobar_26[1:-1, 1:-1] + foobar_26[:-2, 1:-1]) / foobar_8 ** 2 + (foobar_26[1:-1, 2:] - 2 * foobar_26[1:-1, 1:-1] + foobar_26[1:-1, :-2]) / foobar_9 ** 2)
+    foobar_22[0, :] = 0
+    foobar_22[-1, :] = 0
+    foobar_22[:, 0] = 0
+    foobar_22[:, -1] = foobar_23
+    foobar_25[0, :] = 0
+    foobar_25[-1, :] = 0
+    foobar_25[:, 0] = 0
+    foobar_25[:, -1] = 0
+    if foobar_12 < 30 or foobar_12 % 62 == 0:
+        foobar_10.append(np.sqrt(foobar_22 ** 2 + foobar_25 ** 2))
+        foobar_11.append((foobar_22.copy(), foobar_25.copy()))
+foobar_21 = 4",44,3391,navier-stokes,advection/diffusion,False,explicit/implicit,,,,,0,NaNs very early on,synthetic,widened
+NavierStokes_7,NoComm_InValid,NavierStokes_NoComm_InValid_7,"import numpy as np
+
+
+nx, ny, nu, rho = 71, 71, 0.05, 1.0
+Lx, Ly = 1.0, 1.0
+dx, dy = Lx / (nx - 1), Ly / (ny - 1)
+x = np.linspace(0, Lx, nx)
+y = np.linspace(0, Ly, ny)
+X, Y = np.meshgrid(x, y, indexing=""ij"")
+
+
+u = np.zeros((nx, ny)); v = np.zeros((nx, ny)); p = np.zeros((nx, ny))
+u_lid = 1.0
+dt = 0.2 * min(dx / u_lid, dx**2 / (4 * nu))
+nt, nit = 6200, 60
+
+
+def pressure_poisson(p, b):
+    for _ in range(nit):
+        pn = p.copy()
+        p[1:-1, 1:-1] = ((pn[2:, 1:-1] + pn[:-2, 1:-1]) * dy**2
+                          + (pn[1:-1, 2:] + pn[1:-1, :-2]) * dx**2
+                          - b[1:-1, 1:-1] * dx**2 * dy**2) / (2 * (dx**2 + dy**2))
+        p[:, -1] = p[:, -2]
+        p[:, 0] = p[:, 1]
+        p[0, :] = p[1, :]
+        p[-1, :] = 0.0
+    return p
+
+
+frames_speed = [np.sqrt(u**2 + v**2)]
+frames_uv = [(u.copy(), v.copy())]
+for n in range(nt):
+    un, vn = u.copy(), v.copy()
+    b = np.zeros((nx, ny))
+    b[1:-1, 1:-1] = rho * (
+        (1 / dt) * ((un[2:, 1:-1] - un[:-2, 1:-1]) / (2 * dx) + (vn[1:-1, 2:] - vn[1:-1, :-2]) / (2 * dy))
+        - ((un[2:, 1:-1] - un[:-2, 1:-1]) / (2 * dx)) ** 2
+        - 2 * ((un[1:-1, 2:] - un[1:-1, :-2]) / (2 * dy) * (vn[2:, 1:-1] - vn[:-2, 1:-1]) / (2 * dx))
+        - ((vn[1:-1, 2:] - vn[1:-1, :-2]) / (2 * dy)) ** 2
+    )
+    p = pressure_poisson(p, b)
+
+
+    u[1:-1, 1:-1] = (un[1:-1, 1:-1]
+        - dt / (2 * dx) * un[1:-1, 1:-1] * (un[2:, 1:-1] - un[:-2, 1:-1])
+        - dt / (2 * dy) * vn[1:-1, 1:-1] * (un[1:-1, 2:] - un[1:-1, :-2])
+        + dt / (2 * rho * dx) * (p[2:, 1:-1] - p[:-2, 1:-1])
+        + nu * dt * ((un[2:, 1:-1] - 2 * un[1:-1, 1:-1] + un[:-2, 1:-1]) / dx**2
+                     + (un[1:-1, 2:] - 2 * un[1:-1, 1:-1] + un[1:-1, :-2]) / dy**2))
+
+
+    v[1:-1, 1:-1] = (vn[1:-1, 1:-1]
+        - dt / (2 * dx) * un[1:-1, 1:-1] * (vn[2:, 1:-1] - vn[:-2, 1:-1])
+        - dt / (2 * dy) * vn[1:-1, 1:-1] * (vn[1:-1, 2:] - vn[1:-1, :-2])
+        + dt / (2 * rho * dy) * (p[1:-1, 2:] - p[1:-1, :-2])
+        + nu * dt * ((vn[2:, 1:-1] - 2 * vn[1:-1, 1:-1] + vn[:-2, 1:-1]) / dx**2
+                     + (vn[1:-1, 2:] - 2 * vn[1:-1, 1:-1] + vn[1:-1, :-2]) / dy**2))
+
+
+    u[0, :] = 0; u[-1, :] = 0; u[:, 0] = 0; u[:, -1] = u_lid
+    v[0, :] = 0; v[-1, :] = 0; v[:, 0] = 0; v[:, -1] = 0
+    if n % 62 == 0:
+        frames_speed.append(np.sqrt(u**2 + v**2))
+        frames_uv.append((u.copy(), v.copy()))
+
+
+skip = 4
+",69,2383,navier-stokes,advection/diffusion,False,explicit/implicit,,,,,0,NaNs very early on,synthetic,aligned
+NavierStokes_7,NoComm_InValid,NavierStokes_NoComm_InValid_7,"import numpy as np
+
+
+nx, ny, nu, rho = 71, 71, 0.05, 1.0
+Lx, Ly = 1.0, 1.0
+dx, dy = Lx / (nx - 1), Ly / (ny - 1)
+x = np.linspace(0, Lx, nx)
+y = np.linspace(0, Ly, ny)
+X, Y = np.meshgrid(x, y, indexing=""ij"")
+
+
+u = np.zeros((nx, ny)); v = np.zeros((nx, ny)); p = np.zeros((nx, ny))
+u_lid = 1.0
+dt = 0.2 * min(dx / u_lid, dx**2 / (4 * nu))
+nt, nit = 6200, 60
+
+
+def pressure_poisson(p, b):
+    for _ in range(nit):
+        pn = p.copy()
+        p[1:-1, 1:-1] = ((pn[2:, 1:-1] + pn[:-2, 1:-1]) * dy**2
+                          + (pn[1:-1, 2:] + pn[1:-1, :-2]) * dx**2
+                          - b[1:-1, 1:-1] * dx**2 * dy**2) / (2 * (dx**2 + dy**2))
+        p[:, -1] = p[:, -2]
+        p[:, 0] = p[:, 1]
+        p[0, :] = p[1, :]
+        p[-1, :] = 0.0
+    return p
+
+
+frames_speed = [np.sqrt(u**2 + v**2)]
+frames_uv = [(u.copy(), v.copy())]
+for n in range(nt):
+    un, vn = u.copy(), v.copy()
+    b = np.zeros((nx, ny))
+    b[1:-1, 1:-1] = rho * (
+        (1 / dt) * ((un[2:, 1:-1] - un[:-2, 1:-1]) / (2 * dx) + (vn[1:-1, 2:] - vn[1:-1, :-2]) / (2 * dy))
+        - ((un[2:, 1:-1] - un[:-2, 1:-1]) / (2 * dx)) ** 2
+        - 2 * ((un[1:-1, 2:] - un[1:-1, :-2]) / (2 * dy) * (vn[2:, 1:-1] - vn[:-2, 1:-1]) / (2 * dx))
+        - ((vn[1:-1, 2:] - vn[1:-1, :-2]) / (2 * dy)) ** 2
+    )
+    p = pressure_poisson(p, b)
+
+
+    u[1:-1, 1:-1] = (un[1:-1, 1:-1]
+        - dt / (2 * dx) * un[1:-1, 1:-1] * (un[2:, 1:-1] - un[:-2, 1:-1])
+        - dt / (2 * dy) * vn[1:-1, 1:-1] * (un[1:-1, 2:] - un[1:-1, :-2])
+        + dt / (2 * rho * dx) * (p[2:, 1:-1] - p[:-2, 1:-1])
+        + nu * dt * ((un[2:, 1:-1] - 2 * un[1:-1, 1:-1] + un[:-2, 1:-1]) / dx**2
+                     + (un[1:-1, 2:] - 2 * un[1:-1, 1:-1] + un[1:-1, :-2]) / dy**2))
+
+
+    v[1:-1, 1:-1] = (vn[1:-1, 1:-1]
+        - dt / (2 * dx) * un[1:-1, 1:-1] * (vn[2:, 1:-1] - vn[:-2, 1:-1])
+        - dt / (2 * dy) * vn[1:-1, 1:-1] * (vn[1:-1, 2:] - vn[1:-1, :-2])
+        + dt / (2 * rho * dy) * (p[1:-1, 2:] - p[1:-1, :-2])
+        + nu * dt * ((vn[2:, 1:-1] - 2 * vn[1:-1, 1:-1] + vn[:-2, 1:-1]) / dx**2
+                     + (vn[1:-1, 2:] - 2 * vn[1:-1, 1:-1] + vn[1:-1, :-2]) / dy**2))
+
+
+    u[0, :] = 0; u[-1, :] = 0; u[:, 0] = 0; u[:, -1] = u_lid
+    v[0, :] = 0; v[-1, :] = 0; v[:, 0] = 0; v[:, -1] = 0
+    if n < 30 or n % 62 == 0:
+        frames_speed.append(np.sqrt(u**2 + v**2))
+        frames_uv.append((u.copy(), v.copy()))
+
+
+skip = 4
+",69,2393,navier-stokes,advection/diffusion,False,explicit/implicit,,,,,0,NaNs very early on,synthetic,widened

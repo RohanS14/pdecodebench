@@ -1,6 +1,6 @@
 # PDE Benchmark Dataset — Overview
 
-**Current version:** jul28 release (6 CSVs under `data/`, see below)
+**Current version:** jul28 release (6 eval CSVs + 1 ablation CSV under `data/`, see below)
 **Rows:** merged_mod_jul28.csv has 256 (32 ground-truth problems × 8 modification types)
 
 Older dataset versions (`pdedata_clean.xlsx` through `pdedata_clean_v5.xlsx`, plus
@@ -68,11 +68,55 @@ interpretable on its own.
 **Balance (merged_mod):** 64 rows per `pde_class`, 32 rows per `mod_type`,
 128 valid / 128 invalid.
 
+### Ablation file (not part of the evaluation set)
+
+| File | Rows | Contents |
+|---|---|---|
+| `leak_ablation_jul28.csv` | 48 | 6 samples x 4 invalid conditions x 2 `leak_variant`s |
+
+Pairs each of the six repaired samples (see "Resolved" under Known Limitations) with its
+pre-repair self, so the leak can be *measured* rather than only removed. `leak_variant` is
+`widened` (the original, leaky code) or `aligned` (the repaired code, lifted byte-identically
+from the canonical file). The two states are asserted at build time to differ in `code` and
+nothing else — same donors, same labels, same metadata — so an accuracy gap between them is
+attributable to the leak alone.
+
+`merged_mod_jul28.csv` stays 256 rows and fully balanced; the ablation is an opt-in second
+pass, so the balance assertions in `run_eval.py` / `run_mc_eval.py` are unaffected.
+
 ---
 
 ## Auditing
 
 Two scripts verify the release. Both are reproducible and should be re-run after any rebuild.
+
+**Run them as batch jobs, not on a login node.** `sbatch/run_dataset_audit.sbatch` submits both
+to the `cpu_short` partition. The execution sweep runs 256 simulations — several are
+multi-minute JAX integrations and one is an MPI program — which does not belong on a shared
+login node. The job is CPU-only by design (`JAX_PLATFORMS=cpu`, `MPLBACKEND=Agg`); the
+simulations are numpy/scipy/mpi4py, so a GPU node would be wasted.
+
+### Environment: two native libraries the cluster does not provide
+
+Executing the full dataset needs more than `pip install`. Both gaps are missing C libraries,
+and `sbatch/setup_fftw_mpi.sbatch` closes them in one job.
+
+| Missing | Symptom | Cause |
+|---|---|---|
+| FFTW3 dev files | `mpi4py-fft` build fails at *metadata generation* | The system ships only single-precision **runtime** FFTW (`/usr/lib64/libfftw3f.so.3`): no `fftw3.h`, no unversioned `.so` to link against, no double precision, and `module spider fftw` finds nothing. `mpi4py-fft` is a C extension around FFTW3 and probes for it while generating metadata, so a missing C library surfaces at that misleadingly early stage. |
+| `libmpi` | `RuntimeError: cannot load MPI library` | Absent from `/usr/lib64` entirely. OpenMPI exists only as modules (`openmpi/gcc/5.0.9` and friends), so a pip-installed `mpi4py` imports fine but cannot `dlopen` libmpi at runtime. |
+
+The setup job loads `openmpi/gcc/5.0.9`, builds FFTW 3.3.10 with
+`--enable-mpi --enable-threads --enable-shared` **into the venv prefix**
+(`/scratch/ehb7466/envs/pdecodebench`) — deliberately, because `mpi4py-fft`'s `setup.py`
+searches `<prefix>/lib` and `<prefix>/lib64`, so the build then finds it with no extra
+configuration — then reinstalls `mpi4py` from source against that MPI and installs
+`mpi4py-fft`. The FFTW tarball must be staged at `/scratch/ehb7466/src/` beforehand, since
+compute nodes have no internet.
+
+Only `NavierStokes_3` needs any of this. **Nothing in the benchmark itself requires executing
+the code** — models are shown the code as text, and execution exists purely to validate the
+dataset.
 
 **`datagen/full_audit.py`** — 49 structural and semantic checks, no simulation dependencies.
 Every property this document claims is restated there as an executable assertion, grouped so
@@ -81,9 +125,8 @@ consistency, condition semantics (comments are the *only* difference between `Co
 `NoComm_X`; CorrVar is a pure rename; no author-declared identifier survives), donor
 constraints, label leakage, cross-condition program identity, and parseability.
 
-**Current status: 48/49 pass.** The single failure is the sampling-cadence leak in 5 samples
-documented under "Known Limitations" — deliberately left open pending review, so the script
-is expected to report it until that is resolved.
+**Current status: 49/49 pass** (2026-07-30). The last outstanding failure — the sampling-cadence
+leak in 5 samples — was repaired; see "Resolved" under Known Limitations.
 
 **`datagen/full_audit_exec.py`** — executes all 256 rows, one subprocess each with a hard
 timeout. Checks that every row runs, that no valid row trips the NaN/magnitude heuristic,
@@ -220,10 +263,10 @@ Because the old `_patch_*_kwargs` helpers edited call *form*, `NavierStokes_4` a
 were not previously pure renames of their sources. They are now, so the pure-rename
 property holds uniformly across the dataset for the first time.
 
-### Open: validity leaks through sampling cadence in 5 samples
+### Resolved (2026-07-30): validity leaked through sampling cadence in 5 samples
 
 `Burgers_6`, `Burgers_7`, `Burgers_8`, `NavierStokes_5` and `NavierStokes_7` (all synthetic)
-widen their snapshot guard in the invalid variant only:
+widened their snapshot guard in the invalid variant only:
 
 ```python
 # valid                          # invalid
@@ -246,18 +289,39 @@ correlates perfectly with the label: **5/5 invalid variants carry it, 0/5 valid 
 condition hides it. A model could answer "is this valid?" on these five by spotting the
 extra clause, without evaluating the physics.
 
-Aligning the guard to the valid variant would be **provably physics-neutral**: `frames` is
-write-only in all five (initialised and appended to, never read, because `parse_newcode.py`
-strips the plotting code), so no computed value, stored array or execution outcome would
-change. **Not applied** — deferred pending review. Until then, treat validity results on
-these five base problems as confounded, or exclude them.
+**Fixed** by aligning the guard to the valid twin (`_SNAPSHOT_GUARD_REPAIRS` in
+`build_jul28.py`, applied before any condition is derived so it propagates to all four
+invalid conditions). This is **behavior-preserving, not merely harmless**: the list each
+guard gates is write-only in all five — verified by AST over every `Name` node, counting 0
+genuine `Load` references once the `.append` receiver is excluded, because
+`parse_newcode.py` strips the plotting code that once consumed it. `NavierStokes_7` has two
+such lists (`frames_speed`, `frames_uv`); both are inert. No computed value, stored array or
+execution outcome moves.
 
-### Open: `Heat_2` changes grid resolution alongside its sign flip
+### Resolved (2026-07-30): `Heat_2` changed grid resolution alongside its sign flip
 
-`Heat_2`'s invalid variant changes `n = 100` → `n = 1000` in addition to its intended
-`np.matmul(A, u) + b` → `np.matmul(A, -u) - b`. A 10x grid refinement alters computed state,
-so the audit does not classify it as incidental, but it is not obviously part of the
-intended invalidity either. **Not changed** — flagged for review.
+`Heat_2`'s invalid variant changed `n = 100` → `n = 1000` in addition to its intended
+`np.matmul(A, u) + b` → `np.matmul(A, -u) - b`.
+
+The refinement is not part of the error and is not needed to produce it. The flip negates the
+entire right-hand side, so `A`'s eigenvalues turn positive and the solution grows
+exponentially — ill-posedness (anti-diffusion), not a stability threshold, and therefore
+grid-independent. Measured against the sample's own `invalidity_note`, *"Has spiking negative
+temperatures at u[1]"*:
+
+| | `n = 1000` (was) | `n = 100` (now) |
+|---|---|---|
+| Timesteps where `u[:,1] < 0` | 1 / 300 | **45 / 300** |
+| Cells with negative temperature | 51 | **4465** |
+| max\|u\| | 1.8e22 | 9.6e306 |
+
+Aligning the grid **strengthens** the documented failure mode. The tenfold refinement made
+the system 100x stiffer (the stencil scales as `alpha/dx**2`, with `dx = 1/n`), pushing LSODA
+into tiny steps and truncating the very spiking the note describes. The valid twin at
+`n = 100` stays clean (0 negative cells, max 5.1e3), so the valid/invalid contrast is intact.
+
+**Both repairs above are reversible for measurement:** `data/leak_ablation_jul28.csv` ships
+the pre-repair and post-repair code side by side for all 6 samples. See "Ablation file" above.
 
 ### Leaks that renaming cannot reach
 
@@ -279,7 +343,7 @@ method in code text, and none retains a module docstring.
 
 ## Version History
 
-### jul28 — current (6 CSVs, see Structure above)
+### jul28 — current (6 eval CSVs + leak_ablation, see Structure above)
 
 Full two-source rebuild. Old single-file xlsx versions (v1-v5) moved to
 `data/archive/`.
@@ -379,6 +443,16 @@ Full two-source rebuild. Old single-file xlsx versions (v1-v5) moved to
   `Comm_InValid`/`NoComm_InValid`/`NoComm_CorrVar_InValid` all had it. Now propagated from the
   receiver row: present on all 128 invalid rows, `NaN` on all 128 valid rows, and identical
   across each `gt_sample`'s 4 invalid rows.
+- **(2026-07-30) The last two label-correlated artifacts were repaired**, taking the static
+  audit from 48/49 to **49/49**. The snapshot-guard leak in 5 synthetic samples and `Heat_2`'s
+  grid refinement are both detailed under "Known Limitations" above, with the evidence that
+  each is behavior-preserving. Both land in `normalize_source_defects()`, before any condition
+  is derived, so the repair reaches all four invalid conditions of each sample.
+  Changed **24 of 256** mod rows (6 samples x 4 invalid conditions) and 6 of 64 base rows;
+  **zero valid rows and zero non-code columns** moved. Every repair asserts that it fired —
+  these are literal substitutions against source text, and a source edit that changed the
+  spelling would otherwise make one a silent no-op, which looks exactly like a clean dataset.
+  The pre-repair code is preserved in `data/leak_ablation_jul28.csv`.
 - **Base-file row order was nondeterministic.** `_finalize()` sorted on
   `["gt_sample", "mod_type"]` filtered to columns present, but `BASE_COL_ORDER` has no
   `mod_type` — so base files sorted on `gt_sample` alone, two tied rows per value, under
@@ -391,20 +465,41 @@ inline-comment-to-whole-line normalization via `tokenize`) — see the entry bel
 Now also emits the 32-row base format via a new `build_base_rows()` function
 mirroring `parse_humangen.py`'s.
 
-**Execution check** (`eval/verify_simulations.py`, extended to accept CSV input and
-an output-dir CLI arg) against all 256 `merged_mod_jul28.csv` rows:
-**256/256 execute, 0 errors, 0 false positives on valid code** (after stripping
-`NavierStokes_3`'s hardcoded assertion -- see fix above; all 4 of its invalid
-variants now run to completion and are correctly flagged as anomalous via NaN
-propagation from the division-by-zero bug). 36/128 invalid rows (28%) don't trip
-the NaN/magnitude-spike heuristic — cross-checked every one against its own
-`invalidity_note`: 100% match a genuinely subtle failure mode (jagged/scattered
-solution, spikes without blow-up, symmetry breaking, uneven spreading, linear
-drift, boundary violation, losing oscillatory character), not pipeline defects.
-Specifically verified `Heat_3` (human, bounded/no-NaN, matches its subtle
-"negative temperatures" note) and `Wave_4` (human, genuinely produces NaN
-throughout when its `if __name__ == "__main__":` block is executed, matches its
-"Causes NaNs" note) both behave exactly as designed.
+**Execution check.** An earlier run of `eval/verify_simulations.py` (extended to accept CSV
+input and an output-dir CLI arg) reported **256/256 execute, 0 errors** after stripping
+`NavierStokes_3`'s hardcoded assertion (see fix above).
+
+**Re-verified 2026-07-29 with `datagen/full_audit_exec.py`** against the rebuilt dataset:
+
+| Check | Result |
+|---|---|
+| Rows executing | **248 / 256** |
+| Valid rows falsely flagged anomalous | **0 / 124** |
+| All 4 valid conditions produce identical numbers | **PASS** (31 base problems) |
+| All 4 invalid conditions produce identical numbers | **PASS** (31 base problems) |
+
+The cross-condition identity result is the strongest integrity evidence available: a problem's
+four surface conditions are the same program with different comments and identifiers, so
+bit-identical numerics prove that comment stripping, donor-comment injection and variable
+obfuscation did not perturb the physics anywhere.
+
+The 8 non-executing rows are **all 8 conditions of `NavierStokes_3`**, all failing with
+`RuntimeError: cannot load MPI library`. This is an **environment gap, not a data defect** —
+that sample uses `mpi4py`/`mpi4py_fft` distributed FFT, and `mpi4py-fft` does not build in the
+`envs/pdecodebench` venv (its metadata generation fails). Reproducing the full 256/256 result
+requires a working MPI toolchain. `NavierStokes_3` is consequently the one base problem whose
+cross-condition identity has not been verified here.
+
+**36 of 124 executed invalid rows** don't trip the NaN/magnitude heuristic — exactly 9 base
+problems × their 4 invalid conditions: `Burgers_2`, `Burgers_4`, `Burgers_7`, `Heat_3`,
+`Heat_6`, `Heat_7`, `NavierStokes_6`, `Wave_3`, `Wave_5`. Cross-checked against their own
+`invalidity_note`: 9/9 describe a bounded, physics-level wrongness that by construction cannot
+produce NaN or a magnitude spike — "creates very violent *bounded* oscillations", "breaks
+symmetry", "heat spreads unevenly by direction", "values climb up linearly", "wave leaves the
+boundary conditions", "ends up looking like just diffusion, no oscillations". The heuristic's
+silence is therefore correct, not a pipeline defect. The remaining 23 invalid problems do trip
+it. **Invalidity labels must be read from `phys_valid`, never inferred from execution
+behavior.**
 
 ### v5 (`data/archive/pdedata_clean_v5.xlsx`)
 

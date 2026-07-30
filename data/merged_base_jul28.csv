@@ -606,7 +606,7 @@ def fn(u, t, A, b, k, dx):
 
 # Solves using the scipy method odeint, which is a wrapper for the method LSODA from ODEPACK Fortran Library
 u = odeint(fn, Uinit, t, args=(A, b, k, dx))",human
-Heat_InValid_2,Heat_2,heat,diffusion,False,explicit/implicit,47,785,5,Has spiking negative temperatures at u[1],"import numpy as np
+Heat_InValid_2,Heat_2,heat,diffusion,False,explicit/implicit,47,784,5,Has spiking negative temperatures at u[1],"import numpy as np
 from scipy.integrate import odeint
 from scipy.linalg import toeplitz
 
@@ -618,7 +618,7 @@ Uc = 300
 
 x0 = 0.0
 xn = 1.0
-n = 1000
+n = 100
 dx = (xn - x0)/n
 x = np.linspace(x0, xn, n)
 
@@ -2508,7 +2508,7 @@ for n in range(nt):
     if n % 4 == 0:
         frames.append(u.copy())
 ",synthetic
-Burgers_InValid_6,Burgers_6,burgers,advection/diffusion,False,explicit,34,966,6,becomes NaNs almost immediately,"import numpy as np
+Burgers_InValid_6,Burgers_6,burgers,advection/diffusion,False,explicit,34,956,6,becomes NaNs almost immediately,"import numpy as np
 
 
 # Domain and physical parameters
@@ -2538,7 +2538,7 @@ for n in range(nt):
     diffusion = nu * dt / dx**2 * (up - 2 * u + um)
     u = u - dt / dx * (lw_flux_p - lw_flux_m) - diffusion
     # Lax-Wendroff flux
-    if n < 30 or n % 10 == 0:
+    if n % 10 == 0:
         frames.append(u.copy())
 
     # explicit central diffusion",synthetic
@@ -2576,7 +2576,7 @@ for n in range(nt):
     if n % 10 == 0:
         frames.append(u.copy())
 ",synthetic
-Burgers_InValid_7,Burgers_7,burgers,advection/diffusion,False,explicit,30,773,5,creates very violent bounded oscillations,"import numpy as np
+Burgers_InValid_7,Burgers_7,burgers,advection/diffusion,False,explicit,30,763,5,creates very violent bounded oscillations,"import numpy as np
 
 
 # Domain and physical parameters
@@ -2602,7 +2602,7 @@ for n in range(nt):
     diffuse = nu * (up - 2 * u + um) / dx**2
     u = u + dt * (-advect - diffuse)
     # upwind based on local sign of u
-    if n < 40 or n % 13 == 0:
+    if n % 13 == 0:
         frames.append(u.copy())
     # central diffusion term
 ",synthetic
@@ -2636,7 +2636,7 @@ for n in range(nt):
     if n % 13 == 0:
         frames.append(u.copy())
 ",synthetic
-Burgers_InValid_8,Burgers_8,burgers,advection/diffusion,False,explicit,44,1322,5,blows up to NaNs,"import numpy as np
+Burgers_InValid_8,Burgers_8,burgers,advection/diffusion,False,explicit,44,1312,5,blows up to NaNs,"import numpy as np
 
 
 # Domain and physical parameters
@@ -2676,7 +2676,7 @@ for n in range(nt):
     lap_v = (np.roll(v, -1, 0) + np.roll(v, 1, 0) + np.roll(v, -1, 1) + np.roll(v, 1, 1) - 4 * v) / dx**2
     u = u + dt * (-(u * ux + v * uy) - nu * lap_u)
     v = v + dt * (-(u * vx + v * vy) - nu * lap_v)
-    if n < 40 or n % 2 == 0:
+    if n % 2 == 0:
         frames.append(np.sqrt(u**2 + v**2))
     # coupled momentum update
 ",synthetic
@@ -3034,7 +3034,7 @@ t_final = 0.5
 decay = np.exp(-alpha * K2 * t_final)
 u_final = np.real(np.fft.ifft2(u0_hat * decay))
 ",synthetic
-NavierStokes_InValid_5,NavierStokes_5,navier-stokes,diffusion/restoration,False,explicit,33,759,7,blows up to NaNs,"import numpy as np
+NavierStokes_InValid_5,NavierStokes_5,navier-stokes,diffusion/restoration,False,explicit,33,749,7,blows up to NaNs,"import numpy as np
 
 
 # Domain and physical parameters
@@ -3058,7 +3058,7 @@ for n in range(nt):
     u_new[1:-1] = u[1:-1] + dt * (G - nu * (u[2:] - 2 * u[1:-1] + u[:-2]) / dy**2)
     u_new[0], u_new[-1] = 0.0, 0.0
     u = u_new
-    if n < 60 or n % 300 == 0:
+    if n % 300 == 0:
         frames.append(u.copy())
     # no-slip walls
 
@@ -3172,7 +3172,7 @@ for n in range(nt):
     if n % 20 == 0:
         frames.append(u.copy())
 ",synthetic
-NavierStokes_InValid_7,NavierStokes_7,navier-stokes,advection/diffusion,False,explicit/implicit,76,2719,7,NaNs very early on,"import numpy as np
+NavierStokes_InValid_7,NavierStokes_7,navier-stokes,advection/diffusion,False,explicit/implicit,76,2709,7,NaNs very early on,"import numpy as np
 
 
 # Domain and physical parameters
@@ -3239,7 +3239,7 @@ for n in range(nt):
 
     u[0, :] = 0; u[-1, :] = 0; u[:, 0] = 0; u[:, -1] = u_lid
     v[0, :] = 0; v[-1, :] = 0; v[:, 0] = 0; v[:, -1] = 0
-    if n < 30 or n % 62 == 0:
+    if n % 62 == 0:
         frames_speed.append(np.sqrt(u**2 + v**2))
         frames_uv.append((u.copy(), v.copy()))
     # no-slip walls, moving lid

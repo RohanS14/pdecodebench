@@ -18,6 +18,7 @@ Outputs (all CSV, all under data/):
   merged_mod_jul28.csv      — 256 rows = concat of the above, + `source` column
 """
 
+import re
 import sys
 
 import pandas as pd
@@ -84,8 +85,52 @@ _HEAT3_COSMETIC_REPAIRS = [
 ]
 
 
-def normalize_source_defects(core_df: pd.DataFrame) -> pd.DataFrame:
+# Five synthetic samples widen a snapshot guard in the invalid variant only:
+# `if n % 10 == 0:` becomes `if n < 30 or n % 10 == 0:`. That is not the physical error --
+# each of the five has a single sign flip that is. It is instrumentation the author added
+# knowing the run diverges early, so it correlates perfectly with the label (5/5 invalid,
+# 0/5 valid) and, unlike a comment leak, survives every surface condition including
+# obfuscation, where it reads `if foobar_15 < 30 or foobar_15 % 10 == 0:`.
+#
+# Aligning the guard to the valid twin is behavior-preserving, not merely harmless: the
+# list each guard gates is appended to and never read (parse_newcode.py strips the plotting
+# code that consumed it), verified by AST over all five -- 0 genuine Load references, the
+# `.append` receiver excluded. No computed value, stored array or execution outcome moves.
+_SNAPSHOT_GUARD_REPAIRS = {
+    "Burgers_6":       ("if n < 30 or n % 10 == 0:",  "if n % 10 == 0:"),
+    "Burgers_7":       ("if n < 40 or n % 13 == 0:",  "if n % 13 == 0:"),
+    "Burgers_8":       ("if n < 40 or n % 2 == 0:",   "if n % 2 == 0:"),
+    "NavierStokes_5":  ("if n < 60 or n % 300 == 0:", "if n % 300 == 0:"),
+    "NavierStokes_7":  ("if n < 30 or n % 62 == 0:",  "if n % 62 == 0:"),
+}
+
+# Heat_2's invalid variant refines the grid tenfold (n = 100 -> n = 1000) alongside its
+# intended sign flip, `np.matmul(A, u) + b` -> `np.matmul(A, -u) - b`. The refinement is
+# not part of the error and is not needed to produce it: the flip negates the whole RHS,
+# so A's eigenvalues turn positive and the solution grows exponentially. That is
+# ill-posedness (anti-diffusion), not a stability threshold, so it is grid-independent.
+#
+# Measured on the live data, aligning n back to 100 strengthens the documented failure
+# mode rather than weakening it. Against the note "Has spiking negative temperatures at
+# u[1]": at n=1000, u[:,1] is negative on 1 of 300 timesteps and 51 cells go negative; at
+# n=100 it is negative on 45 timesteps and 4465 cells go negative. The tenfold refinement
+# makes the system 100x stiffer (the stencil scales as alpha/dx^2 with dx = 1/n), which
+# pushes LSODA into tiny steps and truncates the very spiking the note describes.
+_HEAT2_GRID_REPAIR = ("n = 1000", "n = 100")
+
+# The six samples carrying a label-correlated artifact outside their physics. Both states
+# of each are shipped: the repaired one in the canonical files, and both side by side in
+# data/leak_ablation_jul28.csv, so the leak can be measured rather than only removed.
+_LEAK_AFFECTED = set(_SNAPSHOT_GUARD_REPAIRS) | {"Heat_2"}
+
+
+def normalize_source_defects(core_df: pd.DataFrame, apply_leak_repairs: bool = True) -> pd.DataFrame:
     """Repairs that must land before any condition is derived.
+
+    `apply_leak_repairs=False` skips repairs 4 and 5 only, reproducing the pre-repair code
+    so the ablation file can carry both states of each affected sample. Everything else --
+    whitespace, Heat_3, num_method -- still applies, so the two states differ in nothing
+    but the leak itself.
 
     1. Trailing whitespace. Insignificant to Python but not to a diff: it made Wave_1's
        valid and invalid twins differ on two lines that are otherwise identical. Present
@@ -102,6 +147,12 @@ def normalize_source_defects(core_df: pd.DataFrame) -> pd.DataFrame:
        results exist yet, but donor identities are not comparable with earlier builds.
        Any dominant-method-first meaning in the original ordering is not preserved -- it
        was not encoded consistently (only one value of seven was out of order).
+    4. The snapshot-guard leak in five synthetic samples (see _SNAPSHOT_GUARD_REPAIRS).
+    5. Heat_2's grid refinement (see _HEAT2_GRID_REPAIR).
+
+    Every repair here is asserted to have fired. These are literal substitutions against
+    source text, so a source edit that changes the spelling would otherwise turn one into
+    a silent no-op -- and a no-op looks exactly like a clean dataset.
     """
     df = core_df.copy()
 
@@ -116,6 +167,40 @@ def normalize_source_defects(core_df: pd.DataFrame) -> pd.DataFrame:
                 code = code.replace(old, new)
             return code
         df.loc[is_heat3, "code"] = df.loc[is_heat3, "code"].map(repair)
+
+    if not apply_leak_repairs:
+        df["num_method"] = df["num_method"].map(
+            lambda v: "/".join(sorted(str(v).split("/"))) if pd.notna(v) else v
+        )
+        return _recompute_metadata(df)
+
+    invalid = ~df["phys_valid"].astype(bool)
+
+    for gt, (widened, aligned) in _SNAPSHOT_GUARD_REPAIRS.items():
+        rows = invalid & (df["gt_sample"] == gt)
+        if not rows.any():
+            continue
+        hits = df.loc[rows, "code"].str.count(re.escape(widened))
+        if not (hits == 1).all():
+            raise RuntimeError(
+                f"normalize_source_defects: expected exactly one {widened!r} in each "
+                f"invalid {gt} row, found counts {sorted(hits.unique())}"
+            )
+        df.loc[rows, "code"] = df.loc[rows, "code"].str.replace(widened, aligned, regex=False)
+
+    heat2 = invalid & (df["gt_sample"] == "Heat_2")
+    if heat2.any():
+        coarse, refined = _HEAT2_GRID_REPAIR
+        # anchored: `n = 1000` is a whole assignment line, so a substring match cannot
+        # catch a longer name ending in n, or a wider literal like 10000
+        pattern = rf"(?m)^{re.escape(coarse)}$"
+        hits = df.loc[heat2, "code"].str.count(pattern)
+        if not (hits == 1).all():
+            raise RuntimeError(
+                f"normalize_source_defects: expected exactly one `{coarse}` assignment in "
+                f"each invalid Heat_2 row, found counts {sorted(hits.unique())}"
+            )
+        df.loc[heat2, "code"] = df.loc[heat2, "code"].str.replace(pattern, refined, regex=True)
 
     df["num_method"] = df["num_method"].map(
         lambda v: "/".join(sorted(str(v).split("/"))) if pd.notna(v) else v
@@ -163,11 +248,12 @@ def normalize_comm_invalid(core_df: pd.DataFrame) -> pd.DataFrame:
     return out.sort_values(["gt_sample", "mod_type"]).reset_index(drop=True)
 
 
-def build_source(core_rows: list[dict], build_base_fn) -> tuple[pd.DataFrame, pd.DataFrame]:
+def build_source(core_rows: list[dict], build_base_fn,
+                 apply_leak_repairs: bool = True) -> tuple[pd.DataFrame, pd.DataFrame]:
     """core_rows: 64 rows (16 gt_samples x 4 core mod_types). Returns
     (base_df [32 rows], mod_df [128 rows, own-16-pool donors])."""
     core_df = _finalize(core_rows, MOD_COL_ORDER)
-    core_df = normalize_source_defects(core_df)
+    core_df = normalize_source_defects(core_df, apply_leak_repairs=apply_leak_repairs)
     core_df = normalize_comm_invalid(core_df)
 
     # base files carry the Comm_Valid/Comm_InValid pair, so they must be built from the
@@ -186,6 +272,45 @@ def build_source(core_rows: list[dict], build_base_fn) -> tuple[pd.DataFrame, pd
     mod_df = mod_df.sort_values(["gt_sample", "mod_type"]).reset_index(drop=True)
     # single source of truth for the three derived counts, after every transform has run
     return _recompute_metadata(base_df), _recompute_metadata(mod_df)
+
+
+def build_leak_ablation(merged_mod: pd.DataFrame, unrepaired_mod: pd.DataFrame) -> pd.DataFrame:
+    """Pair each affected invalid row with its pre-repair self, for measuring the leak.
+
+    `aligned` rows are lifted from the canonical file rather than rebuilt, so the ablation
+    cannot silently disagree with the dataset it is an ablation of. The two states are
+    asserted to differ in `code` and nothing else -- same donors, same labels, same
+    metadata -- so a model's accuracy gap between them is attributable to the leak alone.
+    """
+    key = ["gt_sample", "mod_type"]
+    sel = lambda df: (df["gt_sample"].isin(_LEAK_AFFECTED)) & (~df["phys_valid"].astype(bool))
+
+    aligned = merged_mod[sel(merged_mod)].copy()
+    widened = unrepaired_mod[sel(unrepaired_mod)].copy()
+    if not (len(aligned) == len(widened) == 4 * len(_LEAK_AFFECTED)):
+        raise RuntimeError(
+            f"build_leak_ablation: expected {4 * len(_LEAK_AFFECTED)} rows per variant, "
+            f"got aligned={len(aligned)} widened={len(widened)}"
+        )
+
+    a = aligned.set_index(key).sort_index()
+    w = widened.set_index(key).sort_index()
+    if list(a.index) != list(w.index):
+        raise RuntimeError("build_leak_ablation: variant row sets differ")
+    if (a["code"] == w["code"]).any():
+        same = [i for i in a.index if a.loc[i, "code"] == w.loc[i, "code"]]
+        raise RuntimeError(f"build_leak_ablation: no leak difference on {same}")
+    for col in [c for c in a.columns if c not in ("code", "num_lines", "num_char", "num_comments")]:
+        if not a[col].fillna("~").eq(w[col].fillna("~")).all():
+            raise RuntimeError(
+                f"build_leak_ablation: variants differ in {col!r}; the pair must differ "
+                f"in code only or the comparison is confounded"
+            )
+
+    out = pd.concat([w.reset_index().assign(leak_variant="widened"),
+                     a.reset_index().assign(leak_variant="aligned")], ignore_index=True)
+    return out.sort_values(["gt_sample", "mod_type", "leak_variant"],
+                           kind="mergesort").reset_index(drop=True)
 
 
 def report_comment_stats(human_mod: pd.DataFrame, synthetic_mod: pd.DataFrame) -> None:
@@ -231,6 +356,17 @@ def main():
     print(f"  merged_base: {len(merged_base)} rows")
     print(f"  merged_mod:  {len(merged_mod)} rows")
 
+    print("\n=== Building leak ablation (rebuild with repairs 4-5 disabled) ===")
+    _, syn_unrep = build_source(synthetic_core, parse_newcode.build_base_rows,
+                                apply_leak_repairs=False)
+    _, hum_unrep = build_source(human_core, parse_humangen.build_base_rows,
+                                apply_leak_repairs=False)
+    unrepaired_mod = pd.concat([hum_unrep.assign(source="human"),
+                                syn_unrep.assign(source="synthetic")], ignore_index=True)
+    leak_ablation = build_leak_ablation(merged_mod, unrepaired_mod)
+    print(f"  leak_ablation: {len(leak_ablation)} rows "
+          f"({len(_LEAK_AFFECTED)} samples x 4 invalid conditions x 2 variants)")
+
     report_comment_stats(human_mod, synthetic_mod)
 
     print("\n--- Running audit on merged_mod ---")
@@ -250,6 +386,7 @@ def main():
         "data/synthetic_mod_jul28.csv": synthetic_mod,
         "data/human_mod_jul28.csv": human_mod,
         "data/merged_mod_jul28.csv": merged_mod,
+        "data/leak_ablation_jul28.csv": leak_ablation,
     }
     print("\n--- Saving ---")
     for path, df in outputs.items():
