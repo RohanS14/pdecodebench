@@ -70,6 +70,33 @@ interpretable on its own.
 
 ---
 
+## Auditing
+
+Two scripts verify the release. Both are reproducible and should be re-run after any rebuild.
+
+**`datagen/full_audit.py`** — 49 structural and semantic checks, no simulation dependencies.
+Every property this document claims is restated there as an executable assertion, grouped so
+a failure names the design property it breaks: structure and recomputed metadata, metadata
+consistency, condition semantics (comments are the *only* difference between `Comm_X` and
+`NoComm_X`; CorrVar is a pure rename; no author-declared identifier survives), donor
+constraints, label leakage, cross-condition program identity, and parseability.
+
+**Current status: 48/49 pass.** The single failure is the sampling-cadence leak in 5 samples
+documented under "Known Limitations" — deliberately left open pending review, so the script
+is expected to report it until that is resolved.
+
+**`datagen/full_audit_exec.py`** — executes all 256 rows, one subprocess each with a hard
+timeout. Checks that every row runs, that no valid row trips the NaN/magnitude heuristic,
+and — the strongest check in the suite — that a `gt_sample`'s four surface conditions produce
+**identical numbers**. Since those four are the same program with different comments and
+identifiers, any numerical difference between them means a surface transform corrupted the
+physics. Comparison uses a rename-invariant fingerprint (the multiset of shape/mean/std/has-NaN
+over every float array in the namespace).
+
+`datagen/audit_dataset.py` remains as the fast balance-only check, and runs inside the build.
+
+---
+
 ## Modification Details
 
 **CorrComm / CorrComm_Invalid:** Donor comments are injected at the receiver's comment positions. Donor is selected from `Comm_Valid` rows with a different `pde_class` AND different `num_method`, **within the same source group (human or synthetic) only**. The same donor is reused for the valid and invalid variant of each `gt_sample` so the only axis of variation is `phys_valid`.
@@ -98,6 +125,155 @@ range 4-8). Ratio 0.95x — comparable, no flag.
 | `injected_comments` | Per-comment injection metadata (CorrComm rows only, mod files only) |
 | `invalidity_note` | Short failure-mode description for invalid rows, NaN for valid rows |
 | `source` | `human` or `synthetic` (merged files only) |
+
+---
+
+## Known Limitations
+
+### Variable obfuscation coverage (`NoComm_CorrVar` / `NoComm_CorrVar_InValid`)
+
+**The rule:** every identifier the snippet's author chose is renamed to `foobar_N`
+(or `fnN` for functions). A name survives only if it is not an author-chosen
+identifier at all. **Verified to hold across all 32 snippets** — of the 20 names
+that survive anywhere in the 64 `NoComm_CorrVar*` rows, not one is an
+author-chosen identifier in any snippet (see the table below).
+
+Renaming a parameter obliges renaming its own call sites' `name=` too, or the two
+desync and raise `TypeError`. `VariableRenamer.visit_Call` does this, firing only
+when the callee is a function defined in the same module — reached directly or
+through `functools.partial`. An external callee's keyword names are the library's
+API, not the author's vocabulary, so they are never touched. Only `NavierStokes_4`
+and `Wave_4` call their own functions by keyword, so only they are affected by
+this branch; every other snippet is unchanged by it.
+
+Obfuscation operates **per occurrence, not per name** — the same word can be renamed in
+one position and left alone in another within a single file. `Burgers_8` is the clearest
+case: `axis` is both a function parameter and a numpy keyword, and only the parameter is
+renamed.
+
+```python
+def upwind_deriv(f, axis, vel):        →   def fn2(foobar_10, foobar_4, foobar_25):
+    fp = np.roll(f, -1, axis=axis)     →       foobar_12 = np.roll(foobar_10, -1, axis=foobar_4)
+```
+
+**Names that cannot be renamed (20 across the dataset).** These are the keyword-argument
+names of calls into libraries — renaming them raises `TypeError`. They are not variables
+and never appear as one in the snippets that lock them, so the rule above never selects
+them:
+
+| Name | Forced by | Snippets |
+|---|---|---|
+| `shape` | `np.zeros`, `np.ones` | 8 |
+| `endpoint` | `np.linspace` | 7 |
+| `indexing` | `np.meshgrid` | 6 |
+| `args` | `odeint` | 5 |
+| `d` | `np.fft.fftfreq` | 4 |
+| `axis` | `np.roll`, `jnp.concatenate` | 3 |
+| `dtype` | `np.array`, `np.sum`, `np.zeros` | 2 |
+| `collapse`, `out`, `rank`, `sparse`, `view` | `PFFT`, `newDistArray`, `np.sum` | NavierStokes_3 |
+| `divide`, `invalid` | `np.errstate` | Wave_6 |
+| `s`, `length`, `static_argnums` | `jnp.fft.irfftn`, `lax.scan`, `partial(jit, …)` | NavierStokes_4 |
+| `domain`, `maximum_velocity`, `peak_wavenumber` | `grids.Grid`, jax_cfd | NavierStokes_4 |
+
+Of these, 17 are semantically inert plumbing that any numpy/jax user writes regardless of
+what is being solved, and `domain` is generic PDE vocabulary shared by all four classes —
+none of them discriminate between `pde_class`es. Only `maximum_velocity` and
+`peak_wavenumber` leak fluid-dynamics vocabulary, and both are confined to
+`NavierStokes_4`.
+
+### Resolved (2026-07-29): 9 author-chosen names in `NavierStokes_4`
+
+`NavierStokes_4`'s `NoComm_CorrVar` rows used to retain `viscosity`, `drag`,
+`max_velocity`, `Nx`, `Ny`, `t_pts`, `t_eval`, `target_N` and `fixed_ic` — 17 of 97
+identifiers surviving, versus 0–7 pure-library-kwarg residue elsewhere. This was a gap in
+the renamer, not a property of the code: those are parameters of the module's **own**
+functions that are also passed by keyword.
+
+```python
+def run_ns2d(key, Nx, Ny, t_pts, t_eval, viscosity, drag, max_velocity, …):
+    linear_term = viscosity * laplace - drag
+...
+ns_fn = partial(run_ns2d, Nx=Nx, Ny=Ny, viscosity=viscosity, drag=drag, …)
+```
+
+`VariableRenamer` had no `visit_Call`, so it never rewrote `keyword.arg`. Renaming the
+parameter alone would desync it from `viscosity=` and raise `TypeError`, so the old code
+sidestepped the problem two ways at once: `_NS4_PROTECTED_KWARGS` excluded the 9 names
+outright, and `_patch_ns4_kwargs` / `_patch_wave4_kwargs` rewrote the offending calls to
+positional form before renaming.
+
+**Fixed** by adding `VariableRenamer.visit_Call`, which renames `keyword.arg` when the
+callee resolves to a function defined in the same module — directly or through
+`functools.partial` — so parameter and call site move together. All three workarounds were
+deleted. Verified against the live data:
+
+| Check | Result |
+|---|---|
+| Author-chosen names surviving, all 32 snippets | **0** (was 9, all in `NavierStokes_4`) |
+| `NavierStokes_4` survivors | 17 → **8**, all library kwargs |
+| Pure rename (AST structurally identical to source) | holds for all 64 CorrVar rows |
+| Same-module call sites binding without `TypeError` | 102 / 102 |
+| Rows changed | **4 of 256** — `NavierStokes_4` and `Wave_4` CorrVar only |
+| Execution vs. pre-fix build | all 4 changed rows produce **identical numerical output** |
+
+Because the old `_patch_*_kwargs` helpers edited call *form*, `NavierStokes_4` and `Wave_4`
+were not previously pure renames of their sources. They are now, so the pure-rename
+property holds uniformly across the dataset for the first time.
+
+### Open: validity leaks through sampling cadence in 5 samples
+
+`Burgers_6`, `Burgers_7`, `Burgers_8`, `NavierStokes_5` and `NavierStokes_7` (all synthetic)
+widen their snapshot guard in the invalid variant only:
+
+```python
+# valid                          # invalid
+if n % 10 == 0:                  if n < 30 or n % 10 == 0:
+    frames.append(u.copy())          frames.append(u.copy())
+```
+
+This is not the physical error — each of the five has a **single sign flip** that is
+(`+ diffusion` → `- diffusion`, `+ nu * lap_u` → `- nu * lap_u`, and so on). The widened
+guard is instrumentation the author added because they knew the run blows up early, so it
+correlates perfectly with the label: **5/5 invalid variants carry it, 0/5 valid ones do.**
+
+| Condition | Carries the guard |
+|---|---|
+| `Comm_Valid`, `NoComm_Valid`, `CorrComm`, `NoComm_CorrVar` | 0 / 5 |
+| `Comm_InValid`, `NoComm_InValid`, `CorrComm_Invalid`, `NoComm_CorrVar_InValid` | **5 / 5** |
+
+**20 of 256 rows.** It survives comment stripping *and* variable obfuscation, reading as
+`if foobar_15 < 30 or foobar_15 % 10 == 0:` — so unlike a comment leak, no surface
+condition hides it. A model could answer "is this valid?" on these five by spotting the
+extra clause, without evaluating the physics.
+
+Aligning the guard to the valid variant would be **provably physics-neutral**: `frames` is
+write-only in all five (initialised and appended to, never read, because `parse_newcode.py`
+strips the plotting code), so no computed value, stored array or execution outcome would
+change. **Not applied** — deferred pending review. Until then, treat validity results on
+these five base problems as confounded, or exclude them.
+
+### Open: `Heat_2` changes grid resolution alongside its sign flip
+
+`Heat_2`'s invalid variant changes `n = 100` → `n = 1000` in addition to its intended
+`np.matmul(A, u) + b` → `np.matmul(A, -u) - b`. A 10x grid refinement alters computed state,
+so the audit does not classify it as incidental, but it is not obviously part of the
+intended invalidity either. **Not changed** — flagged for review.
+
+### Leaks that renaming cannot reach
+
+- **Import lines.** `from jax_cfd.base import …` (`NavierStokes_4`) and `mpi4py_fft`
+  (`NavierStokes_3`) name the problem domain in every `mod_type`. No renaming hides an
+  import path. `NavierStokes_4` is therefore a weaker `NoComm_*` sample even after the fix
+  above, and is a candidate for exclusion from CorrVar-specific analyses.
+- **Diagnostic strings.** `Heat_4` retains `print(f'CFL: {…} < 0.5')` through all four of
+  its `NoComm_*` rows — a numerical-method hint that survives comment stripping. Other
+  surviving string literals are benign (`'Time = {}'`, `'Please choose a correct boundary
+  condition'`).
+
+### Not affected
+
+Verified across all 256 rows: no `NoComm_*` row names its own `pde_class` or numerical
+method in code text, and none retains a module docstring.
 
 ---
 
@@ -154,6 +330,61 @@ Full two-source rebuild. Old single-file xlsx versions (v1-v5) moved to
   turned out not to reproduce — the real issue was this numeric drift).
 - Sheet2 of the source xlsx is a stale duplicate of the Burgers/NavierStokes rows
   (byte-identical code, missing `Num Lines`) — ignored.
+
+**Post-release fixes (applied to the jul28 CSVs after the initial build):**
+- **`Comm_InValid` comments are now inherited from `Comm_Valid` for all 32 samples.**
+  `build_comm_invalid.py`'s position-based injection was previously applied only to the human
+  Wave/Heat half (8 samples); the other 24 took `Comm_InValid` as given from source and
+  drifted. Five synthetic samples had drifted into announcing the answer — comments like
+  `# capture densely early on since the blow-up is very fast` appeared in the invalid
+  variant only. `build_jul28.normalize_comm_invalid()` now rebuilds every `Comm_InValid`
+  as (`Comm_Valid`'s comments) + (`NoComm_InValid`'s code), which makes the leak
+  structurally impossible: the comments come from a variant that never saw the failure.
+  Comment lists are now identical for 32/32 samples (was 26/32) and no row contains
+  blow-up/onset vocabulary. Changed 48 rows (24 `Comm_InValid` + 24 `CorrComm_Invalid`,
+  the latter because it builds on `Comm_InValid`'s code).
+  Note this can leave a comment describing code the invalid variant removed — `Burgers_4`
+  inherits `# Lax-Friedrichs dissipation` though the dissipation line is gone. That is
+  on-design for this condition: the comments state the intent, the code fails to implement it.
+- **Trailing whitespace stripped from all code.** Insignificant to Python but not to a diff:
+  it made `Wave_1`'s valid and invalid twins differ on two otherwise-identical lines.
+  Present in 54 rows across 9 human samples, so stripped everywhere rather than patched at
+  the one site where it mattered.
+- **`Heat_3`'s cosmetic valid/invalid drift removed.** The source workbook respelled int
+  literals as floats (`k = 1` -> `k = 1.0`, `T0 = 0` -> `T0 = 0.0`) and renamed two boundary
+  constants (`U0`/`Un` -> `B0`/`Bn`) in the invalid variant only. None changes a value. Its
+  real error — the Toeplitz stencil sign `toeplitz([-2.0, 1.0, …])` ->
+  `toeplitz([-2.0, -1.0, …])` — is untouched. Fixing this also repaired the CorrVar shared
+  mapping: `B0`/`Bn` had been drawing fresh `foobar_N` names because they were absent from
+  the valid variant, and now inherit the valid names.
+- **`num_method` token order normalised.** `spectral/explicit` and `explicit/spectral` named
+  the same pair but compared as different strings, and donor eligibility is a string
+  comparison — so a donor could pass the "different numerical method" test while sharing the
+  receiver's actual method set. Tokens are now sorted, reducing 7 distinct values to 6 and
+  changing 8 rows. Verified this did **not** reshuffle donor assignments (0 of 64 rows
+  changed donor). Any dominant-method-first meaning in the original ordering is not
+  preserved; it was not encoded consistently (1 value of 7 was out of order).
+- **Variable obfuscation now covers keyword arguments of same-module calls.**
+  `VariableRenamer.visit_Call` renames `keyword.arg` when the callee is a function defined
+  in the snippet itself (directly or via `functools.partial`), so a renamed parameter and
+  its own call sites move together. This removed the last 9 author-chosen names surviving
+  in `NavierStokes_4` and let `_NS4_PROTECTED_KWARGS`, `_patch_ns4_kwargs` and
+  `_patch_wave4_kwargs` all be deleted. Changed 4 of 256 rows (`NavierStokes_4` and
+  `Wave_4` CorrVar); all 4 execute to identical numerical output. Full detail and
+  verification table under "Known Limitations" above.
+- **`invalidity_note` was missing on all 32 `CorrComm_Invalid` rows.** `corrupt_comment.py`'s
+  `make_corrcomm_rows()` never carried the column onto the rows it generates, and
+  `build_jul28.py`'s reindex to `MOD_COL_ORDER` then silently filled `NaN` — so a quarter of
+  the invalid rows couldn't be cross-referenced against their failure mode, while
+  `Comm_InValid`/`NoComm_InValid`/`NoComm_CorrVar_InValid` all had it. Now propagated from the
+  receiver row: present on all 128 invalid rows, `NaN` on all 128 valid rows, and identical
+  across each `gt_sample`'s 4 invalid rows.
+- **Base-file row order was nondeterministic.** `_finalize()` sorted on
+  `["gt_sample", "mod_type"]` filtered to columns present, but `BASE_COL_ORDER` has no
+  `mod_type` — so base files sorted on `gt_sample` alone, two tied rows per value, under
+  pandas' default (unstable) quicksort. The Valid/InValid pair order therefore shuffled
+  between runs. Fixed with `title` as tiebreaker + `kind="mergesort"`; two consecutive builds
+  now produce byte-identical CSVs. Base-file *content* was never affected.
 
 **Synthetic source:** same `parse_newcode.py` as before (docstring/plot stripping,
 inline-comment-to-whole-line normalization via `tokenize`) — see the entry below.

@@ -44,6 +44,7 @@ from frontier.parse_frontier import (  # noqa: E402
     parse_response,
     score_row,
 )
+from dataset_io import DEFAULT_MOD_DATASET, load_dataset  # noqa: E402
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -220,7 +221,7 @@ def estimate_cost_usd(prompt_text: str) -> float:
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Frontier belief-revision eval")
     p.add_argument("--model",        default="gemini-2.5-flash")
-    p.add_argument("--dataset",      default=str(REPO_ROOT / "data" / "pdedata_clean_v4.xlsx"))
+    p.add_argument("--dataset",      default=str(REPO_ROOT / DEFAULT_MOD_DATASET))
     p.add_argument("--traj_file",    default=str(REPO_ROOT / "data" / "trajectories.jsonl"))
     p.add_argument("--output_dir",   default=str(REPO_ROOT / "results" / "frontier"))
     p.add_argument("--max_cost_usd", type=float, default=5.0)
@@ -250,7 +251,7 @@ def main() -> None:
     out_path = Path(args.output_dir) / f"{slug}__belief_revision.jsonl"
 
     # ── Load dataset
-    df = pd.read_excel(args.dataset)
+    df = load_dataset(args.dataset)
     df["_base"] = df["title"].apply(get_base_sample)
     df = df[~df["_base"].isin(EXCLUDED_SAMPLES)].drop(columns=["_base"])
     print(f"[frontier] {len(df)} scripts after exclusions", flush=True)

@@ -1,5 +1,5 @@
 """
-Build probe_points.jsonl from pdedata_clean_v3.xlsx.
+Build probe_points.jsonl from merged_mod_jul28.csv.
 
 For each NoComm_CorrVar row:
   - Match to its NoComm_Valid counterpart by title substitution
@@ -15,7 +15,7 @@ Output: data/probe_points.jsonl
 
 Usage:
     python scripts/prepare_var_probes.py \
-        --dataset data/pdedata_clean_v3.xlsx \
+        --dataset data/merged_mod_jul28.csv \
         --output  data/probe_points.jsonl
 """
 import argparse
@@ -27,11 +27,12 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).parent))
 from var_probe_utils import get_pde_semantic_map, extract_probe_points
+from dataset_io import DEFAULT_MOD_DATASET, load_dataset
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset",  default="data/pdedata_clean_v3.xlsx")
+    parser.add_argument("--dataset",  default=DEFAULT_MOD_DATASET)
     parser.add_argument("--output",   default="data/probe_points.jsonl")
     parser.add_argument("--snippets", default=None,
                         help="Comma-separated snippet base names to include "
@@ -44,7 +45,7 @@ def main():
     if args.snippets:
         snippet_filter = {s.strip() for s in args.snippets.split(",")}
 
-    df = pd.read_excel(args.dataset)
+    df = load_dataset(args.dataset)
 
     corr_var_rows  = df[df["mod_type"] == "NoComm_CorrVar"].reset_index(drop=True)
     if snippet_filter is not None:

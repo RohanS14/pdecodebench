@@ -46,6 +46,6 @@ def extract_code(excel_path, out_dir):
         print(f"Handled {num_duplicates} duplicate titles.")
 
 if __name__ == "__main__":
-    excel_path = "data/pdedata_clean_v4.xlsx"
+    excel_path = "data/merged_mod_jul28.csv"
     out_dir = "data/extracted_codes"
     extract_code(excel_path, out_dir)

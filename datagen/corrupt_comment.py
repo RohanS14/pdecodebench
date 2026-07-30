@@ -168,6 +168,10 @@ def make_corrcomm_rows(
                 "num_comments": count_comments(new_code),
                 "gt_sample": gt,
                 "mod_type": mod_type_out,
+                # carried from the receiver so CorrComm_Invalid rows describe
+                # their failure mode like every other invalid mod_type; NaN on
+                # the valid side, matching the rest of the dataset
+                "invalidity_note": receiver.get("invalidity_note"),
             }
         )
     return new_rows

@@ -27,6 +27,14 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from var_probe_utils import extract_continuation_logprob
 
+# Inject API keys via RACA key_handler (repo lives at raca/packages/key_handler)
+try:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "packages" / "key_handler"))
+    from key_handler import KeyHandler
+    KeyHandler.set_env_key()
+except Exception as e:
+    print(f"[run_var_logprob] key_handler unavailable: {e}", flush=True)
+
 
 CHECKPOINT_KEY = ("title", "mod_type", "corrupt_var", "occurrence_idx")
 

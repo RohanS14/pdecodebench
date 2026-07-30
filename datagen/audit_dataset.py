@@ -185,7 +185,7 @@ def audit(df: pd.DataFrame) -> bool:
 
 
 if __name__ == "__main__":
-    path = sys.argv[1] if len(sys.argv) > 1 else "data/pdedata_clean_v3.xlsx"
-    df = pd.read_excel(path)
+    path = sys.argv[1] if len(sys.argv) > 1 else "data/merged_mod_jul28.csv"
+    df = pd.read_csv(path) if str(path).endswith(".csv") else pd.read_excel(path)
     ok = audit(df)
     sys.exit(0 if ok else 1)

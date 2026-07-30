@@ -9,8 +9,8 @@ dx = L / nx
 x = np.linspace(0, L, nx, endpoint=False)
 
 
-# sinusoidal initial condition, positive-biased
 u = np.sin(2 * np.pi * x / L) + 0.5
+# sinusoidal initial condition, positive-biased
 cfl = 0.4
 
 
@@ -25,18 +25,18 @@ def godunov_flux(uL, uR):
 
 frames = [u.copy()]
 for n in range(nt):
-    # CFL re-checked as the profile steepens
     dt = cfl * dx / max(np.max(np.abs(u)), 1e-8)
     uL = u
-    # periodic boundary conditions
+    # CFL re-checked as the profile steepens
     uR = np.roll(u, -1)
     F = godunov_flux(uL, uR)
     F_left = np.roll(F, -1)
-    # conservative finite-volume update
+    # periodic boundary conditions
     u = u - dt / dx * (F - F_left)
     if n % 4 == 0:
         frames.append(u.copy())
-",38,902,burgers,advection,False,explicit,,,,,5,Burgers_5,Comm_InValid,trajectories oscillate and then blow up once shock forms
+
+    # conservative finite-volume update",38,902,burgers,advection,False,explicit,,,,,5,Burgers_5,Comm_InValid,trajectories oscillate and then blow up once shock forms
 Burgers_Comm_Valid_5,"import numpy as np
 
 
@@ -123,8 +123,8 @@ dx = L / nx
 x = np.linspace(0, L, nx, endpoint=False)
 
 
-# zero initial displacement
 u = np.sin(2 * np.pi * x / L) + 0.5
+# zero initial displacement
 cfl = 0.4
 
 
@@ -139,18 +139,18 @@ def godunov_flux(uL, uR):
 
 frames = [u.copy()]
 for n in range(nt):
-    # localized initial velocity pulse
     dt = cfl * dx / max(np.max(np.abs(u)), 1e-8)
     uL = u
-    # wavenumber array
+    # localized initial velocity pulse
     uR = np.roll(u, -1)
     F = godunov_flux(uL, uR)
     F_left = np.roll(F, -1)
-    # spectral time-stepping is exact per mode, so no CFL restriction
+    # wavenumber array
     u = u - dt / dx * (F - F_left)
     if n % 4 == 0:
         frames.append(u.copy())
-",38,894,burgers,advection,False,explicit,Wave_Comm_Valid_6,wave,"[{'donor_text': '# Domain and physical parameters', 'gt_position': 4, 'source_line_in_donor': 4, 'line_inserted': 4}, {'donor_text': '# zero initial displacement', 'gt_position': 11, 'source_line_in_donor': 11, 'line_inserted': 11}, {'donor_text': '# localized initial velocity pulse', 'gt_position': 27, 'source_line_in_donor': 13, 'line_inserted': 27}, {'donor_text': '# wavenumber array', 'gt_position': 30, 'source_line_in_donor': 17, 'line_inserted': 30}, {'donor_text': '# spectral time-stepping is exact per mode, so no CFL restriction', 'gt_position': 34, 'source_line_in_donor': 24, 'line_inserted': 34}]",1.0,5,Burgers_5,CorrComm_Invalid,
+
+    # spectral time-stepping is exact per mode, so no CFL restriction",38,894,burgers,advection,False,explicit,Wave_Comm_Valid_6,wave,"[{'donor_text': '# Domain and physical parameters', 'gt_position': 4, 'source_line_in_donor': 4, 'line_inserted': 4}, {'donor_text': '# zero initial displacement', 'gt_position': 12, 'source_line_in_donor': 11, 'line_inserted': 12}, {'donor_text': '# localized initial velocity pulse', 'gt_position': 29, 'source_line_in_donor': 13, 'line_inserted': 29}, {'donor_text': '# wavenumber array', 'gt_position': 33, 'source_line_in_donor': 17, 'line_inserted': 33}, {'donor_text': '# spectral time-stepping is exact per mode, so no CFL restriction', 'gt_position': 38, 'source_line_in_donor': 24, 'line_inserted': 38}]",1.0,5,Burgers_5,CorrComm_Invalid,trajectories oscillate and then blow up once shock forms
 Burgers_NoComm_CorrVar_5,"import numpy as np
 foobar_3, foobar_13 = (2.0, 0.0)
 foobar_14, foobar_12 = (400, 600)
@@ -273,31 +273,30 @@ dx = L / nx
 x = np.linspace(0, L, nx, endpoint=False)
 
 
-# top-hat / step initial condition
 u = 0.1 + 0.9 * ((x > 0.2) & (x < 0.5))
+# top-hat / step initial condition
 cfl, diff_num = 0.5, 0.4
-# advective + diffusive CFL
 dt = min(cfl * dx / np.max(np.abs(u)), diff_num * dx**2 / nu)
 
+# advective + diffusive CFL
 
 frames = [u.copy()]
 for n in range(nt):
     f = 0.5 * u**2
     fp, fm = np.roll(f, -1), np.roll(f, 1)
     up, um = np.roll(u, -1), np.roll(u, 1)
-    # local wave speed at i+1/2 for the LW correction
     a_half_p = 0.5 * (u + up)
     a_half_m = 0.5 * (u + um)
-    # Lax-Wendroff flux
     lw_flux_p = 0.5 * (f + fp) - 0.5 * dt / dx * a_half_p * (fp - f)
+    # local wave speed at i+1/2 for the LW correction
     lw_flux_m = 0.5 * (f + fm) - 0.5 * dt / dx * a_half_m * (f - fm)
-    # explicit central diffusion
     diffusion = nu * dt / dx**2 * (up - 2 * u + um)
     u = u - dt / dx * (lw_flux_p - lw_flux_m) - diffusion
-    # capture densely early on since the blow-up is very fast
+    # Lax-Wendroff flux
     if n < 30 or n % 10 == 0:
         frames.append(u.copy())
-",35,1028,burgers,advection/diffusion,False,explicit,,,,,7,Burgers_6,Comm_InValid,becomes NaNs almost immediately
+
+    # explicit central diffusion",34,966,burgers,advection/diffusion,False,explicit,,,,,6,Burgers_6,Comm_InValid,becomes NaNs almost immediately
 Burgers_Comm_Valid_6,"import numpy as np
 
 
@@ -376,31 +375,30 @@ dx = L / nx
 x = np.linspace(0, L, nx, endpoint=False)
 
 
-# advective + diffusive stability bound
 u = 0.1 + 0.9 * ((x > 0.2) & (x < 0.5))
+# advective + diffusive stability bound
 cfl, diff_num = 0.5, 0.4
-# reference pressure to fix the null space
 dt = min(cfl * dx / np.max(np.abs(u)), diff_num * dx**2 / nu)
 
+# reference pressure to fix the null space
 
 frames = [u.copy()]
 for n in range(nt):
     f = 0.5 * u**2
     fp, fm = np.roll(f, -1), np.roll(f, 1)
     up, um = np.roll(u, -1), np.roll(u, 1)
-    # RHS built from the divergence of the tentative velocity
     a_half_p = 0.5 * (u + up)
     a_half_m = 0.5 * (u + um)
-    # projected velocity update
     lw_flux_p = 0.5 * (f + fp) - 0.5 * dt / dx * a_half_p * (fp - f)
+    # RHS built from the divergence of the tentative velocity
     lw_flux_m = 0.5 * (f + fm) - 0.5 * dt / dx * a_half_m * (f - fm)
-    # no-slip walls, moving lid
     diffusion = nu * dt / dx**2 * (up - 2 * u + um)
     u = u - dt / dx * (lw_flux_p - lw_flux_m) - diffusion
-    # subsample the vector field so quiver arrows stay legible
+    # projected velocity update
     if n < 30 or n % 10 == 0:
         frames.append(u.copy())
-",35,1064,burgers,advection/diffusion,False,explicit,NavierStokes_Comm_Valid_7,navier-stokes,"[{'donor_text': '# Domain and physical parameters', 'gt_position': 4, 'source_line_in_donor': 4, 'line_inserted': 4}, {'donor_text': '# advective + diffusive stability bound', 'gt_position': 11, 'source_line_in_donor': 15, 'line_inserted': 11}, {'donor_text': '# reference pressure to fix the null space', 'gt_position': 14, 'source_line_in_donor': 29, 'line_inserted': 14}, {'donor_text': '# RHS built from the divergence of the tentative velocity', 'gt_position': 23, 'source_line_in_donor': 39, 'line_inserted': 23}, {'donor_text': '# projected velocity update', 'gt_position': 26, 'source_line_in_donor': 54, 'line_inserted': 26}, {'donor_text': '# no-slip walls, moving lid', 'gt_position': 29, 'source_line_in_donor': 66, 'line_inserted': 29}, {'donor_text': '# subsample the vector field so quiver arrows stay legible', 'gt_position': 32, 'source_line_in_donor': 74, 'line_inserted': 32}]",0.0,7,Burgers_6,CorrComm_Invalid,
+
+    # no-slip walls, moving lid",34,1001,burgers,advection/diffusion,False,explicit,NavierStokes_Comm_Valid_7,navier-stokes,"[{'donor_text': '# Domain and physical parameters', 'gt_position': 4, 'source_line_in_donor': 4, 'line_inserted': 4}, {'donor_text': '# advective + diffusive stability bound', 'gt_position': 12, 'source_line_in_donor': 15, 'line_inserted': 12}, {'donor_text': '# reference pressure to fix the null space', 'gt_position': 16, 'source_line_in_donor': 29, 'line_inserted': 16}, {'donor_text': '# RHS built from the divergence of the tentative velocity', 'gt_position': 26, 'source_line_in_donor': 39, 'line_inserted': 26}, {'donor_text': '# projected velocity update', 'gt_position': 30, 'source_line_in_donor': 54, 'line_inserted': 30}, {'donor_text': '# no-slip walls, moving lid', 'gt_position': 34, 'source_line_in_donor': 66, 'line_inserted': 34}]",1.0,6,Burgers_6,CorrComm_Invalid,becomes NaNs almost immediately
 Burgers_NoComm_CorrVar_6,"import numpy as np
 foobar_1, foobar_17 = (1.0, 0.005)
 foobar_18, foobar_16 = (300, 1500)
@@ -509,27 +507,26 @@ dx = L / nx
 x = np.linspace(0, L, nx, endpoint=False)
 
 
-# Gaussian pulse initial condition
 u = 1.5 * np.exp(-((x - 0.3) ** 2) / (2 * 0.05 ** 2))
+# Gaussian pulse initial condition
 cfl, diff_num = 0.4, 0.4
-# advective + diffusive CFL
 dt = min(cfl * dx / np.max(np.abs(u)), diff_num * dx**2 / nu)
 
+# advective + diffusive CFL
 
 frames = [u.copy()]
 for n in range(nt):
     up, um = np.roll(u, -1), np.roll(u, 1)
     du_forward = (up - u) / dx
     du_backward = (u - um) / dx
-    # upwind based on local sign of u
     advect = np.where(u >= 0, u * du_backward, u * du_forward)
-    # central diffusion term
     diffuse = nu * (up - 2 * u + um) / dx**2
     u = u + dt * (-advect - diffuse)
-    # capture densely early so the onset is visible
+    # upwind based on local sign of u
     if n < 40 or n % 13 == 0:
         frames.append(u.copy())
-",31,825,burgers,advection/diffusion,False,explicit,,,,,6,Burgers_7,Comm_InValid,creates very violent bounded oscillations
+    # central diffusion term
+",30,773,burgers,advection/diffusion,False,explicit,,,,,5,Burgers_7,Comm_InValid,creates very violent bounded oscillations
 Burgers_Comm_Valid_7,"import numpy as np
 
 
@@ -600,27 +597,26 @@ dx = L / nx
 x = np.linspace(0, L, nx, endpoint=False)
 
 
-# No CFL restriction needed; Crank-Nicolson is unconditionally stable
 u = 1.5 * np.exp(-((x - 0.3) ** 2) / (2 * 0.05 ** 2))
+# No CFL restriction needed; Crank-Nicolson is unconditionally stable
 cfl, diff_num = 0.4, 0.4
-# top-hat initial condition
 dt = min(cfl * dx / np.max(np.abs(u)), diff_num * dx**2 / nu)
 
+# top-hat initial condition
 
 frames = [u.copy()]
 for n in range(nt):
     up, um = np.roll(u, -1), np.roll(u, 1)
     du_forward = (up - u) / dx
     du_backward = (u - um) / dx
-    # Build tridiagonal system (I - r/2 * D2) u_new = (I + r/2 * D2) u_old
     advect = np.where(u >= 0, u * du_backward, u * du_forward)
-    # explicit half-step RHS
     diffuse = nu * (up - 2 * u + um) / dx**2
     u = u + dt * (-advect - diffuse)
-    # Domain and physical parameters
+    # Build tridiagonal system (I - r/2 * D2) u_new = (I + r/2 * D2) u_old
     if n < 40 or n % 13 == 0:
         frames.append(u.copy())
-",31,882,burgers,advection/diffusion,False,explicit,Heat_Comm_Valid_6,heat,"[{'donor_text': '# Domain and physical parameters', 'gt_position': 4, 'source_line_in_donor': 5, 'line_inserted': 4}, {'donor_text': '# No CFL restriction needed; Crank-Nicolson is unconditionally stable', 'gt_position': 11, 'source_line_in_donor': 9, 'line_inserted': 11}, {'donor_text': '# top-hat initial condition', 'gt_position': 14, 'source_line_in_donor': 16, 'line_inserted': 14}, {'donor_text': '# Build tridiagonal system (I - r/2 * D2) u_new = (I + r/2 * D2) u_old', 'gt_position': 23, 'source_line_in_donor': 21, 'line_inserted': 23}, {'donor_text': '# explicit half-step RHS', 'gt_position': 25, 'source_line_in_donor': 34, 'line_inserted': 25}, {'donor_text': '# Domain and physical parameters', 'gt_position': 28, 'source_line_in_donor': 5, 'line_inserted': 28}]",-1.0,6,Burgers_7,CorrComm_Invalid,
+    # explicit half-step RHS
+",30,845,burgers,advection/diffusion,False,explicit,Heat_Comm_Valid_6,heat,"[{'donor_text': '# Domain and physical parameters', 'gt_position': 4, 'source_line_in_donor': 5, 'line_inserted': 4}, {'donor_text': '# No CFL restriction needed; Crank-Nicolson is unconditionally stable', 'gt_position': 12, 'source_line_in_donor': 9, 'line_inserted': 12}, {'donor_text': '# top-hat initial condition', 'gt_position': 16, 'source_line_in_donor': 16, 'line_inserted': 16}, {'donor_text': '# Build tridiagonal system (I - r/2 * D2) u_new = (I + r/2 * D2) u_old', 'gt_position': 26, 'source_line_in_donor': 21, 'line_inserted': 26}, {'donor_text': '# explicit half-step RHS', 'gt_position': 29, 'source_line_in_donor': 34, 'line_inserted': 29}]",0.0,5,Burgers_7,CorrComm_Invalid,creates very violent bounded oscillations
 Burgers_NoComm_CorrVar_7,"import numpy as np
 foobar_1, foobar_13 = (1.0, 0.01)
 foobar_14, foobar_12 = (300, 2000)
@@ -719,16 +715,16 @@ y = np.linspace(0, L, ny)
 X, Y = np.meshgrid(x, y, indexing=""ij"")
 
 
-# sinusoidal shear-layer initial condition
 u = np.sin(2 * np.pi * X) * np.cos(2 * np.pi * Y)
+# sinusoidal shear-layer initial condition
 v = -np.cos(2 * np.pi * X) * np.sin(2 * np.pi * Y)
 
 
 cfl, diff_num = 0.3, 0.2
 speed0 = np.sqrt(u**2 + v**2).max()
-# advective + diffusive CFL, 2D
 dt = min(cfl * dx / speed0, diff_num * dx**2 / nu)
 nt = 300
+# advective + diffusive CFL, 2D
 
 
 def upwind_deriv(f, axis, vel):
@@ -737,21 +733,20 @@ def upwind_deriv(f, axis, vel):
     return np.where(vel >= 0, (f - fm) / dx, (fp - f) / dx)
 
 
-# subsample for the quiver overlay so arrows stay readable
 skip = 5
 frames = [np.sqrt(u**2 + v**2)]
 for n in range(nt):
+# subsample for the quiver overlay so arrows stay readable
     ux = upwind_deriv(u, 0, u); uy = upwind_deriv(u, 1, v)
     vx = upwind_deriv(v, 0, u); vy = upwind_deriv(v, 1, v)
     lap_u = (np.roll(u, -1, 0) + np.roll(u, 1, 0) + np.roll(u, -1, 1) + np.roll(u, 1, 1) - 4 * u) / dx**2
     lap_v = (np.roll(v, -1, 0) + np.roll(v, 1, 0) + np.roll(v, -1, 1) + np.roll(v, 1, 1) - 4 * v) / dx**2
-    # coupled momentum update
     u = u + dt * (-(u * ux + v * uy) - nu * lap_u)
     v = v + dt * (-(u * vx + v * vy) - nu * lap_v)
-    # capture densely early so the blow-up onset is visible
     if n < 40 or n % 2 == 0:
         frames.append(np.sqrt(u**2 + v**2))
-",45,1382,burgers,advection/diffusion,False,explicit,,,,,6,Burgers_8,Comm_InValid,blows up to NaNs
+    # coupled momentum update
+",44,1322,burgers,advection/diffusion,False,explicit,,,,,5,Burgers_8,Comm_InValid,blows up to NaNs
 Burgers_Comm_Valid_8,"import numpy as np
 
 
@@ -852,16 +847,16 @@ y = np.linspace(0, L, ny)
 X, Y = np.meshgrid(x, y, indexing=""ij"")
 
 
-# diffusion number; Crank-Nicolson is unconditionally stable
 u = np.sin(2 * np.pi * X) * np.cos(2 * np.pi * Y)
+# diffusion number; Crank-Nicolson is unconditionally stable
 v = -np.cos(2 * np.pi * X) * np.sin(2 * np.pi * Y)
 
 
 cfl, diff_num = 0.3, 0.2
 speed0 = np.sqrt(u**2 + v**2).max()
-# fluid initially at rest
 dt = min(cfl * dx / speed0, diff_num * dx**2 / nu)
 nt = 300
+# fluid initially at rest
 
 
 def upwind_deriv(f, axis, vel):
@@ -870,21 +865,20 @@ def upwind_deriv(f, axis, vel):
     return np.where(vel >= 0, (f - fm) / dx, (fp - f) / dx)
 
 
-# wall impulsively set into motion at t=0+
 skip = 5
 frames = [np.sqrt(u**2 + v**2)]
 for n in range(nt):
+# wall impulsively set into motion at t=0+
     ux = upwind_deriv(u, 0, u); uy = upwind_deriv(u, 1, v)
     vx = upwind_deriv(v, 0, u); vy = upwind_deriv(v, 1, v)
     lap_u = (np.roll(u, -1, 0) + np.roll(u, 1, 0) + np.roll(u, -1, 1) + np.roll(u, 1, 1) - 4 * u) / dx**2
     lap_v = (np.roll(v, -1, 0) + np.roll(v, 1, 0) + np.roll(v, -1, 1) + np.roll(v, 1, 1) - 4 * v) / dx**2
-    # wall boundary contribution folded into the RHS
     u = u + dt * (-(u * ux + v * uy) - nu * lap_u)
     v = v + dt * (-(u * vx + v * vy) - nu * lap_v)
-    # Domain and physical parameters
     if n < 40 or n % 2 == 0:
         frames.append(np.sqrt(u**2 + v**2))
-",45,1378,burgers,advection/diffusion,False,explicit,NavierStokes_Comm_Valid_6,navier-stokes,"[{'donor_text': '# Domain and physical parameters', 'gt_position': 4, 'source_line_in_donor': 5, 'line_inserted': 4}, {'donor_text': '# diffusion number; Crank-Nicolson is unconditionally stable', 'gt_position': 13, 'source_line_in_donor': 10, 'line_inserted': 13}, {'donor_text': '# fluid initially at rest', 'gt_position': 20, 'source_line_in_donor': 14, 'line_inserted': 20}, {'donor_text': '# wall impulsively set into motion at t=0+', 'gt_position': 31, 'source_line_in_donor': 16, 'line_inserted': 31}, {'donor_text': '# wall boundary contribution folded into the RHS', 'gt_position': 39, 'source_line_in_donor': 30, 'line_inserted': 39}, {'donor_text': '# Domain and physical parameters', 'gt_position': 42, 'source_line_in_donor': 5, 'line_inserted': 42}]",-1.0,6,Burgers_8,CorrComm_Invalid,
+    # wall boundary contribution folded into the RHS
+",44,1341,burgers,advection/diffusion,False,explicit,NavierStokes_Comm_Valid_6,navier-stokes,"[{'donor_text': '# Domain and physical parameters', 'gt_position': 4, 'source_line_in_donor': 5, 'line_inserted': 4}, {'donor_text': '# diffusion number; Crank-Nicolson is unconditionally stable', 'gt_position': 14, 'source_line_in_donor': 10, 'line_inserted': 14}, {'donor_text': '# fluid initially at rest', 'gt_position': 22, 'source_line_in_donor': 14, 'line_inserted': 22}, {'donor_text': '# wall impulsively set into motion at t=0+', 'gt_position': 34, 'source_line_in_donor': 16, 'line_inserted': 34}, {'donor_text': '# wall boundary contribution folded into the RHS', 'gt_position': 43, 'source_line_in_donor': 30, 'line_inserted': 43}]",0.0,5,Burgers_8,CorrComm_Invalid,blows up to NaNs
 Burgers_NoComm_CorrVar_8,"import numpy as np
 foobar_1, foobar_18 = (1.0, 0.02)
 foobar_19 = foobar_20 = 101
@@ -1032,29 +1026,29 @@ Heat_Comm_InValid_5,"import numpy as np
 L, alpha = 1.0, 0.01
 nx, nt = 101, 2000
 dx = L / (nx - 1)
-# CFL condition for FTCS: alpha*dt/dx^2 <= 0.5
 dt = 0.4 * dx**2 / alpha
+# CFL condition for FTCS: alpha*dt/dx^2 <= 0.5
 r = alpha * dt / dx**2
 
 
 x = np.linspace(0, L, nx)
-# Gaussian initial condition
 u = np.exp(-((x - L / 2) ** 2) / (2 * 0.02 ** 2))
-# Dirichlet boundary conditions
 u[0], u[-1] = 0.0, 0.0
+# Gaussian initial condition
 
 
+# Dirichlet boundary conditions
 snapshots = {0: u.copy()}
 save_steps = [nt // 4, nt // 2, nt - 1]
 
 
 for n in range(nt):
     u_new = u.copy()
-    # explicit update
     u_new[1:-1] = u[1:-1] - r * (u[2:] - 2 * u[1:-1] + u[:-2])
     u_new[0], u_new[-1] = 0.0, 0.0
     u = u_new
     if n in save_steps:
+    # explicit update
         snapshots[n] = u.copy()
 ",32,670,heat,diffusion,False,explicit,,,,,5,Heat_5,Comm_InValid,"blow ups, overflow"
 Heat_Comm_Valid_5,"import numpy as np
@@ -1128,31 +1122,31 @@ Heat_CorrComm_InValid_5,"import numpy as np
 L, alpha = 1.0, 0.01
 nx, nt = 101, 2000
 dx = L / (nx - 1)
-# diffusion number; Crank-Nicolson is unconditionally stable
 dt = 0.4 * dx**2 / alpha
+# diffusion number; Crank-Nicolson is unconditionally stable
 r = alpha * dt / dx**2
 
 
 x = np.linspace(0, L, nx)
-# fluid initially at rest
 u = np.exp(-((x - L / 2) ** 2) / (2 * 0.02 ** 2))
-# wall impulsively set into motion at t=0+
 u[0], u[-1] = 0.0, 0.0
+# fluid initially at rest
 
 
+# wall impulsively set into motion at t=0+
 snapshots = {0: u.copy()}
 save_steps = [nt // 4, nt // 2, nt - 1]
 
 
 for n in range(nt):
     u_new = u.copy()
-    # wall boundary contribution folded into the RHS
     u_new[1:-1] = u[1:-1] - r * (u[2:] - 2 * u[1:-1] + u[:-2])
     u_new[0], u_new[-1] = 0.0, 0.0
     u = u_new
     if n in save_steps:
+    # wall boundary contribution folded into the RHS
         snapshots[n] = u.copy()
-",32,723,heat,diffusion,False,explicit,NavierStokes_Comm_Valid_6,navier-stokes,"[{'donor_text': '# Domain and physical parameters', 'gt_position': 4, 'source_line_in_donor': 5, 'line_inserted': 4}, {'donor_text': '# diffusion number; Crank-Nicolson is unconditionally stable', 'gt_position': 8, 'source_line_in_donor': 10, 'line_inserted': 8}, {'donor_text': '# fluid initially at rest', 'gt_position': 14, 'source_line_in_donor': 14, 'line_inserted': 14}, {'donor_text': '# wall impulsively set into motion at t=0+', 'gt_position': 16, 'source_line_in_donor': 16, 'line_inserted': 16}, {'donor_text': '# wall boundary contribution folded into the RHS', 'gt_position': 26, 'source_line_in_donor': 30, 'line_inserted': 26}]",0.0,5,Heat_5,CorrComm_Invalid,
+",32,723,heat,diffusion,False,explicit,NavierStokes_Comm_Valid_6,navier-stokes,"[{'donor_text': '# Domain and physical parameters', 'gt_position': 4, 'source_line_in_donor': 5, 'line_inserted': 4}, {'donor_text': '# diffusion number; Crank-Nicolson is unconditionally stable', 'gt_position': 9, 'source_line_in_donor': 10, 'line_inserted': 9}, {'donor_text': '# fluid initially at rest', 'gt_position': 16, 'source_line_in_donor': 14, 'line_inserted': 16}, {'donor_text': '# wall impulsively set into motion at t=0+', 'gt_position': 19, 'source_line_in_donor': 16, 'line_inserted': 19}, {'donor_text': '# wall boundary contribution folded into the RHS', 'gt_position': 30, 'source_line_in_donor': 30, 'line_inserted': 30}]",0.0,5,Heat_5,CorrComm_Invalid,"blow ups, overflow"
 Heat_NoComm_CorrVar_5,"import numpy as np
 foobar_1, foobar_2 = (1.0, 0.01)
 foobar_7, foobar_6 = (101, 2000)
@@ -1251,22 +1245,22 @@ from scipy.linalg import solve_banded
 L, alpha = 1.0, 0.01
 nx, nt = 101, 500
 dx = L / (nx - 1)
-# No CFL restriction needed; Crank-Nicolson is unconditionally stable
 dt = 0.001
+# No CFL restriction needed; Crank-Nicolson is unconditionally stable
 r = alpha * dt / dx**2
 
 
 x = np.linspace(0, L, nx)
 u = np.zeros(nx)
-# top-hat initial condition
 u[(x > 0.4) & (x < 0.6)] = 1.0
 u[0], u[-1] = 0.0, 0.0
+# top-hat initial condition
 
 
-# Build tridiagonal system (I - r/2 * D2) u_new = (I + r/2 * D2) u_old
 n_int = nx - 2
 ab = np.zeros((3, n_int))
 ab[0, 1:] = -r / 2
+# Build tridiagonal system (I - r/2 * D2) u_new = (I + r/2 * D2) u_old
 ab[1, :] = 1 + r
 ab[2, :-1] = -r / 2
 
@@ -1276,11 +1270,11 @@ save_steps = [nt // 4, nt // 2, nt - 1]
 
 
 for n in range(nt):
-    # explicit half-step RHS
     rhs = (r / 2) * u[1:-1] + (1 - r) * u[1:-1] + (r / 2) * u[2:]
     u_int = solve_banded((1, 1), ab, rhs)
     u[1:-1] = u_int
     u[0], u[-1] = 0.0, 0.0
+    # explicit half-step RHS
     if n in save_steps:
         snapshots[n] = u.copy()
 ",41,880,heat,diffusion,False,implicit,,,,,5,Heat_6,Comm_InValid,breaks symmetry
@@ -1374,22 +1368,22 @@ from scipy.linalg import solve_banded
 L, alpha = 1.0, 0.01
 nx, nt = 101, 500
 dx = L / (nx - 1)
-# CFL condition: Courant number c*dt/dx <= 1
 dt = 0.001
+# CFL condition: Courant number c*dt/dx <= 1
 r = alpha * dt / dx**2
 
 
 x = np.linspace(0, L, nx)
 u = np.zeros(nx)
-# Gaussian initial displacement
 u[(x > 0.4) & (x < 0.6)] = 1.0
 u[0], u[-1] = 0.0, 0.0
+# Gaussian initial displacement
 
 
-# zero initial velocity
 n_int = nx - 2
 ab = np.zeros((3, n_int))
 ab[0, 1:] = -r / 2
+# zero initial velocity
 ab[1, :] = 1 + r
 ab[2, :-1] = -r / 2
 
@@ -1399,14 +1393,14 @@ save_steps = [nt // 4, nt // 2, nt - 1]
 
 
 for n in range(nt):
-    # leapfrog update
     rhs = (r / 2) * u[1:-1] + (1 - r) * u[1:-1] + (r / 2) * u[2:]
     u_int = solve_banded((1, 1), ab, rhs)
     u[1:-1] = u_int
     u[0], u[-1] = 0.0, 0.0
+    # leapfrog update
     if n in save_steps:
         snapshots[n] = u.copy()
-",41,805,heat,diffusion,False,implicit,Wave_Comm_Valid_5,wave,"[{'donor_text': '# Domain and physical parameters', 'gt_position': 5, 'source_line_in_donor': 4, 'line_inserted': 5}, {'donor_text': '# CFL condition: Courant number c*dt/dx <= 1', 'gt_position': 9, 'source_line_in_donor': 8, 'line_inserted': 9}, {'donor_text': '# Gaussian initial displacement', 'gt_position': 16, 'source_line_in_donor': 14, 'line_inserted': 16}, {'donor_text': '# zero initial velocity', 'gt_position': 21, 'source_line_in_donor': 16, 'line_inserted': 21}, {'donor_text': '# leapfrog update', 'gt_position': 34, 'source_line_in_donor': 30, 'line_inserted': 34}]",1.0,5,Heat_6,CorrComm_Invalid,
+",41,805,heat,diffusion,False,implicit,Wave_Comm_Valid_5,wave,"[{'donor_text': '# Domain and physical parameters', 'gt_position': 5, 'source_line_in_donor': 4, 'line_inserted': 5}, {'donor_text': '# CFL condition: Courant number c*dt/dx <= 1', 'gt_position': 10, 'source_line_in_donor': 8, 'line_inserted': 10}, {'donor_text': '# Gaussian initial displacement', 'gt_position': 18, 'source_line_in_donor': 14, 'line_inserted': 18}, {'donor_text': '# zero initial velocity', 'gt_position': 24, 'source_line_in_donor': 16, 'line_inserted': 24}, {'donor_text': '# leapfrog update', 'gt_position': 38, 'source_line_in_donor': 30, 'line_inserted': 38}]",1.0,5,Heat_6,CorrComm_Invalid,breaks symmetry
 Heat_NoComm_CorrVar_6,"import numpy as np
 from scipy.linalg import solve_banded
 foobar_1, foobar_3 = (1.0, 0.01)
@@ -1537,8 +1531,8 @@ from scipy.linalg import solve_banded
 L, alpha = 1.0, 0.01
 nx = ny = 61
 dx = dy = L / (nx - 1)
-# ADI is unconditionally stable, so dt is chosen for accuracy, not stability
 dt = 0.005
+# ADI is unconditionally stable, so dt is chosen for accuracy, not stability
 r = alpha * dt / dx**2
 nt = 100
 
@@ -1546,9 +1540,9 @@ nt = 100
 x = np.linspace(0, L, nx)
 y = np.linspace(0, L, ny)
 u = np.zeros((ny, nx))
-# multi-point sources
 sources = [(0.25, 0.25), (0.75, 0.75), (0.25, 0.75), (0.75, 0.25)]
 for sx, sy in sources:
+# multi-point sources
     i, j = int(sy / dy), int(sx / dx)
     u[i, j] = 50.0
 
@@ -1565,17 +1559,17 @@ ab_int = thomas_solve(nx - 2, r)
 
 
 for n in range(nt):
-    # Half-step 1: implicit in x, explicit in y
     u_star = u.copy()
     for i in range(1, ny - 1):
         rhs = (r / 2) * u[i, :-2] - (r - 1) * u[i, 1:-1] + (r / 2) * u[i, 2:]
+    # Half-step 1: implicit in x, explicit in y
         rhs -= (r / 2) * (u[i - 1, 1:-1] - 2 * u[i, 1:-1] + u[i + 1, 1:-1])
         u_star[i, 1:-1] = solve_banded((1, 1), ab_int, rhs)
-    # Half-step 2: implicit in y, explicit in x
     u_new = u_star.copy()
     for j in range(1, nx - 1):
         rhs = (r / 2) * u_star[:-2, j] - (r - 1) * u_star[1:-1, j] + (r / 2) * u_star[2:, j]
         u_new[1:-1, j] = solve_banded((1, 1), ab_int, rhs)
+    # Half-step 2: implicit in y, explicit in x
     u = u_new
 
 
@@ -1693,8 +1687,8 @@ from scipy.linalg import solve_banded
 L, alpha = 1.0, 0.01
 nx = ny = 61
 dx = dy = L / (nx - 1)
-# sinusoidal shear-layer initial condition
 dt = 0.005
+# sinusoidal shear-layer initial condition
 r = alpha * dt / dx**2
 nt = 100
 
@@ -1702,9 +1696,9 @@ nt = 100
 x = np.linspace(0, L, nx)
 y = np.linspace(0, L, ny)
 u = np.zeros((ny, nx))
-# advective + diffusive CFL, 2D
 sources = [(0.25, 0.25), (0.75, 0.75), (0.25, 0.75), (0.75, 0.25)]
 for sx, sy in sources:
+# advective + diffusive CFL, 2D
     i, j = int(sy / dy), int(sx / dx)
     u[i, j] = 50.0
 
@@ -1721,22 +1715,22 @@ ab_int = thomas_solve(nx - 2, r)
 
 
 for n in range(nt):
-    # subsample for the quiver overlay so arrows stay readable
     u_star = u.copy()
     for i in range(1, ny - 1):
         rhs = (r / 2) * u[i, :-2] - (r - 1) * u[i, 1:-1] + (r / 2) * u[i, 2:]
+    # subsample for the quiver overlay so arrows stay readable
         rhs -= (r / 2) * (u[i - 1, 1:-1] - 2 * u[i, 1:-1] + u[i + 1, 1:-1])
         u_star[i, 1:-1] = solve_banded((1, 1), ab_int, rhs)
-    # coupled momentum update
     u_new = u_star.copy()
     for j in range(1, nx - 1):
         rhs = (r / 2) * u_star[:-2, j] - (r - 1) * u_star[1:-1, j] + (r / 2) * u_star[2:, j]
         u_new[1:-1, j] = solve_banded((1, 1), ab_int, rhs)
+    # coupled momentum update
     u = u_new
 
 
 X, Y = np.meshgrid(x, y)
-",52,1292,heat,diffusion,False,implicit,Burgers_Comm_Valid_8,burgers,"[{'donor_text': '# Domain and physical parameters', 'gt_position': 5, 'source_line_in_donor': 4, 'line_inserted': 5}, {'donor_text': '# sinusoidal shear-layer initial condition', 'gt_position': 9, 'source_line_in_donor': 13, 'line_inserted': 9}, {'donor_text': '# advective + diffusive CFL, 2D', 'gt_position': 18, 'source_line_in_donor': 20, 'line_inserted': 18}, {'donor_text': '# subsample for the quiver overlay so arrows stay readable', 'gt_position': 37, 'source_line_in_donor': 31, 'line_inserted': 37}, {'donor_text': '# coupled momentum update', 'gt_position': 43, 'source_line_in_donor': 39, 'line_inserted': 43}]",0.0,5,Heat_7,CorrComm_Invalid,
+",52,1292,heat,diffusion,False,implicit,Burgers_Comm_Valid_8,burgers,"[{'donor_text': '# Domain and physical parameters', 'gt_position': 5, 'source_line_in_donor': 4, 'line_inserted': 5}, {'donor_text': '# sinusoidal shear-layer initial condition', 'gt_position': 10, 'source_line_in_donor': 13, 'line_inserted': 10}, {'donor_text': '# advective + diffusive CFL, 2D', 'gt_position': 20, 'source_line_in_donor': 20, 'line_inserted': 20}, {'donor_text': '# subsample for the quiver overlay so arrows stay readable', 'gt_position': 40, 'source_line_in_donor': 31, 'line_inserted': 40}, {'donor_text': '# coupled momentum update', 'gt_position': 47, 'source_line_in_donor': 39, 'line_inserted': 47}]",0.0,5,Heat_7,CorrComm_Invalid,heat spreads unevenly by direction
 Heat_NoComm_CorrVar_7,"import numpy as np
 from scipy.linalg import solve_banded
 foobar_1, foobar_6 = (1.0, 0.01)
@@ -1912,24 +1906,24 @@ y = np.linspace(0, L, ny, endpoint=False)
 X, Y = np.meshgrid(x, y)
 
 
-# sinusoidal initial condition
 u0 = np.sin(3 * X) * np.sin(2 * Y) + 0.5 * np.sin(5 * X)
+# sinusoidal initial condition
 
 
 kx = np.fft.fftfreq(nx, d=L / nx) * 2 * np.pi
 ky = np.fft.fftfreq(ny, d=L / ny) * 2 * np.pi
 KX, KY = np.meshgrid(kx, ky)
-# Laplacian eigenvalues in Fourier space
 K2 = KX**2 + KY**2
 
+# Laplacian eigenvalues in Fourier space
 
 u0_hat = np.fft.fft2(u0)
 
 
-# No CFL restriction: solution advances via exact spectral decay factor
 t_final = 0.5
 decay = np.exp(alpha * K2 * t_final)
 u_final = np.real(np.fft.ifft2(u0_hat * decay))
+# No CFL restriction: solution advances via exact spectral decay factor
 ",30,677,heat,diffusion,False,spectral,,,,,4,Heat_8,Comm_InValid,blows up
 Heat_Comm_Valid_8,"import numpy as np
 
@@ -2002,25 +1996,25 @@ y = np.linspace(0, L, ny, endpoint=False)
 X, Y = np.meshgrid(x, y)
 
 
-# varying speed: faster medium in right half
 u0 = np.sin(3 * X) * np.sin(2 * Y) + 0.5 * np.sin(5 * X)
+# varying speed: faster medium in right half
 
 
 kx = np.fft.fftfreq(nx, d=L / nx) * 2 * np.pi
 ky = np.fft.fftfreq(ny, d=L / ny) * 2 * np.pi
 KX, KY = np.meshgrid(kx, ky)
-# CFL condition for 2D: c*dt*sqrt(1/dx^2+1/dy^2) <= 1
 K2 = KX**2 + KY**2
 
+# CFL condition for 2D: c*dt*sqrt(1/dx^2+1/dy^2) <= 1
 
 u0_hat = np.fft.fft2(u0)
 
 
-# multi-point source displacement
 t_final = 0.5
 decay = np.exp(alpha * K2 * t_final)
 u_final = np.real(np.fft.ifft2(u0_hat * decay))
-",30,666,heat,diffusion,False,spectral,Wave_Comm_Valid_7,wave,"[{'donor_text': '# Domain and physical parameters', 'gt_position': 4, 'source_line_in_donor': 4, 'line_inserted': 4}, {'donor_text': '# varying speed: faster medium in right half', 'gt_position': 12, 'source_line_in_donor': 13, 'line_inserted': 12}, {'donor_text': '# CFL condition for 2D: c*dt*sqrt(1/dx^2+1/dy^2) <= 1', 'gt_position': 19, 'source_line_in_donor': 15, 'line_inserted': 19}, {'donor_text': '# multi-point source displacement', 'gt_position': 26, 'source_line_in_donor': 20, 'line_inserted': 26}]",4.0,4,Heat_8,CorrComm_Invalid,
+# multi-point source displacement
+",30,666,heat,diffusion,False,spectral,Wave_Comm_Valid_7,wave,"[{'donor_text': '# Domain and physical parameters', 'gt_position': 4, 'source_line_in_donor': 4, 'line_inserted': 4}, {'donor_text': '# varying speed: faster medium in right half', 'gt_position': 13, 'source_line_in_donor': 13, 'line_inserted': 13}, {'donor_text': '# CFL condition for 2D: c*dt*sqrt(1/dx^2+1/dy^2) <= 1', 'gt_position': 21, 'source_line_in_donor': 15, 'line_inserted': 21}, {'donor_text': '# multi-point source displacement', 'gt_position': 29, 'source_line_in_donor': 20, 'line_inserted': 29}]",4.0,4,Heat_8,CorrComm_Invalid,blows up
 Heat_NoComm_CorrVar_8,"import numpy as np
 foobar_4, foobar_7 = (2 * np.pi, 0.05)
 foobar_11 = foobar_12 = 128
@@ -2111,31 +2105,31 @@ H, nu, dpdx, rho = 1.0, 0.1, -1.0, 1.0
 ny, nt = 51, 60000
 dy = H / (ny - 1)
 y = np.linspace(0, H, ny)
-# constant forcing per unit mass driving the flow
 G = -dpdx / rho
+# constant forcing per unit mass driving the flow
 
 
-# fluid starts at rest
 u = np.zeros(ny)
-# diffusion stability bound for explicit FTCS
 dt = 0.4 * dy**2 / (2 * nu)
+# fluid starts at rest
 
 
+# diffusion stability bound for explicit FTCS
 frames = [u.copy()]
 for n in range(nt):
     u_new = u.copy()
     u_new[1:-1] = u[1:-1] + dt * (G - nu * (u[2:] - 2 * u[1:-1] + u[:-2]) / dy**2)
-    # no-slip walls
     u_new[0], u_new[-1] = 0.0, 0.0
     u = u_new
-    # store densely early so the blow-up onset is visible
     if n < 60 or n % 300 == 0:
         frames.append(u.copy())
+    # no-slip walls
 
 
-# analytic parabolic steady-state profile
 u_steady = G / (2 * nu) * y * (H - y)
-",33,756,navier-stokes,diffusion/restoration,False,explicit,,,,,7,NavierStokes_5,Comm_InValid,blows up to NaNs
+    # store periodically to keep the GIF a manageable length
+
+# analytic parabolic steady-state profile",33,759,navier-stokes,diffusion/restoration,False,explicit,,,,,7,NavierStokes_5,Comm_InValid,blows up to NaNs
 NavierStokes_Comm_Valid_5,"import numpy as np
 
 
@@ -2210,31 +2204,31 @@ H, nu, dpdx, rho = 1.0, 0.1, -1.0, 1.0
 ny, nt = 51, 60000
 dy = H / (ny - 1)
 y = np.linspace(0, H, ny)
-# sinusoidal initial condition
 G = -dpdx / rho
+# sinusoidal initial condition
 
 
-# Laplacian eigenvalues in Fourier space
 u = np.zeros(ny)
-# No CFL restriction: solution advances via exact spectral decay factor
 dt = 0.4 * dy**2 / (2 * nu)
+# Laplacian eigenvalues in Fourier space
 
 
+# No CFL restriction: solution advances via exact spectral decay factor
 frames = [u.copy()]
 for n in range(nt):
     u_new = u.copy()
     u_new[1:-1] = u[1:-1] + dt * (G - nu * (u[2:] - 2 * u[1:-1] + u[:-2]) / dy**2)
-    # Domain and physical parameters
     u_new[0], u_new[-1] = 0.0, 0.0
     u = u_new
-    # sinusoidal initial condition
     if n < 60 or n % 300 == 0:
         frames.append(u.copy())
+    # Domain and physical parameters
 
 
-# Laplacian eigenvalues in Fourier space
 u_steady = G / (2 * nu) * y * (H - y)
-",33,774,navier-stokes,diffusion/restoration,False,explicit,Heat_Comm_Valid_8,heat,"[{'donor_text': '# Domain and physical parameters', 'gt_position': 4, 'source_line_in_donor': 4, 'line_inserted': 4}, {'donor_text': '# sinusoidal initial condition', 'gt_position': 9, 'source_line_in_donor': 12, 'line_inserted': 9}, {'donor_text': '# Laplacian eigenvalues in Fourier space', 'gt_position': 13, 'source_line_in_donor': 19, 'line_inserted': 13}, {'donor_text': '# No CFL restriction: solution advances via exact spectral decay factor', 'gt_position': 15, 'source_line_in_donor': 26, 'line_inserted': 15}, {'donor_text': '# Domain and physical parameters', 'gt_position': 23, 'source_line_in_donor': 4, 'line_inserted': 23}, {'donor_text': '# sinusoidal initial condition', 'gt_position': 26, 'source_line_in_donor': 12, 'line_inserted': 26}, {'donor_text': '# Laplacian eigenvalues in Fourier space', 'gt_position': 31, 'source_line_in_donor': 19, 'line_inserted': 31}]",-3.0,7,NavierStokes_5,CorrComm_Invalid,
+    # sinusoidal initial condition
+
+# Laplacian eigenvalues in Fourier space",33,774,navier-stokes,diffusion/restoration,False,explicit,Heat_Comm_Valid_8,heat,"[{'donor_text': '# Domain and physical parameters', 'gt_position': 4, 'source_line_in_donor': 4, 'line_inserted': 4}, {'donor_text': '# sinusoidal initial condition', 'gt_position': 10, 'source_line_in_donor': 12, 'line_inserted': 10}, {'donor_text': '# Laplacian eigenvalues in Fourier space', 'gt_position': 15, 'source_line_in_donor': 19, 'line_inserted': 15}, {'donor_text': '# No CFL restriction: solution advances via exact spectral decay factor', 'gt_position': 18, 'source_line_in_donor': 26, 'line_inserted': 18}, {'donor_text': '# Domain and physical parameters', 'gt_position': 27, 'source_line_in_donor': 4, 'line_inserted': 27}, {'donor_text': '# sinusoidal initial condition', 'gt_position': 31, 'source_line_in_donor': 12, 'line_inserted': 31}, {'donor_text': '# Laplacian eigenvalues in Fourier space', 'gt_position': 33, 'source_line_in_donor': 19, 'line_inserted': 33}]",-3.0,7,NavierStokes_5,CorrComm_Invalid,blows up to NaNs
 NavierStokes_NoComm_CorrVar_5,"import numpy as np
 foobar_2, foobar_9, foobar_3, foobar_11 = (1.0, 0.1, -1.0, 1.0)
 foobar_10, foobar_8 = (51, 60000)
@@ -2330,16 +2324,16 @@ Ymax, nu, U0 = 1.0, 0.01, 1.0
 ny, nt, dt = 201, 4000, 0.0005
 dy = Ymax / (ny - 1)
 y = np.linspace(0, Ymax, ny)
-# diffusion number; Crank-Nicolson is unconditionally stable
 r = nu * dt / dy**2
+# diffusion number; Crank-Nicolson is unconditionally stable
 
 
-# fluid initially at rest
 u = np.zeros(ny)
-# wall impulsively set into motion at t=0+
 u[0] = U0
+# fluid initially at rest
 
 
+# wall impulsively set into motion at t=0+
 n_int = ny - 2
 ab = np.zeros((3, n_int))
 ab[0, 1:] = -r / 2
@@ -2350,11 +2344,11 @@ ab[2, :-1] = -r / 2
 frames = [u.copy()]
 for n in range(nt):
     rhs = -(r / 2) * u[:-2] + (1 + r) * u[1:-1] - (r / 2) * u[2:]
-    # wall boundary contribution folded into the RHS
     rhs[0] += -(r / 2) * U0
     u[1:-1] = solve_banded((1, 1), ab, rhs)
     u[0], u[-1] = U0, 0.0
     if n % 20 == 0:
+    # wall boundary contribution folded into the RHS
         frames.append(u.copy())
 ",36,792,navier-stokes,diffusion,False,implicit,,,,,5,NavierStokes_6,Comm_InValid,values climb up linearly and continuously
 NavierStokes_Comm_Valid_6,"import numpy as np
@@ -2438,16 +2432,16 @@ Ymax, nu, U0 = 1.0, 0.01, 1.0
 ny, nt, dt = 201, 4000, 0.0005
 dy = Ymax / (ny - 1)
 y = np.linspace(0, Ymax, ny)
-# sinusoidal initial condition, positive-biased
 r = nu * dt / dy**2
+# sinusoidal initial condition, positive-biased
 
 
-# CFL re-checked as the profile steepens
 u = np.zeros(ny)
-# periodic boundary conditions
 u[0] = U0
+# CFL re-checked as the profile steepens
 
 
+# periodic boundary conditions
 n_int = ny - 2
 ab = np.zeros((3, n_int))
 ab[0, 1:] = -r / 2
@@ -2458,13 +2452,13 @@ ab[2, :-1] = -r / 2
 frames = [u.copy()]
 for n in range(nt):
     rhs = -(r / 2) * u[:-2] + (1 + r) * u[1:-1] - (r / 2) * u[2:]
-    # conservative finite-volume update
     rhs[0] += -(r / 2) * U0
     u[1:-1] = solve_banded((1, 1), ab, rhs)
     u[0], u[-1] = U0, 0.0
     if n % 20 == 0:
+    # conservative finite-volume update
         frames.append(u.copy())
-",36,769,navier-stokes,diffusion,False,implicit,Burgers_Comm_Valid_5,burgers,"[{'donor_text': '# Domain and physical parameters', 'gt_position': 5, 'source_line_in_donor': 4, 'line_inserted': 5}, {'donor_text': '# sinusoidal initial condition, positive-biased', 'gt_position': 10, 'source_line_in_donor': 11, 'line_inserted': 10}, {'donor_text': '# CFL re-checked as the profile steepens', 'gt_position': 14, 'source_line_in_donor': 27, 'line_inserted': 14}, {'donor_text': '# periodic boundary conditions', 'gt_position': 16, 'source_line_in_donor': 30, 'line_inserted': 16}, {'donor_text': '# conservative finite-volume update', 'gt_position': 30, 'source_line_in_donor': 34, 'line_inserted': 30}]",0.0,5,NavierStokes_6,CorrComm_Invalid,
+",36,769,navier-stokes,diffusion,False,implicit,Burgers_Comm_Valid_5,burgers,"[{'donor_text': '# Domain and physical parameters', 'gt_position': 5, 'source_line_in_donor': 4, 'line_inserted': 5}, {'donor_text': '# sinusoidal initial condition, positive-biased', 'gt_position': 11, 'source_line_in_donor': 11, 'line_inserted': 11}, {'donor_text': '# CFL re-checked as the profile steepens', 'gt_position': 16, 'source_line_in_donor': 27, 'line_inserted': 16}, {'donor_text': '# periodic boundary conditions', 'gt_position': 19, 'source_line_in_donor': 30, 'line_inserted': 19}, {'donor_text': '# conservative finite-volume update', 'gt_position': 34, 'source_line_in_donor': 34, 'line_inserted': 34}]",0.0,5,NavierStokes_6,CorrComm_Invalid,values climb up linearly and continuously
 NavierStokes_NoComm_CorrVar_6,"import numpy as np
 from scipy.linalg import solve_banded
 foobar_2, foobar_10, foobar_1 = (1.0, 0.01, 1.0)
@@ -2585,8 +2579,8 @@ X, Y = np.meshgrid(x, y, indexing=""ij"")
 
 u = np.zeros((nx, ny)); v = np.zeros((nx, ny)); p = np.zeros((nx, ny))
 u_lid = 1.0
-# advective + diffusive stability bound
 dt = 0.2 * min(dx / u_lid, dx**2 / (4 * nu))
+# advective + diffusive stability bound
 nt, nit = 6200, 60
 
 
@@ -2599,9 +2593,9 @@ def pressure_poisson(p, b):
         p[:, -1] = p[:, -2]
         p[:, 0] = p[:, 1]
         p[0, :] = p[1, :]
-        # reference pressure to fix the null space
         p[-1, :] = 0.0
     return p
+        # reference pressure to fix the null space
 
 
 frames_speed = [np.sqrt(u**2 + v**2)]
@@ -2609,10 +2603,10 @@ frames_uv = [(u.copy(), v.copy())]
 for n in range(nt):
     un, vn = u.copy(), v.copy()
     b = np.zeros((nx, ny))
-    # RHS built from the divergence of the tentative velocity
     b[1:-1, 1:-1] = rho * (
         (1 / dt) * ((un[2:, 1:-1] - un[:-2, 1:-1]) / (2 * dx) + (vn[1:-1, 2:] - vn[1:-1, :-2]) / (2 * dy))
         - ((un[2:, 1:-1] - un[:-2, 1:-1]) / (2 * dx)) ** 2
+    # RHS built from the divergence of the tentative velocity
         - 2 * ((un[1:-1, 2:] - un[1:-1, :-2]) / (2 * dy) * (vn[2:, 1:-1] - vn[:-2, 1:-1]) / (2 * dx))
         - ((vn[1:-1, 2:] - vn[1:-1, :-2]) / (2 * dy)) ** 2
     )
@@ -2624,11 +2618,11 @@ for n in range(nt):
         - dt / (2 * dy) * vn[1:-1, 1:-1] * (un[1:-1, 2:] - un[1:-1, :-2])
         + dt / (2 * rho * dx) * (p[2:, 1:-1] - p[:-2, 1:-1])
         + nu * dt * ((un[2:, 1:-1] - 2 * un[1:-1, 1:-1] + un[:-2, 1:-1]) / dx**2
-                     # projected velocity update
                      + (un[1:-1, 2:] - 2 * un[1:-1, 1:-1] + un[1:-1, :-2]) / dy**2))
 
 
     v[1:-1, 1:-1] = (vn[1:-1, 1:-1]
+                     # projected velocity update
         - dt / (2 * dx) * un[1:-1, 1:-1] * (vn[2:, 1:-1] - vn[:-2, 1:-1])
         - dt / (2 * dy) * vn[1:-1, 1:-1] * (vn[1:-1, 2:] - vn[1:-1, :-2])
         + dt / (2 * rho * dy) * (p[1:-1, 2:] - p[1:-1, :-2])
@@ -2636,18 +2630,17 @@ for n in range(nt):
                      + (vn[1:-1, 2:] - 2 * vn[1:-1, 1:-1] + vn[1:-1, :-2]) / dy**2))
 
 
-    # no-slip walls, moving lid
     u[0, :] = 0; u[-1, :] = 0; u[:, 0] = 0; u[:, -1] = u_lid
     v[0, :] = 0; v[-1, :] = 0; v[:, 0] = 0; v[:, -1] = 0
-    # capture densely early since blow-up is very fast
     if n < 30 or n % 62 == 0:
         frames_speed.append(np.sqrt(u**2 + v**2))
         frames_uv.append((u.copy(), v.copy()))
+    # no-slip walls, moving lid
 
 
-# subsample the vector field so quiver arrows stay legible
 skip = 4
-",77,2774,navier-stokes,advection/diffusion,False,explicit/implicit,,,,,8,NavierStokes_7,Comm_InValid,NaNs very early on
+
+# subsample the vector field so quiver arrows stay legible",76,2719,navier-stokes,advection/diffusion,False,explicit/implicit,,,,,7,NavierStokes_7,Comm_InValid,NaNs very early on
 NavierStokes_Comm_Valid_7,"import numpy as np
 
 
@@ -2814,8 +2807,8 @@ X, Y = np.meshgrid(x, y, indexing=""ij"")
 
 u = np.zeros((nx, ny)); v = np.zeros((nx, ny)); p = np.zeros((nx, ny))
 u_lid = 1.0
-# sinusoidal shear-layer initial condition
 dt = 0.2 * min(dx / u_lid, dx**2 / (4 * nu))
+# sinusoidal shear-layer initial condition
 nt, nit = 6200, 60
 
 
@@ -2828,9 +2821,9 @@ def pressure_poisson(p, b):
         p[:, -1] = p[:, -2]
         p[:, 0] = p[:, 1]
         p[0, :] = p[1, :]
-        # advective + diffusive CFL, 2D
         p[-1, :] = 0.0
     return p
+        # advective + diffusive CFL, 2D
 
 
 frames_speed = [np.sqrt(u**2 + v**2)]
@@ -2838,10 +2831,10 @@ frames_uv = [(u.copy(), v.copy())]
 for n in range(nt):
     un, vn = u.copy(), v.copy()
     b = np.zeros((nx, ny))
-    # subsample for the quiver overlay so arrows stay readable
     b[1:-1, 1:-1] = rho * (
         (1 / dt) * ((un[2:, 1:-1] - un[:-2, 1:-1]) / (2 * dx) + (vn[1:-1, 2:] - vn[1:-1, :-2]) / (2 * dy))
         - ((un[2:, 1:-1] - un[:-2, 1:-1]) / (2 * dx)) ** 2
+    # subsample for the quiver overlay so arrows stay readable
         - 2 * ((un[1:-1, 2:] - un[1:-1, :-2]) / (2 * dy) * (vn[2:, 1:-1] - vn[:-2, 1:-1]) / (2 * dx))
         - ((vn[1:-1, 2:] - vn[1:-1, :-2]) / (2 * dy)) ** 2
     )
@@ -2853,11 +2846,11 @@ for n in range(nt):
         - dt / (2 * dy) * vn[1:-1, 1:-1] * (un[1:-1, 2:] - un[1:-1, :-2])
         + dt / (2 * rho * dx) * (p[2:, 1:-1] - p[:-2, 1:-1])
         + nu * dt * ((un[2:, 1:-1] - 2 * un[1:-1, 1:-1] + un[:-2, 1:-1]) / dx**2
-                     # coupled momentum update
                      + (un[1:-1, 2:] - 2 * un[1:-1, 1:-1] + un[1:-1, :-2]) / dy**2))
 
 
     v[1:-1, 1:-1] = (vn[1:-1, 1:-1]
+                     # coupled momentum update
         - dt / (2 * dx) * un[1:-1, 1:-1] * (vn[2:, 1:-1] - vn[:-2, 1:-1])
         - dt / (2 * dy) * vn[1:-1, 1:-1] * (vn[1:-1, 2:] - vn[1:-1, :-2])
         + dt / (2 * rho * dy) * (p[1:-1, 2:] - p[1:-1, :-2])
@@ -2865,18 +2858,17 @@ for n in range(nt):
                      + (vn[1:-1, 2:] - 2 * vn[1:-1, 1:-1] + vn[1:-1, :-2]) / dy**2))
 
 
-    # Domain and physical parameters
     u[0, :] = 0; u[-1, :] = 0; u[:, 0] = 0; u[:, -1] = u_lid
     v[0, :] = 0; v[-1, :] = 0; v[:, 0] = 0; v[:, -1] = 0
-    # sinusoidal shear-layer initial condition
     if n < 30 or n % 62 == 0:
         frames_speed.append(np.sqrt(u**2 + v**2))
         frames_uv.append((u.copy(), v.copy()))
+    # Domain and physical parameters
 
 
-# advective + diffusive CFL, 2D
 skip = 4
-",77,2735,navier-stokes,advection/diffusion,False,explicit/implicit,Burgers_Comm_Valid_8,burgers,"[{'donor_text': '# Domain and physical parameters', 'gt_position': 4, 'source_line_in_donor': 4, 'line_inserted': 4}, {'donor_text': '# sinusoidal shear-layer initial condition', 'gt_position': 15, 'source_line_in_donor': 13, 'line_inserted': 15}, {'donor_text': '# advective + diffusive CFL, 2D', 'gt_position': 29, 'source_line_in_donor': 20, 'line_inserted': 29}, {'donor_text': '# subsample for the quiver overlay so arrows stay readable', 'gt_position': 39, 'source_line_in_donor': 31, 'line_inserted': 39}, {'donor_text': '# coupled momentum update', 'gt_position': 54, 'source_line_in_donor': 39, 'line_inserted': 54}, {'donor_text': '# Domain and physical parameters', 'gt_position': 66, 'source_line_in_donor': 4, 'line_inserted': 66}, {'donor_text': '# sinusoidal shear-layer initial condition', 'gt_position': 69, 'source_line_in_donor': 13, 'line_inserted': 69}, {'donor_text': '# advective + diffusive CFL, 2D', 'gt_position': 75, 'source_line_in_donor': 20, 'line_inserted': 75}]",-3.0,8,NavierStokes_7,CorrComm_Invalid,
+
+# sinusoidal shear-layer initial condition",76,2699,navier-stokes,advection/diffusion,False,explicit/implicit,Burgers_Comm_Valid_8,burgers,"[{'donor_text': '# Domain and physical parameters', 'gt_position': 4, 'source_line_in_donor': 4, 'line_inserted': 4}, {'donor_text': '# sinusoidal shear-layer initial condition', 'gt_position': 16, 'source_line_in_donor': 13, 'line_inserted': 16}, {'donor_text': '# advective + diffusive CFL, 2D', 'gt_position': 31, 'source_line_in_donor': 20, 'line_inserted': 31}, {'donor_text': '# subsample for the quiver overlay so arrows stay readable', 'gt_position': 42, 'source_line_in_donor': 31, 'line_inserted': 42}, {'donor_text': '# coupled momentum update', 'gt_position': 58, 'source_line_in_donor': 39, 'line_inserted': 58}, {'donor_text': '# Domain and physical parameters', 'gt_position': 71, 'source_line_in_donor': 4, 'line_inserted': 71}, {'donor_text': '# sinusoidal shear-layer initial condition', 'gt_position': 76, 'source_line_in_donor': 13, 'line_inserted': 76}]",-2.0,7,NavierStokes_7,CorrComm_Invalid,NaNs very early on
 NavierStokes_NoComm_CorrVar_7,"import numpy as np
 foobar_16, foobar_17, foobar_15, foobar_20 = (71, 71, 0.05, 1.0)
 foobar_1, foobar_2 = (1.0, 1.0)
@@ -3107,8 +3099,8 @@ NavierStokes_Comm_InValid_8,"import numpy as np
 
 
 # Domain and physical parameters
-# near-inviscid: high Reynolds number regime
 N, L, nu = 256, 2 * np.pi, 1e-4
+# near-inviscid: high Reynolds number regime
 x = np.linspace(0, L, N, endpoint=False)
 y = np.linspace(0, L, N, endpoint=False)
 X, Y = np.meshgrid(x, y, indexing=""ij"")
@@ -3116,19 +3108,19 @@ X, Y = np.meshgrid(x, y, indexing=""ij"")
 
 delta, eps = 0.08, 0.05
 u0 = np.where(Y <= np.pi, np.tanh((Y - np.pi / 2) / delta), np.tanh((3 * np.pi / 2 - Y) / delta))
-# small perturbation that seeds the Kelvin-Helmholtz roll-up
 v0 = eps * np.sin(X)
 
+# small perturbation that seeds the Kelvin-Helmholtz roll-up
 
 k = np.fft.fftfreq(N, d=L / N) * 2 * np.pi
 KX, KY = np.meshgrid(k, k, indexing=""ij"")
 K2 = KX**2 + KY**2
 K2safe = np.where(K2 == 0, 1.0, K2)
 kmax = N // 3
-# 2/3 dealiasing rule
 mask = (np.abs(KX) <= kmax) & (np.abs(KY) <= kmax)
 
 
+# 2/3 dealiasing rule
 def deriv(f_hat, K):
     return np.real(np.fft.ifft2(1j * K * f_hat))
 
@@ -3158,15 +3150,15 @@ frames = [np.real(np.fft.ifft2(omega_hat))]
 for step in range(nt):
     u, v = velocity(omega_hat)
     speed_max = max(np.max(np.sqrt(u**2 + v**2)), 1e-6)
-    # CFL re-checked every step as the layer rolls up and speeds change
     dt = 0.3 * dx / speed_max
     k1 = rhs(omega_hat)
     k2 = rhs(omega_hat + dt * k1)
-    # RK2 (Heun) time integration
     omega_hat = omega_hat + dt / 2 * (k1 + k2)
+    # CFL re-checked every step as the layer rolls up and speeds change
     if step % 4 == 0:
         frames.append(np.real(np.fft.ifft2(omega_hat)))
-",64,1708,navier-stokes,advection/diffusion,False,spectral/explicit,,,,,6,NavierStokes_8,Comm_InValid,stays bounded but oscillating heavily between values
+
+    # RK2 (Heun) time integration",64,1708,navier-stokes,advection/diffusion,False,explicit/spectral,,,,,6,NavierStokes_8,Comm_InValid,stays bounded but oscillating heavily between values
 NavierStokes_Comm_Valid_8,"import numpy as np
 
 
@@ -3230,7 +3222,7 @@ for step in range(nt):
     omega_hat = omega_hat + dt / 2 * (k1 + k2)
     if step % 4 == 0:
         frames.append(np.real(np.fft.ifft2(omega_hat)))
-",64,1712,navier-stokes,advection/diffusion,True,spectral/explicit,,,,,6,NavierStokes_8,Comm_Valid,
+",64,1712,navier-stokes,advection/diffusion,True,explicit/spectral,,,,,6,NavierStokes_8,Comm_Valid,
 NavierStokes_CorrComm_Valid_8,"import numpy as np
 
 
@@ -3294,13 +3286,13 @@ for step in range(nt):
     omega_hat = omega_hat + dt / 2 * (k1 + k2)
     if step % 4 == 0:
         frames.append(np.real(np.fft.ifft2(omega_hat)))
-",64,1645,navier-stokes,advection/diffusion,True,spectral/explicit,Heat_Comm_Valid_5,heat,"[{'donor_text': '# Domain and physical parameters', 'gt_position': 4, 'source_line_in_donor': 4, 'line_inserted': 4}, {'donor_text': '# CFL condition for FTCS: alpha*dt/dx^2 <= 0.5', 'gt_position': 5, 'source_line_in_donor': 8, 'line_inserted': 5}, {'donor_text': '# Gaussian initial condition', 'gt_position': 14, 'source_line_in_donor': 14, 'line_inserted': 14}, {'donor_text': '# Dirichlet boundary conditions', 'gt_position': 23, 'source_line_in_donor': 16, 'line_inserted': 23}, {'donor_text': '# explicit update', 'gt_position': 56, 'source_line_in_donor': 26, 'line_inserted': 56}, {'donor_text': '# Domain and physical parameters', 'gt_position': 60, 'source_line_in_donor': 4, 'line_inserted': 60}]",-1.0,6,NavierStokes_8,CorrComm,
+",64,1645,navier-stokes,advection/diffusion,True,explicit/spectral,Heat_Comm_Valid_5,heat,"[{'donor_text': '# Domain and physical parameters', 'gt_position': 4, 'source_line_in_donor': 4, 'line_inserted': 4}, {'donor_text': '# CFL condition for FTCS: alpha*dt/dx^2 <= 0.5', 'gt_position': 5, 'source_line_in_donor': 8, 'line_inserted': 5}, {'donor_text': '# Gaussian initial condition', 'gt_position': 14, 'source_line_in_donor': 14, 'line_inserted': 14}, {'donor_text': '# Dirichlet boundary conditions', 'gt_position': 23, 'source_line_in_donor': 16, 'line_inserted': 23}, {'donor_text': '# explicit update', 'gt_position': 56, 'source_line_in_donor': 26, 'line_inserted': 56}, {'donor_text': '# Domain and physical parameters', 'gt_position': 60, 'source_line_in_donor': 4, 'line_inserted': 60}]",-1.0,6,NavierStokes_8,CorrComm,
 NavierStokes_CorrComm_InValid_8,"import numpy as np
 
 
 # Domain and physical parameters
-# CFL condition for FTCS: alpha*dt/dx^2 <= 0.5
 N, L, nu = 256, 2 * np.pi, 1e-4
+# CFL condition for FTCS: alpha*dt/dx^2 <= 0.5
 x = np.linspace(0, L, N, endpoint=False)
 y = np.linspace(0, L, N, endpoint=False)
 X, Y = np.meshgrid(x, y, indexing=""ij"")
@@ -3308,19 +3300,19 @@ X, Y = np.meshgrid(x, y, indexing=""ij"")
 
 delta, eps = 0.08, 0.05
 u0 = np.where(Y <= np.pi, np.tanh((Y - np.pi / 2) / delta), np.tanh((3 * np.pi / 2 - Y) / delta))
-# Gaussian initial condition
 v0 = eps * np.sin(X)
 
+# Gaussian initial condition
 
 k = np.fft.fftfreq(N, d=L / N) * 2 * np.pi
 KX, KY = np.meshgrid(k, k, indexing=""ij"")
 K2 = KX**2 + KY**2
 K2safe = np.where(K2 == 0, 1.0, K2)
 kmax = N // 3
-# Dirichlet boundary conditions
 mask = (np.abs(KX) <= kmax) & (np.abs(KY) <= kmax)
 
 
+# Dirichlet boundary conditions
 def deriv(f_hat, K):
     return np.real(np.fft.ifft2(1j * K * f_hat))
 
@@ -3350,15 +3342,15 @@ frames = [np.real(np.fft.ifft2(omega_hat))]
 for step in range(nt):
     u, v = velocity(omega_hat)
     speed_max = max(np.max(np.sqrt(u**2 + v**2)), 1e-6)
-    # explicit update
     dt = 0.3 * dx / speed_max
     k1 = rhs(omega_hat)
     k2 = rhs(omega_hat + dt * k1)
-    # Domain and physical parameters
     omega_hat = omega_hat + dt / 2 * (k1 + k2)
+    # explicit update
     if step % 4 == 0:
         frames.append(np.real(np.fft.ifft2(omega_hat)))
-",64,1641,navier-stokes,advection/diffusion,False,spectral/explicit,Heat_Comm_Valid_5,heat,"[{'donor_text': '# Domain and physical parameters', 'gt_position': 4, 'source_line_in_donor': 4, 'line_inserted': 4}, {'donor_text': '# CFL condition for FTCS: alpha*dt/dx^2 <= 0.5', 'gt_position': 5, 'source_line_in_donor': 8, 'line_inserted': 5}, {'donor_text': '# Gaussian initial condition', 'gt_position': 14, 'source_line_in_donor': 14, 'line_inserted': 14}, {'donor_text': '# Dirichlet boundary conditions', 'gt_position': 23, 'source_line_in_donor': 16, 'line_inserted': 23}, {'donor_text': '# explicit update', 'gt_position': 56, 'source_line_in_donor': 26, 'line_inserted': 56}, {'donor_text': '# Domain and physical parameters', 'gt_position': 60, 'source_line_in_donor': 4, 'line_inserted': 60}]",-1.0,6,NavierStokes_8,CorrComm_Invalid,
+
+    # Domain and physical parameters",64,1641,navier-stokes,advection/diffusion,False,explicit/spectral,Heat_Comm_Valid_5,heat,"[{'donor_text': '# Domain and physical parameters', 'gt_position': 4, 'source_line_in_donor': 4, 'line_inserted': 4}, {'donor_text': '# CFL condition for FTCS: alpha*dt/dx^2 <= 0.5', 'gt_position': 6, 'source_line_in_donor': 8, 'line_inserted': 6}, {'donor_text': '# Gaussian initial condition', 'gt_position': 16, 'source_line_in_donor': 14, 'line_inserted': 16}, {'donor_text': '# Dirichlet boundary conditions', 'gt_position': 26, 'source_line_in_donor': 16, 'line_inserted': 26}, {'donor_text': '# explicit update', 'gt_position': 60, 'source_line_in_donor': 26, 'line_inserted': 60}, {'donor_text': '# Domain and physical parameters', 'gt_position': 64, 'source_line_in_donor': 4, 'line_inserted': 64}]",-1.0,6,NavierStokes_8,CorrComm_Invalid,stays bounded but oscillating heavily between values
 NavierStokes_NoComm_CorrVar_8,"import numpy as np
 foobar_7, foobar_6, foobar_23 = (256, 2 * np.pi, 0.0001)
 foobar_34 = np.linspace(0, foobar_6, foobar_7, endpoint=False)
@@ -3400,7 +3392,7 @@ for foobar_29 in range(foobar_22):
     foobar_18 = fn3(foobar_24 + foobar_11 * foobar_17)
     foobar_24 = foobar_24 + foobar_11 / 2 * (foobar_17 + foobar_18)
     if foobar_29 % 4 == 0:
-        foobar_15.append(np.real(np.fft.ifft2(foobar_24)))",42,1984,navier-stokes,advection/diffusion,True,spectral/explicit,,,,,0,NavierStokes_8,NoComm_CorrVar,
+        foobar_15.append(np.real(np.fft.ifft2(foobar_24)))",42,1984,navier-stokes,advection/diffusion,True,explicit/spectral,,,,,0,NavierStokes_8,NoComm_CorrVar,
 NavierStokes_NoComm_CorrVar_InValid_8,"import numpy as np
 foobar_7, foobar_6, foobar_23 = (256, 2 * np.pi, 0.0001)
 foobar_34 = np.linspace(0, foobar_6, foobar_7, endpoint=False)
@@ -3442,7 +3434,7 @@ for foobar_29 in range(foobar_22):
     foobar_18 = fn3(foobar_24 + foobar_11 * foobar_17)
     foobar_24 = foobar_24 + foobar_11 / 2 * (foobar_17 + foobar_18)
     if foobar_29 % 4 == 0:
-        foobar_15.append(np.real(np.fft.ifft2(foobar_24)))",42,1984,navier-stokes,advection/diffusion,False,spectral/explicit,,,,,0,NavierStokes_8,NoComm_CorrVar_InValid,stays bounded but oscillating heavily between values
+        foobar_15.append(np.real(np.fft.ifft2(foobar_24)))",42,1984,navier-stokes,advection/diffusion,False,explicit/spectral,,,,,0,NavierStokes_8,NoComm_CorrVar_InValid,stays bounded but oscillating heavily between values
 NavierStokes_NoComm_InValid_8,"import numpy as np
 
 
@@ -3500,7 +3492,7 @@ for step in range(nt):
     omega_hat = omega_hat + dt / 2 * (k1 + k2)
     if step % 4 == 0:
         frames.append(np.real(np.fft.ifft2(omega_hat)))
-",58,1441,navier-stokes,advection/diffusion,False,spectral/explicit,,,,,0,NavierStokes_8,NoComm_InValid,stays bounded but oscillating heavily between values
+",58,1441,navier-stokes,advection/diffusion,False,explicit/spectral,,,,,0,NavierStokes_8,NoComm_InValid,stays bounded but oscillating heavily between values
 NavierStokes_NoComm_Valid_8,"import numpy as np
 
 
@@ -3558,7 +3550,7 @@ for step in range(nt):
     omega_hat = omega_hat + dt / 2 * (k1 + k2)
     if step % 4 == 0:
         frames.append(np.real(np.fft.ifft2(omega_hat)))
-",58,1445,navier-stokes,advection/diffusion,True,spectral/explicit,,,,,0,NavierStokes_8,NoComm_Valid,
+",58,1445,navier-stokes,advection/diffusion,True,explicit/spectral,,,,,0,NavierStokes_8,NoComm_Valid,
 Wave_Comm_InValid_5,"import numpy as np
 
 
@@ -3566,18 +3558,18 @@ Wave_Comm_InValid_5,"import numpy as np
 L, c = 1.0, 1.0
 nx, nt = 201, 800
 dx = L / (nx - 1)
-# CFL condition: Courant number c*dt/dx <= 1
 dt = 0.5 * dx / c
+# CFL condition: Courant number c*dt/dx <= 1
 courant = (c * dt / dx) ** 2
 
 
 x = np.linspace(0, L, nx)
-# Gaussian initial displacement
 u_prev = np.exp(-((x - L / 2) ** 2) / (2 * 0.03 ** 2))
-# zero initial velocity
 v0 = np.zeros(nx)
+# Gaussian initial displacement
 
 
+# zero initial velocity
 u_curr = u_prev.copy()
 u_curr[1:-1] = (u_prev[1:-1] + dt * v0[1:-1]
                 + 0.5 * courant * (u_prev[2:] - 2 * u_prev[1:-1] + u_prev[:-2]))
@@ -3588,14 +3580,14 @@ frames = [u_prev.copy(), u_curr.copy()]
 for n in range(1, nt):
     u_next = np.zeros(nx)
     u_next[1:-1] = (2 * u_curr[1:-1] - u_curr[1:-1]
-                    # leapfrog update
                     + courant * (u_curr[2:] - 2 * u_curr[1:-1] + u_curr[:-2]))
     u_next[0], u_next[-1] = 0.0, 0.0
     u_prev, u_curr = u_curr, u_next
-    # store every 4th step to keep the GIF short
     if n % 4 == 0:
+                    # leapfrog update
         frames.append(u_curr.copy())
-",37,977,wave,oscillation,False,explicit,,,,,6,Wave_5,Comm_InValid,"ends up looking like just diffusion, no oscillations"
+
+    # store every 4th step to keep the GIF short",37,977,wave,oscillation,False,explicit,,,,,6,Wave_5,Comm_InValid,"ends up looking like just diffusion, no oscillations"
 Wave_Comm_Valid_5,"import numpy as np
 
 
@@ -3677,18 +3669,18 @@ Wave_CorrComm_InValid_5,"import numpy as np
 L, c = 1.0, 1.0
 nx, nt = 201, 800
 dx = L / (nx - 1)
-# ADI is unconditionally stable, so dt is chosen for accuracy, not stability
 dt = 0.5 * dx / c
+# ADI is unconditionally stable, so dt is chosen for accuracy, not stability
 courant = (c * dt / dx) ** 2
 
 
 x = np.linspace(0, L, nx)
-# multi-point sources
 u_prev = np.exp(-((x - L / 2) ** 2) / (2 * 0.03 ** 2))
-# Half-step 1: implicit in x, explicit in y
 v0 = np.zeros(nx)
+# multi-point sources
 
 
+# Half-step 1: implicit in x, explicit in y
 u_curr = u_prev.copy()
 u_curr[1:-1] = (u_prev[1:-1] + dt * v0[1:-1]
                 + 0.5 * courant * (u_prev[2:] - 2 * u_prev[1:-1] + u_prev[:-2]))
@@ -3699,14 +3691,14 @@ frames = [u_prev.copy(), u_curr.copy()]
 for n in range(1, nt):
     u_next = np.zeros(nx)
     u_next[1:-1] = (2 * u_curr[1:-1] - u_curr[1:-1]
-                    # Half-step 2: implicit in y, explicit in x
                     + courant * (u_curr[2:] - 2 * u_curr[1:-1] + u_curr[:-2]))
     u_next[0], u_next[-1] = 0.0, 0.0
     u_prev, u_curr = u_curr, u_next
-    # Domain and physical parameters
     if n % 4 == 0:
+                    # Half-step 2: implicit in y, explicit in x
         frames.append(u_curr.copy())
-",37,1033,wave,oscillation,False,explicit,Heat_Comm_Valid_7,heat,"[{'donor_text': '# Domain and physical parameters', 'gt_position': 4, 'source_line_in_donor': 5, 'line_inserted': 4}, {'donor_text': '# ADI is unconditionally stable, so dt is chosen for accuracy, not stability', 'gt_position': 8, 'source_line_in_donor': 9, 'line_inserted': 8}, {'donor_text': '# multi-point sources', 'gt_position': 14, 'source_line_in_donor': 18, 'line_inserted': 14}, {'donor_text': '# Half-step 1: implicit in x, explicit in y', 'gt_position': 16, 'source_line_in_donor': 37, 'line_inserted': 16}, {'donor_text': '# Half-step 2: implicit in y, explicit in x', 'gt_position': 30, 'source_line_in_donor': 43, 'line_inserted': 30}, {'donor_text': '# Domain and physical parameters', 'gt_position': 34, 'source_line_in_donor': 5, 'line_inserted': 34}]",-1.0,6,Wave_5,CorrComm_Invalid,
+
+    # Domain and physical parameters",37,1033,wave,oscillation,False,explicit,Heat_Comm_Valid_7,heat,"[{'donor_text': '# Domain and physical parameters', 'gt_position': 4, 'source_line_in_donor': 5, 'line_inserted': 4}, {'donor_text': '# ADI is unconditionally stable, so dt is chosen for accuracy, not stability', 'gt_position': 9, 'source_line_in_donor': 9, 'line_inserted': 9}, {'donor_text': '# multi-point sources', 'gt_position': 16, 'source_line_in_donor': 18, 'line_inserted': 16}, {'donor_text': '# Half-step 1: implicit in x, explicit in y', 'gt_position': 19, 'source_line_in_donor': 37, 'line_inserted': 19}, {'donor_text': '# Half-step 2: implicit in y, explicit in x', 'gt_position': 34, 'source_line_in_donor': 43, 'line_inserted': 34}, {'donor_text': '# Domain and physical parameters', 'gt_position': 37, 'source_line_in_donor': 5, 'line_inserted': 37}]",-1.0,6,Wave_5,CorrComm_Invalid,"ends up looking like just diffusion, no oscillations"
 Wave_NoComm_CorrVar_5,"import numpy as np
 foobar_1, foobar_2 = (1.0, 1.0)
 foobar_9, foobar_8 = (201, 800)
@@ -3819,30 +3811,30 @@ x = np.linspace(0, L, nx, endpoint=False)
 dx = L / nx
 
 
-# zero initial displacement
 u0 = np.zeros(nx)
-# localized initial velocity pulse
+# zero initial displacement
 v0 = 5.0 * np.exp(-((x - L / 2) ** 2) / (2 * 0.1 ** 2))
 
+# localized initial velocity pulse
 
-# wavenumber array
 k = np.fft.fftfreq(nx, d=dx) * 2 * np.pi
 u0_hat = np.fft.fft(u0)
 v0_hat = np.fft.fft(v0)
+# wavenumber array
 omega = c * k
 
 
-# spectral time-stepping is exact per mode, so no CFL restriction
 times = np.linspace(0, 3.0, 150)
 frames = []
 for t in times:
     with np.errstate(divide=""ignore"", invalid=""ignore""):
+# spectral time-stepping is exact per mode, so no CFL restriction
         coeff = np.where(k != 0, v0_hat / np.where(omega == 0, 1, omega), 0.0)
     u_hat_t = u0_hat * np.cosh(omega * t) + coeff * np.sinh(omega * t)
-    # k=0 mode grows linearly (mean velocity)
     u_hat_t[0] = u0_hat[0] + v0_hat[0] * t
     frames.append(np.real(np.fft.ifft(u_hat_t)))
-",34,876,wave,oscillation,False,spectral,,,,,6,Wave_6,Comm_InValid,blows up
+
+    # k=0 mode grows linearly (mean velocity)",34,876,wave,oscillation,False,spectral,,,,,6,Wave_6,Comm_InValid,blows up
 Wave_Comm_Valid_6,"import numpy as np
 
 
@@ -3921,30 +3913,30 @@ x = np.linspace(0, L, nx, endpoint=False)
 dx = L / nx
 
 
-# advective + diffusive stability bound
 u0 = np.zeros(nx)
-# reference pressure to fix the null space
+# advective + diffusive stability bound
 v0 = 5.0 * np.exp(-((x - L / 2) ** 2) / (2 * 0.1 ** 2))
 
+# reference pressure to fix the null space
 
-# RHS built from the divergence of the tentative velocity
 k = np.fft.fftfreq(nx, d=dx) * 2 * np.pi
 u0_hat = np.fft.fft(u0)
 v0_hat = np.fft.fft(v0)
+# RHS built from the divergence of the tentative velocity
 omega = c * k
 
 
-# projected velocity update
 times = np.linspace(0, 3.0, 150)
 frames = []
 for t in times:
     with np.errstate(divide=""ignore"", invalid=""ignore""):
+# projected velocity update
         coeff = np.where(k != 0, v0_hat / np.where(omega == 0, 1, omega), 0.0)
     u_hat_t = u0_hat * np.cosh(omega * t) + coeff * np.sinh(omega * t)
-    # no-slip walls, moving lid
     u_hat_t[0] = u0_hat[0] + v0_hat[0] * t
     frames.append(np.real(np.fft.ifft(u_hat_t)))
-",34,883,wave,oscillation,False,spectral,NavierStokes_Comm_Valid_7,navier-stokes,"[{'donor_text': '# Domain and physical parameters', 'gt_position': 4, 'source_line_in_donor': 4, 'line_inserted': 4}, {'donor_text': '# advective + diffusive stability bound', 'gt_position': 11, 'source_line_in_donor': 15, 'line_inserted': 11}, {'donor_text': '# reference pressure to fix the null space', 'gt_position': 13, 'source_line_in_donor': 29, 'line_inserted': 13}, {'donor_text': '# RHS built from the divergence of the tentative velocity', 'gt_position': 17, 'source_line_in_donor': 39, 'line_inserted': 17}, {'donor_text': '# projected velocity update', 'gt_position': 24, 'source_line_in_donor': 54, 'line_inserted': 24}, {'donor_text': '# no-slip walls, moving lid', 'gt_position': 31, 'source_line_in_donor': 66, 'line_inserted': 31}]",1.0,6,Wave_6,CorrComm_Invalid,
+
+    # no-slip walls, moving lid",34,883,wave,oscillation,False,spectral,NavierStokes_Comm_Valid_7,navier-stokes,"[{'donor_text': '# Domain and physical parameters', 'gt_position': 4, 'source_line_in_donor': 4, 'line_inserted': 4}, {'donor_text': '# advective + diffusive stability bound', 'gt_position': 12, 'source_line_in_donor': 15, 'line_inserted': 12}, {'donor_text': '# reference pressure to fix the null space', 'gt_position': 15, 'source_line_in_donor': 29, 'line_inserted': 15}, {'donor_text': '# RHS built from the divergence of the tentative velocity', 'gt_position': 20, 'source_line_in_donor': 39, 'line_inserted': 20}, {'donor_text': '# projected velocity update', 'gt_position': 28, 'source_line_in_donor': 54, 'line_inserted': 28}, {'donor_text': '# no-slip walls, moving lid', 'gt_position': 34, 'source_line_in_donor': 66, 'line_inserted': 34}]",1.0,6,Wave_6,CorrComm_Invalid,blows up
 Wave_NoComm_CorrVar_6,"import numpy as np
 foobar_1, foobar_2 = (2 * np.pi, 1.0)
 foobar_7 = 256
@@ -4051,45 +4043,45 @@ X, Y = np.meshgrid(x, y, indexing=""ij"")
 
 
 c_max = 1.0
-# varying speed: faster medium in right half
 c = c_max * (1.0 + 0.5 * (X > 0.5))
-# CFL condition for 2D: c*dt*sqrt(1/dx^2+1/dy^2) <= 1
+# varying speed: faster medium in right half
 dt = 0.4 * dx / c_max
 
+# CFL condition for 2D: c*dt*sqrt(1/dx^2+1/dy^2) <= 1
 
 u_prev = np.zeros((nx, ny))
-# multi-point source displacement
 for sx, sy in [(0.25, 0.5), (0.75, 0.25)]:
     u_prev += 1.0 * np.exp(-(((X - sx) ** 2 + (Y - sy) ** 2)) / (2 * 0.02 ** 2))
-# zero initial velocity -> first step equals initial field
 u_curr = u_prev.copy()
+# multi-point source displacement
 
 
-# sponge absorbing layer near domain edges
 sponge = np.ones((nx, ny))
+# zero initial velocity -> first step equals initial field
 width = 15
 for i in range(width):
     damp = 1.0 - 0.08 * (width - i)
     sponge[i, :] *= damp; sponge[-i - 1, :] *= damp
+# sponge absorbing layer near domain edges
     sponge[:, i] *= damp; sponge[:, -i - 1] *= damp
 
 
-# stop before fronts fully cross so the wavefronts stay visible
 nt = 140
 r2 = (c * dt / dx) ** 2
 frames = [u_curr.copy()]
 
 
 for n in range(nt):
+# stop before fronts fully cross so the wavefronts stay visible
     lap = (np.roll(u_curr, -1, axis=0) + np.roll(u_curr, 1, axis=0)
            + np.roll(u_curr, -1, axis=1) + np.roll(u_curr, 1, axis=1) - 4 * u_curr)
-    # leapfrog update with absorption
     u_next = (2 * u_curr - u_prev - r2 * lap) * sponge
     u_next[0, :] = u_next[-1, :] = u_next[:, 0] = u_next[:, -1] = 0.0
     u_prev, u_curr = u_curr, u_next
     if n % 2 == 0:
         frames.append(u_curr.copy())
-",51,1435,wave,oscillation/restoration,False,explicit,,,,,8,Wave_7,Comm_InValid,"blows up, creates checkerboard pattern"
+
+    # leapfrog update with absorption",51,1435,wave,oscillation/restoration,False,explicit,,,,,8,Wave_7,Comm_InValid,"blows up, creates checkerboard pattern"
 Wave_Comm_Valid_7,"import numpy as np
 
 
@@ -4204,45 +4196,45 @@ X, Y = np.meshgrid(x, y, indexing=""ij"")
 
 
 c_max = 1.0
-# sinusoidal initial condition
 c = c_max * (1.0 + 0.5 * (X > 0.5))
-# Laplacian eigenvalues in Fourier space
+# sinusoidal initial condition
 dt = 0.4 * dx / c_max
 
+# Laplacian eigenvalues in Fourier space
 
 u_prev = np.zeros((nx, ny))
-# No CFL restriction: solution advances via exact spectral decay factor
 for sx, sy in [(0.25, 0.5), (0.75, 0.25)]:
     u_prev += 1.0 * np.exp(-(((X - sx) ** 2 + (Y - sy) ** 2)) / (2 * 0.02 ** 2))
-# Domain and physical parameters
 u_curr = u_prev.copy()
+# No CFL restriction: solution advances via exact spectral decay factor
 
 
-# sinusoidal initial condition
 sponge = np.ones((nx, ny))
+# Domain and physical parameters
 width = 15
 for i in range(width):
     damp = 1.0 - 0.08 * (width - i)
     sponge[i, :] *= damp; sponge[-i - 1, :] *= damp
+# sinusoidal initial condition
     sponge[:, i] *= damp; sponge[:, -i - 1] *= damp
 
 
-# Laplacian eigenvalues in Fourier space
 nt = 140
 r2 = (c * dt / dx) ** 2
 frames = [u_curr.copy()]
 
 
 for n in range(nt):
+# Laplacian eigenvalues in Fourier space
     lap = (np.roll(u_curr, -1, axis=0) + np.roll(u_curr, 1, axis=0)
            + np.roll(u_curr, -1, axis=1) + np.roll(u_curr, 1, axis=1) - 4 * u_curr)
-    # No CFL restriction: solution advances via exact spectral decay factor
     u_next = (2 * u_curr - u_prev - r2 * lap) * sponge
     u_next[0, :] = u_next[-1, :] = u_next[:, 0] = u_next[:, -1] = 0.0
     u_prev, u_curr = u_curr, u_next
     if n % 2 == 0:
         frames.append(u_curr.copy())
-",51,1423,wave,oscillation/restoration,False,explicit,Heat_Comm_Valid_8,heat,"[{'donor_text': '# Domain and physical parameters', 'gt_position': 4, 'source_line_in_donor': 4, 'line_inserted': 4}, {'donor_text': '# sinusoidal initial condition', 'gt_position': 13, 'source_line_in_donor': 12, 'line_inserted': 13}, {'donor_text': '# Laplacian eigenvalues in Fourier space', 'gt_position': 15, 'source_line_in_donor': 19, 'line_inserted': 15}, {'donor_text': '# No CFL restriction: solution advances via exact spectral decay factor', 'gt_position': 20, 'source_line_in_donor': 26, 'line_inserted': 20}, {'donor_text': '# Domain and physical parameters', 'gt_position': 23, 'source_line_in_donor': 4, 'line_inserted': 23}, {'donor_text': '# sinusoidal initial condition', 'gt_position': 27, 'source_line_in_donor': 12, 'line_inserted': 27}, {'donor_text': '# Laplacian eigenvalues in Fourier space', 'gt_position': 36, 'source_line_in_donor': 19, 'line_inserted': 36}, {'donor_text': '# No CFL restriction: solution advances via exact spectral decay factor', 'gt_position': 45, 'source_line_in_donor': 26, 'line_inserted': 45}]",-4.0,8,Wave_7,CorrComm_Invalid,
+
+    # No CFL restriction: solution advances via exact spectral decay factor",51,1423,wave,oscillation/restoration,False,explicit,Heat_Comm_Valid_8,heat,"[{'donor_text': '# Domain and physical parameters', 'gt_position': 4, 'source_line_in_donor': 4, 'line_inserted': 4}, {'donor_text': '# sinusoidal initial condition', 'gt_position': 14, 'source_line_in_donor': 12, 'line_inserted': 14}, {'donor_text': '# Laplacian eigenvalues in Fourier space', 'gt_position': 17, 'source_line_in_donor': 19, 'line_inserted': 17}, {'donor_text': '# No CFL restriction: solution advances via exact spectral decay factor', 'gt_position': 23, 'source_line_in_donor': 26, 'line_inserted': 23}, {'donor_text': '# Domain and physical parameters', 'gt_position': 27, 'source_line_in_donor': 4, 'line_inserted': 27}, {'donor_text': '# sinusoidal initial condition', 'gt_position': 32, 'source_line_in_donor': 12, 'line_inserted': 32}, {'donor_text': '# Laplacian eigenvalues in Fourier space', 'gt_position': 42, 'source_line_in_donor': 19, 'line_inserted': 42}, {'donor_text': '# No CFL restriction: solution advances via exact spectral decay factor', 'gt_position': 51, 'source_line_in_donor': 26, 'line_inserted': 51}]",-4.0,8,Wave_7,CorrComm_Invalid,"blows up, creates checkerboard pattern"
 Wave_NoComm_CorrVar_7,"import numpy as np
 foobar_1, foobar_15, foobar_16 = (1.0, 121, 121)
 foobar_8 = foobar_9 = foobar_1 / (foobar_15 - 1)
@@ -4405,36 +4397,36 @@ X, Y = np.meshgrid(x, y, indexing=""ij"")
 N = nx * ny
 
 
-# build sparse 2D Laplacian (Dirichlet BC) via Kronecker sum
 e = np.ones(nx)
+# build sparse 2D Laplacian (Dirichlet BC) via Kronecker sum
 D2x = sp.diags([e[:-1], -2 * e, e[:-1]], [-1, 0, 1]) / dx**2
 Ix = sp.identity(nx)
 Lap = sp.kron(D2x, Ix) + sp.kron(Ix, D2x)
-# positive semi-definite stiffness-like operator
 K = (c**2) * Lap
 
+# positive semi-definite stiffness-like operator
 
-# sinusoidal initial displacement
 u0 = 0.1 * np.sin(np.pi * X) * np.sin(np.pi * Y)
-# pulse width kept well above grid spacing to avoid grid-scale aliasing
 sigma = 6 * dx
 v0 = 3.0 * np.exp(-(((X - 0.3) ** 2 + (Y - 0.7) ** 2)) / (2 * sigma**2))
+# sinusoidal initial displacement
 u = u0.flatten(); v = v0.flatten()
-# initial acceleration from the governing equation
 a = -K.dot(u)
+# pulse width kept well above grid spacing to avoid grid-scale aliasing
 
 
-# gamma>0.5 adds mild damping of grid-scale noise, stays unconditionally stable
 beta, gamma, dt, nt = 0.3025, 0.6, 0.01, 150
 A = sp.identity(N) + (dt**2) * beta * K
-# factorize once since the system matrix is constant
+# initial acceleration from the governing equation
 lu = splu(A.tocsc())
 
 
 frames = [u0.copy()]
+# gamma>0.5 adds mild damping of grid-scale noise, stays unconditionally stable
 for n in range(nt):
     rhs = u + dt * v + (dt**2) * (0.5 - beta) * a
     u_new = lu.solve(rhs)
+# factorize once since the system matrix is constant
     a_new = -K.dot(u_new)
     v_new = v + dt * ((1 - gamma) * a + gamma * a_new)
     u, v, a = u_new, v_new, a_new
@@ -4552,41 +4544,41 @@ X, Y = np.meshgrid(x, y, indexing=""ij"")
 N = nx * ny
 
 
-# top-hat / step initial condition
 e = np.ones(nx)
+# top-hat / step initial condition
 D2x = sp.diags([e[:-1], -2 * e, e[:-1]], [-1, 0, 1]) / dx**2
 Ix = sp.identity(nx)
 Lap = sp.kron(D2x, Ix) + sp.kron(Ix, D2x)
-# advective + diffusive CFL
 K = (c**2) * Lap
 
+# advective + diffusive CFL
 
-# local wave speed at i+1/2 for the LW correction
 u0 = 0.1 * np.sin(np.pi * X) * np.sin(np.pi * Y)
-# Lax-Wendroff flux
 sigma = 6 * dx
 v0 = 3.0 * np.exp(-(((X - 0.3) ** 2 + (Y - 0.7) ** 2)) / (2 * sigma**2))
+# local wave speed at i+1/2 for the LW correction
 u = u0.flatten(); v = v0.flatten()
-# explicit central diffusion
 a = -K.dot(u)
+# Lax-Wendroff flux
 
 
-# Domain and physical parameters
 beta, gamma, dt, nt = 0.3025, 0.6, 0.01, 150
 A = sp.identity(N) + (dt**2) * beta * K
-# top-hat / step initial condition
+# explicit central diffusion
 lu = splu(A.tocsc())
 
 
 frames = [u0.copy()]
+# Domain and physical parameters
 for n in range(nt):
     rhs = u + dt * v + (dt**2) * (0.5 - beta) * a
     u_new = lu.solve(rhs)
+# top-hat / step initial condition
     a_new = -K.dot(u_new)
     v_new = v + dt * ((1 - gamma) * a + gamma * a_new)
     u, v, a = u_new, v_new, a_new
     frames.append(u.reshape(nx, ny))
-",49,1234,wave,oscillation,False,implicit,Burgers_Comm_Valid_6,burgers,"[{'donor_text': '# Domain and physical parameters', 'gt_position': 6, 'source_line_in_donor': 4, 'line_inserted': 6}, {'donor_text': '# top-hat / step initial condition', 'gt_position': 15, 'source_line_in_donor': 11, 'line_inserted': 15}, {'donor_text': '# advective + diffusive CFL', 'gt_position': 20, 'source_line_in_donor': 14, 'line_inserted': 20}, {'donor_text': '# local wave speed at i+1/2 for the LW correction', 'gt_position': 24, 'source_line_in_donor': 23, 'line_inserted': 24}, {'donor_text': '# Lax-Wendroff flux', 'gt_position': 26, 'source_line_in_donor': 26, 'line_inserted': 26}, {'donor_text': '# explicit central diffusion', 'gt_position': 30, 'source_line_in_donor': 29, 'line_inserted': 30}, {'donor_text': '# Domain and physical parameters', 'gt_position': 34, 'source_line_in_donor': 4, 'line_inserted': 34}, {'donor_text': '# top-hat / step initial condition', 'gt_position': 37, 'source_line_in_donor': 11, 'line_inserted': 37}]",-2.0,8,Wave_8,CorrComm_Invalid,
+",49,1234,wave,oscillation,False,implicit,Burgers_Comm_Valid_6,burgers,"[{'donor_text': '# Domain and physical parameters', 'gt_position': 6, 'source_line_in_donor': 4, 'line_inserted': 6}, {'donor_text': '# top-hat / step initial condition', 'gt_position': 16, 'source_line_in_donor': 11, 'line_inserted': 16}, {'donor_text': '# advective + diffusive CFL', 'gt_position': 22, 'source_line_in_donor': 14, 'line_inserted': 22}, {'donor_text': '# local wave speed at i+1/2 for the LW correction', 'gt_position': 27, 'source_line_in_donor': 23, 'line_inserted': 27}, {'donor_text': '# Lax-Wendroff flux', 'gt_position': 30, 'source_line_in_donor': 26, 'line_inserted': 30}, {'donor_text': '# explicit central diffusion', 'gt_position': 35, 'source_line_in_donor': 29, 'line_inserted': 35}, {'donor_text': '# Domain and physical parameters', 'gt_position': 40, 'source_line_in_donor': 4, 'line_inserted': 40}, {'donor_text': '# top-hat / step initial condition', 'gt_position': 44, 'source_line_in_donor': 11, 'line_inserted': 44}]",-2.0,8,Wave_8,CorrComm_Invalid,explodes to NaNs
 Wave_NoComm_CorrVar_8,"import numpy as np
 import scipy.sparse as sp
 from scipy.sparse.linalg import splu

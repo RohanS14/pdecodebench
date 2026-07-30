@@ -1,9 +1,16 @@
 """
 augment_foobar_vars.py — Generate NoComm_CorrVar and NoComm_CorrVar_InValid rows.
 
-Note: ns4_kwargs exclusions are scoped strictly to NavierStokes_4 to prevent
-physics-revealing variable names (Nx, viscosity, drag, etc.) from leaking
-unobfuscated into other PDE CorrVar variants.
+Every identifier the snippet's author chose is renamed. A name survives only if
+it is not an author-chosen identifier at all -- the keyword-argument names of
+calls into libraries (np.zeros(shape=...), np.linspace(endpoint=...)), which are
+the library's API rather than the author's vocabulary and raise TypeError if
+renamed. See the "Known Limitations" section of
+data/descriptions/dataset_overview.md for the full list of those 20 names.
+
+Renaming a parameter obliges us to rename its own call sites' `name=` too, or
+the two desync into a TypeError -- that is what VariableRenamer.visit_Call is
+for, and why it fires only when the callee is defined in the same module.
 
 NoComm_CorrVar:
   Run the AST renamer on NoComm_Valid code. Variable mapping is derived
@@ -136,6 +143,42 @@ class VariableRenamer(ast.NodeTransformer):
             node.arg = self.rename_map[node.arg]
         return node
 
+    def _same_module_callee(self, node):
+        """Original name of `node` if it refers to a function defined in this
+        same module, else None. function_rename_map's keys are exactly those
+        functions, so membership in it is the test."""
+        if isinstance(node, ast.Name) and node.id in self.function_rename_map:
+            return node.id
+        return None
+
+    def visit_Call(self, node):
+        # visit_arg renames parameters, so a call passing them by keyword has to
+        # move with them or the two desync into a TypeError. Only safe when the
+        # callee is defined in this module: an external callee's kwarg names are
+        # its API, not the snippet author's vocabulary. partial() is transparent
+        # here -- it forwards keywords straight through to its first argument.
+        func = node.func
+        if isinstance(func, ast.Name):
+            func_name = func.id
+        elif isinstance(func, ast.Attribute):
+            func_name = func.attr      # functools.partial -> "partial"
+        else:
+            func_name = None
+
+        if func_name == "partial" and node.args and "partial" not in self.function_rename_map:
+            target = self._same_module_callee(node.args[0])
+        else:
+            target = self._same_module_callee(func)
+
+        # resolve the target before generic_visit rewrites node.func out from under us
+        self.generic_visit(node)
+
+        if target is not None:
+            for kw in node.keywords:
+                if kw.arg is not None and kw.arg in self.rename_map:
+                    kw.arg = self.rename_map[kw.arg]
+        return node
+
     def visit_ExceptHandler(self, node):
         self.generic_visit(node)
         if node.name in self.rename_map:
@@ -155,24 +198,14 @@ def _normalize(code: str) -> str:
     return code.replace("\\r\\n", "\n").replace("\\n", "\n").replace("\\t", "\t")
 
 
-# These kwargs must remain un-obfuscated in NavierStokes_4 because they are
-# passed as keyword arguments to external library calls (jax_cfd / partial()).
-# Renaming them would break the external API. Scoped ONLY to NavierStokes_4.
-_NS4_PROTECTED_KWARGS = {
-    "Nx", "Ny", "t_pts", "t_eval", "viscosity", "drag",
-    "max_velocity", "fixed_ic", "target_N",
-}
-
-
-def _build_maps(code: str, gt_sample: str = "") -> tuple[dict, dict]:
+def _build_maps(code: str) -> tuple[dict, dict]:
     """Return (variable_rename_map, function_rename_map) for a piece of code."""
     tree = ast.parse(_normalize(code))
     collector = VariableCollector()
     collector.visit(tree)
 
-    extra_excluded = _NS4_PROTECTED_KWARGS if gt_sample == "NavierStokes_4" else set()
     excluded = (
-        BUILTIN_NAMES | KEYWORD_NAMES | extra_excluded
+        BUILTIN_NAMES | KEYWORD_NAMES
         | collector.imported_names | collector.function_names | collector.class_names
     )
     names_to_rename = sorted(n for n in collector.candidate_names if n and n not in excluded)
@@ -195,7 +228,7 @@ def _apply_maps(code: str, var_map: dict, fn_map: dict) -> str:
     return ast.unparse(new_tree)
 
 
-def _extend_map(base_var_map: dict, invalid_code: str, gt_sample: str = "") -> tuple[dict, dict]:
+def _extend_map(base_var_map: dict, invalid_code: str) -> tuple[dict, dict]:
     """
     Return (extended_var_map, fn_map) for invalid_code.
     Shared variables keep their foobar_N names from base_var_map.
@@ -206,9 +239,8 @@ def _extend_map(base_var_map: dict, invalid_code: str, gt_sample: str = "") -> t
     tree = ast.parse(_normalize(invalid_code))
     collector = VariableCollector()
     collector.visit(tree)
-    extra_excluded = _NS4_PROTECTED_KWARGS if gt_sample == "NavierStokes_4" else set()
     excluded = (
-        BUILTIN_NAMES | KEYWORD_NAMES | extra_excluded
+        BUILTIN_NAMES | KEYWORD_NAMES
         | collector.imported_names | collector.function_names | collector.class_names
     )
     all_names = sorted(n for n in collector.candidate_names if n and n not in excluded)
@@ -233,49 +265,6 @@ def _extend_map(base_var_map: dict, invalid_code: str, gt_sample: str = "") -> t
 # Public generation functions
 # ---------------------------------------------------------------------------
 
-def _patch_ns4_kwargs(code: str) -> str:
-    old_call = """dataset = get_ns2d(
-    n_samples=2,
-    t_pts=100,
-    Nx=64,
-    Ny=64,
-    key=key,
-    dt=0.001,
-    T_end=1,
-    viscosity=1e-3,
-    drag=0.1,
-    max_velocity=7.0,
-    batch_size=16,
-    target_N=64,
-)"""
-    new_call = """dataset = get_ns2d(
-    2,
-    100,
-    64,
-    64,
-    key,
-    0.001,
-    1,
-    1e-3,
-    0.1,
-    7.0,
-    16,
-    None,
-    64,
-)"""
-    return code.replace(old_call, new_call)
-
-
-def _patch_wave4_kwargs(code: str) -> str:
-    # Wave_4 calls spectral_wave_solver with keyword args T=, dt=, c= which
-    # would be left unrenamed after parameter obfuscation. Convert to positional
-    # before the renamer runs, matching the approach used for NavierStokes_4.
-    return code.replace(
-        "spectral_wave_solver(u0, v0, L, T=5, dt=0.05, c=c)",
-        "spectral_wave_solver(u0, v0, L, 5, 0.05, c)",
-    )
-
-
 def generate_foobar_rows(df: pd.DataFrame) -> list[dict]:
     """
     Returns new NoComm_CorrVar + NoComm_CorrVar_InValid rows to append to df.
@@ -292,13 +281,8 @@ def generate_foobar_rows(df: pd.DataFrame) -> list[dict]:
 
         # --- NoComm_CorrVar ---
         src_code = row["code"]
-        if gt == "NavierStokes_4":
-            src_code = _patch_ns4_kwargs(src_code)
-        if gt == "Wave_4":
-            src_code = _patch_wave4_kwargs(src_code)
-            
         try:
-            var_map, fn_map = _build_maps(src_code, gt_sample=gt)
+            var_map, fn_map = _build_maps(src_code)
             transformed = _apply_maps(src_code, var_map, fn_map)
         except Exception as e:
             print(f"WARNING: parse failure for {gt} (NoComm_CorrVar): {e}")
@@ -320,13 +304,8 @@ def generate_foobar_rows(df: pd.DataFrame) -> list[dict]:
 
         inv_row = no_comm_invalid[no_comm_invalid["gt_sample"] == gt].iloc[0]
         inv_src_code = inv_row["code"]
-        if gt == "NavierStokes_4":
-            inv_src_code = _patch_ns4_kwargs(inv_src_code)
-        if gt == "Wave_4":
-            inv_src_code = _patch_wave4_kwargs(inv_src_code)
-            
         try:
-            extended_var_map, inv_fn_map = _extend_map(var_map, inv_src_code, gt_sample=gt)
+            extended_var_map, inv_fn_map = _extend_map(var_map, inv_src_code)
             inv_transformed = _apply_maps(inv_src_code, extended_var_map, inv_fn_map)
         except Exception as e:
             print(f"WARNING: parse failure for {gt} (NoComm_CorrVar_InValid): {e}")

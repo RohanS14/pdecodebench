@@ -1,12 +1,12 @@
 """
 PDE LLM Eval — vLLM inference script.
-Runs one model against all rows in pdedata_clean_v3.xlsx (v3: 128 rows, 8 conditions).
+Runs one model against all rows in merged_mod_jul28.csv (256 rows, 8 conditions).
 Resumable: skips (title, mod_type, model) tuples already in the output JSONL.
 
 Usage:
     python run_eval.py \
         --model Qwen/Qwen2.5-Coder-7B-Instruct \
-        --dataset data/pdedata_clean_v3.xlsx \
+        --dataset data/merged_mod_jul28.csv \
         --output_dir results/ \
         --batch_size 8 \
         --tp 1
@@ -18,6 +18,15 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).parent))
 from parse_score import parse_response, score_row
+from dataset_io import DEFAULT_MOD_DATASET, load_dataset
+
+# Inject API keys via RACA key_handler (repo lives at raca/packages/key_handler)
+try:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "packages" / "key_handler"))
+    from key_handler import KeyHandler
+    KeyHandler.set_env_key()
+except Exception as e:
+    print(f"[run_eval] key_handler unavailable: {e}", flush=True)
 
 PROMPT_TEMPLATE = """\
 You are analyzing a numerical simulation written in Python.
@@ -115,7 +124,7 @@ def run_batch(llm, sampling_params, messages_batch: list[list[dict]], model_id: 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model",      required=True)
-    parser.add_argument("--dataset",    default="data/pdedata_clean_v3.xlsx")
+    parser.add_argument("--dataset",    default=DEFAULT_MOD_DATASET)
     parser.add_argument("--output_dir", default="results")
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--tp",         type=int, default=1, help="tensor_parallel_size")
@@ -125,14 +134,16 @@ def main():
     model_slug = args.model.replace("/", "__")
     jsonl_path = os.path.join(args.output_dir, f"{model_slug}.jsonl")
 
-    df = pd.read_excel(args.dataset)
+    df = load_dataset(args.dataset)
     print(f"[run_eval] Dataset: {len(df)} rows", flush=True)
 
     V2_DIST = {"Comm_Valid": 16, "NoComm_Valid": 16, "NoComm_InValid": 16,
                "CorrComm": 16, "NoComm_CorrVar": 16, "Comm_InValid": 16}
     V3_DIST = {**V2_DIST, "CorrComm_Invalid": 16, "NoComm_CorrVar_InValid": 16}
+    # jul28: same 8 conditions as v3, 32 gt_samples instead of 16
+    JUL28_DIST = {k: 32 for k in V3_DIST}
     actual_dist = df["mod_type"].value_counts().to_dict()
-    assert actual_dist in (V2_DIST, V3_DIST), \
+    assert actual_dist in (V2_DIST, V3_DIST, JUL28_DIST), \
         f"Unexpected mod_type distribution: {actual_dist}"
     print(f"[run_eval] Dataset integrity check passed ({len(df)} rows, {len(actual_dist)} conditions).", flush=True)
 

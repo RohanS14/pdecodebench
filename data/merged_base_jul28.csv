@@ -1,5 +1,85 @@
 title,gt_sample,pde_class,phys_process,phys_valid,num_method,num_lines,num_char,num_comments,invalidity_note,code,source
-Burgers_Valid_1,Burgers_1,burgers,advection,True,explicit,80,2138,10,,"import numpy as np
+Burgers_InValid_1,Burgers_1,burgers,advection,False,explicit,80,2102,10,Blows up to NaN,"import numpy as np
+from scipy.integrate import odeint
+from scipy.linalg import toeplitz
+
+# number of cells in 1D space
+n = 100
+
+x0 = 0
+# space
+xn = 1
+dx = (xn - x0)/n
+x_interface = np.linspace(x0, xn, n+1)
+x = x_interface[0:n] + dx/2
+
+t0 = 0
+tn = 0.5
+# time
+t_steps = 200
+t = np.linspace(t0, tn, t_steps)
+dt = t[1] - t[0]
+
+
+u_init = np.sin(2*np.pi*x)
+
+def minmod(a, b):
+# Initial condition
+    return np.where(a*b > 0, np.sign(a) * np.minimum(np.abs(a), np.abs(b)), 0.0)
+
+def dudt_rec_upwind(u, t, dx):
+    n = u.shape[0]
+    # returns 0 if a,b have opposite signs (or either is 0); else smaller one
+
+    dudx = np.zeros_like(u)
+    dudx[1:n-1] = (u[2:n] - u[0:n-2])/(2*dx)
+
+    # u denotes state in cell centers (in the formulas sometimes written as \bar{u})
+    slope_back = np.zeros_like(u)
+    slope_fwd = np.zeros_like(u)
+    slope_back[1:n-1] = (u[1:n-1] - u[0:n-2])/dx
+    slope_fwd[1:n-1] = (u[2:n] - u[1:n-1])/dx
+    dudx[1:n-1] = minmod(slope_back[1:n-1], slope_fwd[1:n-1])
+
+    dudx[0] = (u[1] - u[0])/dx
+    dudx[n-1] = (u[n-1] - u[n-2])/dx
+
+    u_right = u + dudx*dx/2
+    u_left = u - dudx*dx/2
+
+    f_right = u_right**2 / 2
+    f_left = u_left**2 / 2
+
+    s = np.zeros(shape=(n+1,))
+    s[1:n] = (u_right[0:n-1] + u_left[1:n]) / 2
+
+    # Compute the flux for every cell i, not in the middle, but at every cell interface _inside_ each cell.
+    f_interface = np.zeros(shape=(n+1,))
+    assert f_interface.shape[0] == u.shape[0] + 1
+
+    f_interface[0] = 0
+    # Shock speed at the cell interfaces from f_{0-1/2} to f_{n+1/2},
+
+    for i in range(1, n):
+        if s[i] > 0:
+            f_interface[i] = f_right[i-1]
+    # Flux at the cell interfaces from f_{0-1/2} to f_{n+1/2}
+        else:
+             f_interface[i] = f_left[i]
+
+    f_interface[n] = 0
+
+    du_dt = (f_interface[1:n+1] - f_interface[0:n])/dx
+    return du_dt
+
+u = np.zeros((t_steps,n))
+u[0] = u_init
+u_curr = u_init.copy()
+for k in range (1, t_steps):
+     u_curr = u_curr + dt * dudt_rec_upwind(u_curr, t[k-1], dx)
+     u[k] = u_curr
+    # Compute the time derivative as the difference of flux directed into the cell.",human
+Burgers_Valid_1,Burgers_1,burgers,advection,True,explicit,80,2102,10,,"import numpy as np
 from scipy.integrate import odeint
 from scipy.linalg import toeplitz
 
@@ -24,21 +104,21 @@ dt = t[1] - t[0]
 # Initial condition
 u_init = np.sin(2*np.pi*x)
 
-def minmod(a, b): 
-    # returns 0 if a,b have opposite signs (or either is 0); else smaller one 
+def minmod(a, b):
+    # returns 0 if a,b have opposite signs (or either is 0); else smaller one
     return np.where(a*b > 0, np.sign(a) * np.minimum(np.abs(a), np.abs(b)), 0.0)
 
 def dudt_rec_upwind(u, t, dx):
     # u denotes state in cell centers (in the formulas sometimes written as \bar{u})
     n = u.shape[0]
-    
+
     dudx = np.zeros_like(u)
     dudx[1:n-1] = (u[2:n] - u[0:n-2])/(2*dx)
 
-    slope_back = np.zeros_like(u) 
-    slope_fwd = np.zeros_like(u) 
-    slope_back[1:n-1] = (u[1:n-1] - u[0:n-2])/dx 
-    slope_fwd[1:n-1] = (u[2:n] - u[1:n-1])/dx 
+    slope_back = np.zeros_like(u)
+    slope_fwd = np.zeros_like(u)
+    slope_back[1:n-1] = (u[1:n-1] - u[0:n-2])/dx
+    slope_fwd[1:n-1] = (u[2:n] - u[1:n-1])/dx
     dudx[1:n-1] = minmod(slope_back[1:n-1], slope_fwd[1:n-1])
 
     dudx[0] = (u[1] - u[0])/dx
@@ -46,120 +126,120 @@ def dudt_rec_upwind(u, t, dx):
 
     u_right = u + dudx*dx/2
     u_left = u - dudx*dx/2
-    
+
     # Compute the flux for every cell i, not in the middle, but at every cell interface _inside_ each cell.
     f_right = u_right**2 / 2
     f_left = u_left**2 / 2
-    
-    # Shock speed at the cell interfaces from f_{0-1/2} to f_{n+1/2}, 
+
+    # Shock speed at the cell interfaces from f_{0-1/2} to f_{n+1/2},
     s = np.zeros(shape=(n+1,))
     s[1:n] = (u_right[0:n-1] + u_left[1:n]) / 2
-    
+
     # Flux at the cell interfaces from f_{0-1/2} to f_{n+1/2}
     f_interface = np.zeros(shape=(n+1,))
     assert f_interface.shape[0] == u.shape[0] + 1
 
     f_interface[0] = 0
-    
+
     for i in range(1, n):
         if s[i] > 0:
             f_interface[i] = f_right[i-1]
         else:
              f_interface[i] = f_left[i]
-    
+
     f_interface[n] = 0
-    
+
     # Compute the time derivative as the difference of flux directed into the cell.
     du_dt = (f_interface[0:n] - f_interface[1:n+1])/dx
     return du_dt
 
 u = np.zeros((t_steps,n))
-u[0] = u_init 
+u[0] = u_init
 u_curr = u_init.copy()
 for k in range (1, t_steps):
      u_curr = u_curr + dt * dudt_rec_upwind(u_curr, t[k-1], dx)
      u[k] = u_curr",human
-Burgers_InValid_1,Burgers_1,burgers,advection,False,explicit,80,2138,10,Blows up to NaN,"import numpy as np
+Burgers_InValid_2,Burgers_2,burgers,advection,False,explicit,80,1845,6,Physically wrong solution; creates a scattered and jagged solution,"import numpy as np
 from scipy.integrate import odeint
-from scipy.linalg import toeplitz
 
-# number of cells in 1D space
 n = 100
+u = np.zeros(shape=(n,))
 
-# space
 x0 = 0
 xn = 1
 dx = (xn - x0)/n
 x_interface = np.linspace(x0, xn, n+1)
 x = x_interface[0:n] + dx/2
 
-# time
 t0 = 0
-tn = 0.5
+tn = .5
 t_steps = 200
 t = np.linspace(t0, tn, t_steps)
 dt = t[1] - t[0]
-
-
-# Initial condition
 u_init = np.sin(2*np.pi*x)
 
-def minmod(a, b): 
-    # returns 0 if a,b have opposite signs (or either is 0); else smaller one 
-    return np.where(a*b > 0, np.sign(a) * np.minimum(np.abs(a), np.abs(b)), 0.0)
+def limiter(r):
+    _r = r.copy()
+    _r[_r < 0] = 0
+    phi = 2*_r/(1 + _r)
+    phi[~np.isfinite(_r)] = 0
+    return phi
 
-def dudt_rec_upwind(u, t, dx):
+
+def godunov(ul, ur):
+    # Burgers flux
+    fL = ul**2 / 2
+    fR = ur**2 / 2
+    f_min = 0
+    f = np.zeros_like(ul)
+
+    f[ul > ur] = np.maximum(fL[ul > ur], fR[ul > ur])
+    f[ul <= ur] = np.maximum(fL[ul <= ur], fR[ul <= ur])
+
+    f[np.where((ul <= 0) & (ur > 0))] = f_min
+    # Minimum flux at u*
+    return f
+
+def dudt(u, t, dx):
+    n = len(u)
+
+    u_im1 = np.hstack([0, u[0: n-1]])
+    u_ip1 = np.hstack([u[1:n], 0])
     # u denotes state in cell centers (in the formulas sometimes written as \bar{u})
-    n = u.shape[0]
-    
-    dudx = np.zeros_like(u)
-    dudx[1:n-1] = (u[2:n] - u[0:n-2])/(2*dx)
+    u_ip2 = np.hstack([u_ip1[1:n], 0])
+    # f denotes f(u) in cell centers, using Burgers' equation f(u) = u^2/2
 
-    slope_back = np.zeros_like(u) 
-    slope_fwd = np.zeros_like(u) 
-    slope_back[1:n-1] = (u[1:n-1] - u[0:n-2])/dx 
-    slope_fwd[1:n-1] = (u[2:n] - u[1:n-1])/dx 
-    dudx[1:n-1] = minmod(slope_back[1:n-1], slope_fwd[1:n-1])
+    assert len(u) == n
+    assert len(u_im1) == n
+    assert len(u_ip1) == n
+    assert len(u_ip2) == n
+    assert u_im1[1] == u[0]
+    assert u_ip1[1] == u[2]
+    assert u_ip2[1] == u[3]
 
-    dudx[0] = (u[1] - u[0])/dx
-    dudx[n-1] = (u[n-1] - u[n-2])/dx
+    r = (u_ip1 - u)/(u - u_im1)
+    phi = limiter(r)
+    u_iph_left = u + 0.5*(u - u_im1)*phi
 
-    u_right = u + dudx*dx/2
-    u_left = u - dudx*dx/2
-    
-    # Compute the flux for every cell i, not in the middle, but at every cell interface _inside_ each cell.
-    f_right = u_right**2 / 2
-    f_left = u_left**2 / 2
-    
-    # Shock speed at the cell interfaces from f_{0-1/2} to f_{n+1/2}, 
-    s = np.zeros(shape=(n+1,))
-    s[1:n] = (u_right[0:n-1] + u_left[1:n]) / 2
-    
-    # Flux at the cell interfaces from f_{0-1/2} to f_{n+1/2}
-    f_interface = np.zeros(shape=(n+1,))
-    assert f_interface.shape[0] == u.shape[0] + 1
+    # Reconstruct u_i_plus_half_left
+    r = (u - u_ip1)/(u_ip1 - u_ip2)
+    phi = limiter(r)
+    u_iph_right = u_ip1 + 0.5*(u_ip1 - u_ip2)*phi
 
-    f_interface[0] = 0
-    
-    for i in range(1, n):
-        if s[i] > 0:
-            f_interface[i] = f_right[i-1]
-        else:
-             f_interface[i] = f_left[i]
-    
-    f_interface[n] = 0
-    
-    # Compute the time derivative as the difference of flux directed into the cell.
-    du_dt = (f_interface[1:n+1] - f_interface[0:n])/dx
+    f_interface = godunov(u_iph_left, u_iph_right)
+    # Reconstruct u_i_plus_half_right
+    f_interface = np.hstack([0, f_interface])
+
+    du_dt = (f_interface[0:n] - f_interface[1:n+1])/dx
     return du_dt
 
 u = np.zeros((t_steps,n))
-u[0] = u_init 
+u[0] = u_init
 u_curr = u_init.copy()
 for k in range (1, t_steps):
-     u_curr = u_curr + dt * dudt_rec_upwind(u_curr, t[k-1], dx)
+     u_curr = u_curr + dt * dudt(u_curr, t[k-1], dx)
      u[k] = u_curr",human
-Burgers_Valid_2,Burgers_2,burgers,advection,True,explicit,80,1863,6,,"import numpy as np
+Burgers_Valid_2,Burgers_2,burgers,advection,True,explicit,80,1845,6,,"import numpy as np
 from scipy.integrate import odeint
 
 n = 100
@@ -196,7 +276,7 @@ def godunov(ul, ur):
     f[ul > ur] = np.maximum(fL[ul > ur], fR[ul > ur])
 
     f[ul <= ur] = np.minimum(fL[ul <= ur], fR[ul <= ur])
-    # Minimum flux at u* 
+    # Minimum flux at u*
     f[np.where((ul <= 0) & (ur > 0))] = f_min
     return f
 
@@ -204,7 +284,7 @@ def dudt(u, t, dx):
     n = len(u)
 
     # u denotes state in cell centers (in the formulas sometimes written as \bar{u})
-    # f denotes f(u) in cell centers, using Burgers' equation f(u) = u^2/2    
+    # f denotes f(u) in cell centers, using Burgers' equation f(u) = u^2/2
     u_im1 = np.hstack([0, u[0: n-1]])
     u_ip1 = np.hstack([u[1:n], 0])
     u_ip2 = np.hstack([u_ip1[1:n], 0])
@@ -216,17 +296,17 @@ def dudt(u, t, dx):
     assert u_im1[1] == u[0]
     assert u_ip1[1] == u[2]
     assert u_ip2[1] == u[3]
-    
+
     # Reconstruct u_i_plus_half_left
     r = (u_ip1 - u)/(u - u_im1)
     phi = limiter(r)
     u_iph_left = u + 0.5*(u - u_im1)*phi
-    
+
     # Reconstruct u_i_plus_half_right
     r = (u - u_ip1)/(u_ip1 - u_ip2)
     phi = limiter(r)
     u_iph_right = u_ip1 + 0.5*(u_ip1 - u_ip2)*phi
-    
+
     f_interface = godunov(u_iph_left, u_iph_right)
     f_interface = np.hstack([0, f_interface])
 
@@ -234,92 +314,12 @@ def dudt(u, t, dx):
     return du_dt
 
 u = np.zeros((t_steps,n))
-u[0] = u_init 
+u[0] = u_init
 u_curr = u_init.copy()
 for k in range (1, t_steps):
      u_curr = u_curr + dt * dudt(u_curr, t[k-1], dx)
      u[k] = u_curr",human
-Burgers_InValid_2,Burgers_2,burgers,advection,False,explicit,80,1865,6,Physically wrong solution; creates a scattered and jagged solution,"import numpy as np
-from scipy.integrate import odeint
-
-n = 100
-u = np.zeros(shape=(n,))
-
-x0 = 0
-xn = 1
-dx = (xn - x0)/n
-x_interface = np.linspace(x0, xn, n+1)
-x = x_interface[0:n] + dx/2
-
-t0 = 0
-tn = .5
-t_steps = 200
-t = np.linspace(t0, tn, t_steps)
-dt = t[1] - t[0]
-u_init = np.sin(2*np.pi*x)
-
-def limiter(r):
-    _r = r.copy()
-    _r[_r < 0] = 0
-    phi = 2*_r/(1 + _r)
-    phi[~np.isfinite(_r)] = 0
-    return phi
-
-
-def godunov(ul, ur):
-    # Burgers flux
-    fL = ul**2 / 2
-    fR = ur**2 / 2
-    f_min = 0
-    f = np.zeros_like(ul)
-
-    f[ul > ur] = np.maximum(fL[ul > ur], fR[ul > ur])
-    f[ul <= ur] = np.maximum(fL[ul <= ur], fR[ul <= ur])  
-
-    # Minimum flux at u* 
-    f[np.where((ul <= 0) & (ur > 0))] = f_min
-    return f
-
-def dudt(u, t, dx):
-    n = len(u)
-
-    # u denotes state in cell centers (in the formulas sometimes written as \bar{u})
-    # f denotes f(u) in cell centers, using Burgers' equation f(u) = u^2/2    
-    u_im1 = np.hstack([0, u[0: n-1]])
-    u_ip1 = np.hstack([u[1:n], 0])
-    u_ip2 = np.hstack([u_ip1[1:n], 0])
-
-    assert len(u) == n
-    assert len(u_im1) == n
-    assert len(u_ip1) == n
-    assert len(u_ip2) == n
-    assert u_im1[1] == u[0]
-    assert u_ip1[1] == u[2]
-    assert u_ip2[1] == u[3]
-    
-    # Reconstruct u_i_plus_half_left
-    r = (u_ip1 - u)/(u - u_im1)
-    phi = limiter(r)
-    u_iph_left = u + 0.5*(u - u_im1)*phi
-    
-    # Reconstruct u_i_plus_half_right
-    r = (u - u_ip1)/(u_ip1 - u_ip2)
-    phi = limiter(r)
-    u_iph_right = u_ip1 + 0.5*(u_ip1 - u_ip2)*phi
-    
-    f_interface = godunov(u_iph_left, u_iph_right)
-    f_interface = np.hstack([0, f_interface])
-
-    du_dt = (f_interface[0:n] - f_interface[1:n+1])/dx
-    return du_dt
-
-u = np.zeros((t_steps,n))
-u[0] = u_init 
-u_curr = u_init.copy()
-for k in range (1, t_steps):
-     u_curr = u_curr + dt * dudt(u_curr, t[k-1], dx)
-     u[k] = u_curr",human
-Burgers_InValid_3,Burgers_3,burgers,advection,False,explicit,56,1377,5,Blows up to NaN,"import numpy as np
+Burgers_InValid_3,Burgers_3,burgers,advection,False,explicit,56,1343,5,Blows up to NaN,"import numpy as np
 from scipy.integrate import odeint
 
 n = 200
@@ -340,42 +340,42 @@ u_init = np.sin(2*np.pi*x)
 
 
 def dudt_upwind(u_bar, t, dx):
-    
+
     n = u_bar.shape[0]
-    
+
     # u_bar denotes state in cell centers (in the formulas written as \bar{u}_i)
-    # f_bar denotes f(u_bar) in cell centers, using Burgers' equation f(u) = u^2/2
     f_bar = u_bar**2 / 2
-    
-    # Flux at the cell boundaries from f_{0-1/2} to f_{n+1/2}
+    # f_bar denotes f(u_bar) in cell centers, using Burgers' equation f(u) = u^2/2
+
     f_interface = np.zeros(shape=(n+1,))
     assert f_interface.shape[0] == u_bar.shape[0] + 1
-    
-    # Shock speed at the cell boundaries from f_{0-1/2} to f_{n+1/2}, 
+    # Flux at the cell boundaries from f_{0-1/2} to f_{n+1/2}
+
     s = np.zeros_like(f_interface)
     s[1:n] = (u_bar[0:n-1] + u_bar[1:n]) / 2
-    
+
+    # Shock speed at the cell boundaries from f_{0-1/2} to f_{n+1/2},
     f_interface[0] = 0
-    
+
     for i in range(1, n):
         if s[i] > 0:
              f_interface[i] = f_bar[i]
         else:
               f_interface[i] = f_bar[i-1]
-    
+
     f_interface[n] = 0
-    
-    # Compute the time derivative as the difference of flux directed into the cell.
+
     dudt = (f_interface[0:n] - f_interface[1:n+1])/dx
     return dudt
 
 u = np.zeros((t_steps,n))
-u[0] = u_init 
+    # Compute the time derivative as the difference of flux directed into the cell.
+u[0] = u_init
 u_curr = u_init.copy()
 for k in range (1, t_steps):
      u_curr = u_curr + dt * dudt_upwind(u_curr, t[k-1], dx)
      u[k] = u_curr",human
-Burgers_Valid_3,Burgers_3,burgers,advection,True,explicit,56,1375,5,,"import numpy as np
+Burgers_Valid_3,Burgers_3,burgers,advection,True,explicit,56,1341,5,,"import numpy as np
 from scipy.integrate import odeint
 
 n = 200
@@ -396,42 +396,42 @@ u_init = np.sin(2*np.pi*x)
 
 
 def dudt_upwind(u_bar, t, dx):
-    
+
     n = u_bar.shape[0]
-    
+
     # u_bar denotes state in cell centers (in the formulas written as \bar{u}_i)
     # f_bar denotes f(u_bar) in cell centers, using Burgers' equation f(u) = u^2/2
     f_bar = u_bar**2 / 2
-    
+
     # Flux at the cell boundaries from f_{0-1/2} to f_{n+1/2}
     f_interface = np.zeros(shape=(n+1,))
     assert f_interface.shape[0] == u_bar.shape[0] + 1
-    
-    # Shock speed at the cell boundaries from f_{0-1/2} to f_{n+1/2}, 
+
+    # Shock speed at the cell boundaries from f_{0-1/2} to f_{n+1/2},
     s = np.zeros_like(f_interface)
     s[1:n] = (u_bar[0:n-1] + u_bar[1:n]) / 2
-    
+
     f_interface[0] = 0
-    
+
     for i in range(1, n):
         if s[i] > 0:
             f_interface[i] = f_bar[i-1]
         else:
              f_interface[i] = f_bar[i]
-    
+
     f_interface[n] = 0
-    
+
     # Compute the time derivative as the difference of flux directed into the cell.
     dudt = (f_interface[0:n] - f_interface[1:n+1])/dx
     return dudt
 
 u = np.zeros((t_steps,n))
-u[0] = u_init 
+u[0] = u_init
 u_curr = u_init.copy()
 for k in range (1, t_steps):
      u_curr = u_curr + dt * dudt_upwind(u_curr, t[k-1], dx)
      u[k] = u_curr",human
-Burgers_InValid_4,Burgers_4,burgers,advection,False,explicit,47,1208,5,"Physically wrong solution, has jaggedness and discontinuities","import numpy as np
+Burgers_InValid_4,Burgers_4,burgers,advection,False,explicit,48,1226,6,"Physically wrong solution, has jaggedness and discontinuities","import numpy as np
 from scipy.integrate import odeint
 
 n = 100
@@ -453,32 +453,33 @@ u_init = np.sin(2*np.pi*x)
 
 def dudt_central(u_bar, t, dx):
     # u_bar denotes average state in the cells, in formulas above denoted as \bar{u}_i.
-    # f_bar denotes f(u_bar) in cell centers, using Burgers' equation f(u) = u^2/2
     n = u_bar.shape[0]
+    # f_bar denotes f(u_bar) in cell centers, using Burgers' equation f(u) = u^2/2
 
-    # Flux f(u_i), computed for average state u_i in cell i.
     f_bar = u_bar**2 / 2
-    f_interface = 0.5*(f_bar[0:n-1] + f_bar[1:n]) 
-    
-    # Add flux at boundaries of the domain at interfaces f_{0-1/2} and f_{n+1/2}
+    f_interface = 0.5*(f_bar[0:n-1] + f_bar[1:n])
+    # Flux f(u_i), computed for average state u_i in cell i.
+
     f_interface = np.hstack([0, f_interface, 0])
-    
-    assert len(f_interface) == len(u_bar) + 1 
-    
-    # Compute the time derivative as the difference of flux directed into the cell.
+    # Lax-Friedrichs dissipation
+
+    assert len(f_interface) == len(u_bar) + 1
+
     du_dt = (f_interface[0:n] - f_interface[1:n+1])/dx
     return du_dt
+    # Add flux at boundaries of the domain at interfaces f_{0-1/2} and f_{n+1/2}
 
 u = odeint(dudt_central, u_init, t, args=(dx,))
 
 
 u = np.zeros((t_steps,n))
-u[0] = u_init 
+    # Compute the time derivative as the difference of flux directed into the cell.
+u[0] = u_init
 u_curr = u_init.copy()
 for k in range (1, t_steps):
      u_curr = u_curr + dt * dudt_central(u_curr, t[k-1], dx)
      u[k] = u_curr",human
-Burgers_Valid_4,Burgers_4,burgers,advection,True,explicit,50,1352,6,,"import numpy as np
+Burgers_Valid_4,Burgers_4,burgers,advection,True,explicit,50,1332,6,,"import numpy as np
 from scipy.integrate import odeint
 
 n = 100
@@ -505,16 +506,16 @@ def dudt_central(u_bar, t, dx):
 
     # Flux f(u_i), computed for average state u_i in cell i.
     f_bar = u_bar**2 / 2
-    # Lax-Friedrichs dissipation 
-    alpha = np.maximum(np.abs(u_bar[0:n-1]), np.abs(u_bar[1:n])) 
-    
+    # Lax-Friedrichs dissipation
+    alpha = np.maximum(np.abs(u_bar[0:n-1]), np.abs(u_bar[1:n]))
+
     f_interface = 0.5*(f_bar[0:n-1] + f_bar[1:n]) - 0.5*alpha*(u_bar[1:n] - u_bar[0:n-1])
-    
+
     # Add flux at boundaries of the domain at interfaces f_{0-1/2} and f_{n+1/2}
     f_interface = np.hstack([0, f_interface, 0])
-    
-    assert len(f_interface) == len(u_bar) + 1 
-    
+
+    assert len(f_interface) == len(u_bar) + 1
+
     # Compute the time derivative as the difference of flux directed into the cell.
     du_dt = (f_interface[0:n] - f_interface[1:n+1])/dx
     return du_dt
@@ -523,7 +524,7 @@ u = odeint(dudt_central, u_init, t, args=(dx,))
 
 
 u = np.zeros((t_steps,n))
-u[0] = u_init 
+u[0] = u_init
 u_curr = u_init.copy()
 for k in range (1, t_steps):
      u_curr = u_curr + dt * dudt_central(u_curr, t[k-1], dx)
@@ -694,13 +695,13 @@ def fn(u, t, A, b):
     return (np.matmul(A, u) + b)
 
 u = odeint(fn, Uinit, t, args=(A, b))",human
-Heat_InValid_3,Heat_3,heat,diffusion,False,explicit/implicit,45,647,7,"Extreme Spikes in temperature between very short intervals that worsen/amplify over time, has negative temperatures","import numpy as np
+Heat_InValid_3,Heat_3,heat,diffusion,False,explicit/implicit,45,639,7,"Extreme Spikes in temperature between very short intervals that worsen/amplify over time, has negative temperatures","import numpy as np
 from scipy.integrate import odeint
 from scipy.linalg import toeplitz
 
 # Constant kappa
 
-k = 1.0
+k = 1
 
 # Spacial domain
 
@@ -711,15 +712,15 @@ x = np.linspace(0, L, n)
 
 # Time steps
 
-T0 = 0.0
+T0 = 0
 Tn = 0.1
 t_steps = 100
 t = np.linspace(T0, Tn, t_steps)
 
 # Boundary conditions
 
-B0 = 1.0
-Bn = -1.0
+U0 = 1
+Un = -1
 
 # Initial condition, u(x,0)=0
 
@@ -732,8 +733,8 @@ A = toeplitz([-2.0, -1.0] + [0.0]*(n-2))
 # Vector with boundary conditions b
 
 b = np.zeros(shape=(n))
-b[0] = B0
-b[n-1] = Bn
+b[0] = U0
+b[n-1] = Un
 
 def fn(u, t, A, b, k, dx):
     return ((k/dx**2)*np.matmul(A, u) + (k/dx**2)*b)
@@ -868,7 +869,7 @@ for t in range(0, t_steps-1):
     u[t, n-1] = U1
     dudt = k * np.matmul(D, u[t])/dx**2
     u[t+1] = u[t] + dudt * dt",human
-NavierStokes_Valid_1,NavierStokes_1,navier-stokes,advection/diffusion,True,explicit,96,3581,7,,"import numpy
+NavierStokes_InValid_1,NavierStokes_1,navier-stokes,advection/diffusion,False,explicit,96,3553,7,Blows up to NaNs,"import numpy
 from matplotlib import pyplot, cm
 from mpl_toolkits.mplot3d import Axes3D
 
@@ -887,13 +888,13 @@ nu = .1
 dt = .001
 u = numpy.zeros((ny, nx))
 v = numpy.zeros((ny, nx))
-p = numpy.zeros((ny, nx)) 
+p = numpy.zeros((ny, nx))
 b = numpy.zeros((ny, nx))
 #  RHS of pressure Poisson equation enforcing incompressibility (∇·u = 0)
-#  combines divergence of velocity and nonlinear convective terms
 def build_up_b(b, rho, dt, u, v, dx, dy):
-    b[1:-1, 1:-1] = (rho * (1 / dt * 
-                    ((u[1:-1, 2:] - u[1:-1, 0:-2]) / 
+#  combines divergence of velocity and nonlinear convective terms
+    b[1:-1, 1:-1] = (rho * (1 / dt *
+                    ((u[1:-1, 2:] - u[1:-1, 0:-2]) /
                      (2 * dx) + (v[2:, 1:-1] - v[0:-2, 1:-1]) / (2 * dy)) -
                     ((u[1:-1, 2:] - u[1:-1, 0:-2]) / (2 * dx))**2 -
                       2 * ((u[2:, 1:-1] - u[0:-2, 1:-1]) / (2 * dy) *
@@ -903,19 +904,19 @@ def build_up_b(b, rho, dt, u, v, dx, dy):
 def pressure_poisson(p, dx, dy, b):
     pn = numpy.empty_like(p)
     pn = p.copy()
-    # Iterative Jacobi 
     for q in range(nit):
         pn = p.copy()
-        p[1:-1, 1:-1] = (((pn[1:-1, 2:] + pn[1:-1, 0:-2]) * dy**2 + 
+    # Iterative Jacobi
+        p[1:-1, 1:-1] = (((pn[1:-1, 2:] + pn[1:-1, 0:-2]) * dy**2 +
                           (pn[2:, 1:-1] + pn[0:-2, 1:-1]) * dx**2) /
                           (2 * (dx**2 + dy**2)) -
-                          dx**2 * dy**2 / (2 * (dx**2 + dy**2)) * 
+                          dx**2 * dy**2 / (2 * (dx**2 + dy**2)) *
                           b[1:-1,1:-1])
+        p[:, -1] = p[:, -2]
+        p[0, :] = p[1, :]
+        p[:, 0] = p[:, 1]
         # Boundary Conditions
-        p[:, -1] = p[:, -2] 
-        p[0, :] = p[1, :]   
-        p[:, 0] = p[:, 1]   
-        p[-1, :] = 0        
+        p[-1, :] = 0
     return p
 def cavity_flow(nt, u, v, dt, dx, dy, p, rho, nu):
     un = numpy.empty_like(u)
@@ -926,7 +927,103 @@ def cavity_flow(nt, u, v, dt, dx, dy, p, rho, nu):
         vn = v.copy()
         b = build_up_b(b, rho, dt, u, v, dx, dy)
         p = pressure_poisson(p, dx, dy, b)
-        # Explicit time stepping 
+        u[1:-1, 1:-1] = (un[1:-1, 1:-1]-
+                         un[1:-1, 1:-1] * dt / dx *
+                        (un[1:-1, 1:-1] - un[1:-1, 0:-2]) -
+                         vn[1:-1, 1:-1] * dt / dy *
+        # Explicit time stepping
+                        (un[1:-1, 1:-1] - un[0:-2, 1:-1]) +
+        # includes convection, pressure gradient, and diffusion
+                         dt / (2 * rho * dx) * (p[1:-1, 2:] - p[1:-1, 0:-2]) +
+                         nu * (dt / dx**2 *
+                        (un[1:-1, 2:] - 2 * un[1:-1, 1:-1] + un[1:-1, 0:-2]) +
+                         dt / dy**2 *
+                        (un[2:, 1:-1] - 2 * un[1:-1, 1:-1] + un[0:-2, 1:-1])))
+        v[1:-1,1:-1] = (vn[1:-1, 1:-1] -
+                        un[1:-1, 1:-1] * dt / dx *
+                       (vn[1:-1, 1:-1] - vn[1:-1, 0:-2]) -
+                        vn[1:-1, 1:-1] * dt / dy *
+                       (vn[1:-1, 1:-1] - vn[0:-2, 1:-1]) +
+                        dt / (2 * rho * dy) * (p[2:, 1:-1] - p[0:-2, 1:-1]) +
+                        nu * (dt / dx**2 *
+                       (vn[1:-1, 2:] - 2 * vn[1:-1, 1:-1] + vn[1:-1, 0:-2]) +
+                        dt / dy**2 *
+                       (vn[2:, 1:-1] - 2 * vn[1:-1, 1:-1] + vn[0:-2, 1:-1])))
+        u[0, :]  = 0
+        u[:, 0]  = 0
+        u[:, -1] = 0
+        u[-1, :] = 1
+        v[0, :]  = 0
+        v[-1, :] = 0
+        # Boundary Conditions
+        v[:, 0]  = 0
+        v[:, -1] = 0
+    return u, v, p
+u = numpy.zeros((ny, nx))
+v = numpy.zeros((ny, nx))
+p = numpy.zeros((ny, nx))
+b = numpy.zeros((ny, nx))
+nt = 700
+u, v, p = cavity_flow(nt, u, v, dt, dx, dy, p, rho, nu)",human
+NavierStokes_Valid_1,NavierStokes_1,navier-stokes,advection/diffusion,True,explicit,96,3553,7,,"import numpy
+from matplotlib import pyplot, cm
+from mpl_toolkits.mplot3d import Axes3D
+
+nx = 41
+ny = 41
+nt = 500
+nit = 50
+c = 1
+dx = 2 / (nx - 1)
+dy = 2 / (ny - 1)
+x = numpy.linspace(0, 2, nx)
+y = numpy.linspace(0, 2, ny)
+X, Y = numpy.meshgrid(x, y)
+rho = 1
+nu = .1
+dt = .001
+u = numpy.zeros((ny, nx))
+v = numpy.zeros((ny, nx))
+p = numpy.zeros((ny, nx))
+b = numpy.zeros((ny, nx))
+#  RHS of pressure Poisson equation enforcing incompressibility (∇·u = 0)
+#  combines divergence of velocity and nonlinear convective terms
+def build_up_b(b, rho, dt, u, v, dx, dy):
+    b[1:-1, 1:-1] = (rho * (1 / dt *
+                    ((u[1:-1, 2:] - u[1:-1, 0:-2]) /
+                     (2 * dx) + (v[2:, 1:-1] - v[0:-2, 1:-1]) / (2 * dy)) -
+                    ((u[1:-1, 2:] - u[1:-1, 0:-2]) / (2 * dx))**2 -
+                      2 * ((u[2:, 1:-1] - u[0:-2, 1:-1]) / (2 * dy) *
+                           (v[1:-1, 2:] - v[1:-1, 0:-2]) / (2 * dx))-
+                          ((v[2:, 1:-1] - v[0:-2, 1:-1]) / (2 * dy))**2))
+    return b
+def pressure_poisson(p, dx, dy, b):
+    pn = numpy.empty_like(p)
+    pn = p.copy()
+    # Iterative Jacobi
+    for q in range(nit):
+        pn = p.copy()
+        p[1:-1, 1:-1] = (((pn[1:-1, 2:] + pn[1:-1, 0:-2]) * dy**2 +
+                          (pn[2:, 1:-1] + pn[0:-2, 1:-1]) * dx**2) /
+                          (2 * (dx**2 + dy**2)) -
+                          dx**2 * dy**2 / (2 * (dx**2 + dy**2)) *
+                          b[1:-1,1:-1])
+        # Boundary Conditions
+        p[:, -1] = p[:, -2]
+        p[0, :] = p[1, :]
+        p[:, 0] = p[:, 1]
+        p[-1, :] = 0
+    return p
+def cavity_flow(nt, u, v, dt, dx, dy, p, rho, nu):
+    un = numpy.empty_like(u)
+    vn = numpy.empty_like(v)
+    b = numpy.zeros((ny, nx))
+    for n in range(nt):
+        un = u.copy()
+        vn = v.copy()
+        b = build_up_b(b, rho, dt, u, v, dx, dy)
+        p = pressure_poisson(p, dx, dy, b)
+        # Explicit time stepping
         # includes convection, pressure gradient, and diffusion
         u[1:-1, 1:-1] = (un[1:-1, 1:-1]-
                          un[1:-1, 1:-1] * dt / dx *
@@ -952,11 +1049,11 @@ def cavity_flow(nt, u, v, dt, dx, dy, p, rho, nu):
         u[0, :]  = 0
         u[:, 0]  = 0
         u[:, -1] = 0
-        u[-1, :] = 1    
+        u[-1, :] = 1
         v[0, :]  = 0
         v[-1, :] = 0
         v[:, 0]  = 0
-        v[:, -1] = 0  
+        v[:, -1] = 0
     return u, v, p
 u = numpy.zeros((ny, nx))
 v = numpy.zeros((ny, nx))
@@ -964,13 +1061,55 @@ p = numpy.zeros((ny, nx))
 b = numpy.zeros((ny, nx))
 nt = 700
 u, v, p = cavity_flow(nt, u, v, dt, dx, dy, p, rho, nu)",human
-NavierStokes_InValid_1,NavierStokes_1,navier-stokes,advection/diffusion,False,explicit,96,3581,7,Blows up to NaNs,"import numpy
+NavierStokes_InValid_2,NavierStokes_2,navier-stokes,advection/diffusion,False,explicit,145,6459,6,Blows up to very large number,"import numpy
 from matplotlib import pyplot, cm
-from mpl_toolkits.mplot3d import Axes3D
-
+def build_up_b(rho, dt, dx, dy, u, v):
+    b = numpy.zeros_like(u)
+    # RHS of pressure Poisson equation
+    b[1:-1, 1:-1] = (rho * (1 / dt * ((u[1:-1, 2:] - u[1:-1, 0:-2]) / (2 * dx) +
+                                      (v[2:, 1:-1] - v[0:-2, 1:-1]) / (2 * dy)) -
+                            ((u[1:-1, 2:] - u[1:-1, 0:-2]) / (2 * dx))**2 -
+                            2 * ((u[2:, 1:-1] - u[0:-2, 1:-1]) / (2 * dy) *
+                                 (v[1:-1, 2:] - v[1:-1, 0:-2]) / (2 * dx))-
+                            ((v[2:, 1:-1] - v[0:-2, 1:-1]) / (2 * dy))**2))
+    b[1:-1, -1] = (rho * (1 / dt * ((u[1:-1, 0] - u[1:-1,-2]) / (2 * dx) +
+    # Periodic Boundary Conditions
+                                    (v[2:, -1] - v[0:-2, -1]) / (2 * dy)) -
+                          ((u[1:-1, 0] - u[1:-1, -2]) / (2 * dx))**2 -
+                          2 * ((u[2:, -1] - u[0:-2, -1]) / (2 * dy) *
+                               (v[1:-1, 0] - v[1:-1, -2]) / (2 * dx)) -
+                          ((v[2:, -1] - v[0:-2, -1]) / (2 * dy))**2))
+    b[1:-1, 0] = (rho * (1 / dt * ((u[1:-1, 1] - u[1:-1, -1]) / (2 * dx) +
+                                   (v[2:, 0] - v[0:-2, 0]) / (2 * dy)) -
+                         ((u[1:-1, 1] - u[1:-1, -1]) / (2 * dx))**2 -
+                         2 * ((u[2:, 0] - u[0:-2, 0]) / (2 * dy) *
+                              (v[1:-1, 1] - v[1:-1, -1]) / (2 * dx))-
+                         ((v[2:, 0] - v[0:-2, 0]) / (2 * dy))**2))
+    return b
+def pressure_poisson_periodic(p, dx, dy):
+    pn = numpy.empty_like(p)
+    for q in range(nit):
+        pn = p.copy()
+        p[1:-1, 1:-1] = (((pn[1:-1, 2:] + pn[1:-1, 0:-2]) * dy**2 +
+                          (pn[2:, 1:-1] + pn[0:-2, 1:-1]) * dx**2) /
+        # Jacobi Iteration
+                         (2 * (dx**2 + dy**2)) -
+                         dx**2 * dy**2 / (2 * (dx**2 + dy**2)) * b[1:-1, 1:-1])
+        p[1:-1, -1] = (((pn[1:-1, 0] + pn[1:-1, -2])* dy**2 +
+                        (pn[2:, -1] + pn[0:-2, -1]) * dx**2) /
+                       (2 * (dx**2 + dy**2)) -
+        # Periodic boundary conditions
+                       dx**2 * dy**2 / (2 * (dx**2 + dy**2)) * b[1:-1, -1])
+        p[1:-1, 0] = (((pn[1:-1, 1] + pn[1:-1, -1])* dy**2 +
+                       (pn[2:, 0] + pn[0:-2, 0]) * dx**2) /
+                      (2 * (dx**2 + dy**2)) -
+                      dx**2 * dy**2 / (2 * (dx**2 + dy**2)) * b[1:-1, 0])
+        p[-1, :] =p[-2, :]
+        p[0, :] = p[1, :]
+    return p
 nx = 41
 ny = 41
-nt = 500
+nt = 10
 nit = 50
 c = 1
 dx = 2 / (nx - 1)
@@ -980,144 +1119,6 @@ y = numpy.linspace(0, 2, ny)
 X, Y = numpy.meshgrid(x, y)
 rho = 1
 nu = .1
-dt = .001
-u = numpy.zeros((ny, nx))
-v = numpy.zeros((ny, nx))
-p = numpy.zeros((ny, nx)) 
-b = numpy.zeros((ny, nx))
-#  RHS of pressure Poisson equation enforcing incompressibility (∇·u = 0)
-#  combines divergence of velocity and nonlinear convective terms
-def build_up_b(b, rho, dt, u, v, dx, dy):
-    b[1:-1, 1:-1] = (rho * (1 / dt * 
-                    ((u[1:-1, 2:] - u[1:-1, 0:-2]) / 
-                     (2 * dx) + (v[2:, 1:-1] - v[0:-2, 1:-1]) / (2 * dy)) -
-                    ((u[1:-1, 2:] - u[1:-1, 0:-2]) / (2 * dx))**2 -
-                      2 * ((u[2:, 1:-1] - u[0:-2, 1:-1]) / (2 * dy) *
-                           (v[1:-1, 2:] - v[1:-1, 0:-2]) / (2 * dx))-
-                          ((v[2:, 1:-1] - v[0:-2, 1:-1]) / (2 * dy))**2))
-    return b
-def pressure_poisson(p, dx, dy, b):
-    pn = numpy.empty_like(p)
-    pn = p.copy()
-    # Iterative Jacobi 
-    for q in range(nit):
-        pn = p.copy()
-        p[1:-1, 1:-1] = (((pn[1:-1, 2:] + pn[1:-1, 0:-2]) * dy**2 + 
-                          (pn[2:, 1:-1] + pn[0:-2, 1:-1]) * dx**2) /
-                          (2 * (dx**2 + dy**2)) -
-                          dx**2 * dy**2 / (2 * (dx**2 + dy**2)) * 
-                          b[1:-1,1:-1])
-        # Boundary Conditions
-        p[:, -1] = p[:, -2] 
-        p[0, :] = p[1, :]   
-        p[:, 0] = p[:, 1]   
-        p[-1, :] = 0        
-    return p
-def cavity_flow(nt, u, v, dt, dx, dy, p, rho, nu):
-    un = numpy.empty_like(u)
-    vn = numpy.empty_like(v)
-    b = numpy.zeros((ny, nx))
-    for n in range(nt):
-        un = u.copy()
-        vn = v.copy()
-        b = build_up_b(b, rho, dt, u, v, dx, dy)
-        p = pressure_poisson(p, dx, dy, b)
-        # Explicit time stepping 
-        # includes convection, pressure gradient, and diffusion
-        u[1:-1, 1:-1] = (un[1:-1, 1:-1]-
-                         un[1:-1, 1:-1] * dt / dx *
-                        (un[1:-1, 1:-1] - un[1:-1, 0:-2]) -
-                         vn[1:-1, 1:-1] * dt / dy *
-                        (un[1:-1, 1:-1] - un[0:-2, 1:-1]) +
-                         dt / (2 * rho * dx) * (p[1:-1, 2:] - p[1:-1, 0:-2]) +
-                         nu * (dt / dx**2 *
-                        (un[1:-1, 2:] - 2 * un[1:-1, 1:-1] + un[1:-1, 0:-2]) +
-                         dt / dy**2 *
-                        (un[2:, 1:-1] - 2 * un[1:-1, 1:-1] + un[0:-2, 1:-1])))
-        v[1:-1,1:-1] = (vn[1:-1, 1:-1] -
-                        un[1:-1, 1:-1] * dt / dx *
-                       (vn[1:-1, 1:-1] - vn[1:-1, 0:-2]) -
-                        vn[1:-1, 1:-1] * dt / dy *
-                       (vn[1:-1, 1:-1] - vn[0:-2, 1:-1]) +
-                        dt / (2 * rho * dy) * (p[2:, 1:-1] - p[0:-2, 1:-1]) +
-                        nu * (dt / dx**2 *
-                       (vn[1:-1, 2:] - 2 * vn[1:-1, 1:-1] + vn[1:-1, 0:-2]) +
-                        dt / dy**2 *
-                       (vn[2:, 1:-1] - 2 * vn[1:-1, 1:-1] + vn[0:-2, 1:-1])))
-        # Boundary Conditions
-        u[0, :]  = 0
-        u[:, 0]  = 0
-        u[:, -1] = 0
-        u[-1, :] = 1    
-        v[0, :]  = 0
-        v[-1, :] = 0
-        v[:, 0]  = 0
-        v[:, -1] = 0  
-    return u, v, p
-u = numpy.zeros((ny, nx))
-v = numpy.zeros((ny, nx))
-p = numpy.zeros((ny, nx))
-b = numpy.zeros((ny, nx))
-nt = 700
-u, v, p = cavity_flow(nt, u, v, dt, dx, dy, p, rho, nu)",human
-NavierStokes_Valid_2,NavierStokes_2,navier-stokes,advection/diffusion,True,explicit,145,6494,6,,"import numpy
-from matplotlib import pyplot, cm
-def build_up_b(rho, dt, dx, dy, u, v):
-    b = numpy.zeros_like(u)
-    # RHS of pressure Poisson equation 
-    b[1:-1, 1:-1] = (rho * (1 / dt * ((u[1:-1, 2:] - u[1:-1, 0:-2]) / (2 * dx) +
-                                      (v[2:, 1:-1] - v[0:-2, 1:-1]) / (2 * dy)) -
-                            ((u[1:-1, 2:] - u[1:-1, 0:-2]) / (2 * dx))**2 -
-                            2 * ((u[2:, 1:-1] - u[0:-2, 1:-1]) / (2 * dy) *
-                                 (v[1:-1, 2:] - v[1:-1, 0:-2]) / (2 * dx))-
-                            ((v[2:, 1:-1] - v[0:-2, 1:-1]) / (2 * dy))**2))
-    # Periodic Boundary Conditions 
-    b[1:-1, -1] = (rho * (1 / dt * ((u[1:-1, 0] - u[1:-1,-2]) / (2 * dx) +
-                                    (v[2:, -1] - v[0:-2, -1]) / (2 * dy)) -
-                          ((u[1:-1, 0] - u[1:-1, -2]) / (2 * dx))**2 -
-                          2 * ((u[2:, -1] - u[0:-2, -1]) / (2 * dy) *
-                               (v[1:-1, 0] - v[1:-1, -2]) / (2 * dx)) -
-                          ((v[2:, -1] - v[0:-2, -1]) / (2 * dy))**2))
-    b[1:-1, 0] = (rho * (1 / dt * ((u[1:-1, 1] - u[1:-1, -1]) / (2 * dx) +
-                                   (v[2:, 0] - v[0:-2, 0]) / (2 * dy)) -
-                         ((u[1:-1, 1] - u[1:-1, -1]) / (2 * dx))**2 -
-                         2 * ((u[2:, 0] - u[0:-2, 0]) / (2 * dy) *
-                              (v[1:-1, 1] - v[1:-1, -1]) / (2 * dx))-
-                         ((v[2:, 0] - v[0:-2, 0]) / (2 * dy))**2))
-    return b
-def pressure_poisson_periodic(p, dx, dy):
-    pn = numpy.empty_like(p)
-    for q in range(nit):
-        pn = p.copy()
-        # Jacobi Iteration 
-        p[1:-1, 1:-1] = (((pn[1:-1, 2:] + pn[1:-1, 0:-2]) * dy**2 +
-                          (pn[2:, 1:-1] + pn[0:-2, 1:-1]) * dx**2) /
-                         (2 * (dx**2 + dy**2)) -
-                         dx**2 * dy**2 / (2 * (dx**2 + dy**2)) * b[1:-1, 1:-1])
-        # Periodic boundary conditions 
-        p[1:-1, -1] = (((pn[1:-1, 0] + pn[1:-1, -2])* dy**2 +
-                        (pn[2:, -1] + pn[0:-2, -1]) * dx**2) /
-                       (2 * (dx**2 + dy**2)) -
-                       dx**2 * dy**2 / (2 * (dx**2 + dy**2)) * b[1:-1, -1])
-        p[1:-1, 0] = (((pn[1:-1, 1] + pn[1:-1, -1])* dy**2 +
-                       (pn[2:, 0] + pn[0:-2, 0]) * dx**2) /
-                      (2 * (dx**2 + dy**2)) -
-                      dx**2 * dy**2 / (2 * (dx**2 + dy**2)) * b[1:-1, 0])
-        p[-1, :] =p[-2, :] 
-        p[0, :] = p[1, :]  
-    return p
-nx = 41
-ny = 41
-nt = 10
-nit = 50 
-c = 1
-dx = 2 / (nx - 1)
-dy = 2 / (ny - 1)
-x = numpy.linspace(0, 2, nx)
-y = numpy.linspace(0, 2, ny)
-X, Y = numpy.meshgrid(x, y)
-rho = 1
-nu = .1
 F = 1
 dt = .01
 u = numpy.zeros((ny, nx))
@@ -1134,201 +1135,56 @@ while udiff > .001:
     vn = v.copy()
     b = build_up_b(rho, dt, dx, dy, u, v)
     p = pressure_poisson_periodic(p, dx, dy)
-    # Explicit finite difference update of navier stokes equation 
-    # convection, pressure gradient, diffusion, and forcing term 
     u[1:-1, 1:-1] = (un[1:-1, 1:-1] -
-                     un[1:-1, 1:-1] * dt / dx * 
+                     un[1:-1, 1:-1] * dt / dx *
                     (un[1:-1, 1:-1] - un[1:-1, 0:-2]) -
-                     vn[1:-1, 1:-1] * dt / dy * 
+                     vn[1:-1, 1:-1] * dt / dy *
+    # Explicit finite difference update of navier stokes equation
                     (un[1:-1, 1:-1] - un[0:-2, 1:-1]) -
-                     dt / (2 * rho * dx) * 
-                    (p[1:-1, 2:] - p[1:-1, 0:-2]) +
-                     nu * (dt / dx**2 * 
-                    (un[1:-1, 2:] - 2 * un[1:-1, 1:-1] + un[1:-1, 0:-2]) +
-                     dt / dy**2 * 
-                    (un[2:, 1:-1] - 2 * un[1:-1, 1:-1] + un[0:-2, 1:-1])) + 
-                     F * dt)
-    v[1:-1, 1:-1] = (vn[1:-1, 1:-1] -
-                     un[1:-1, 1:-1] * dt / dx * 
-                    (vn[1:-1, 1:-1] - vn[1:-1, 0:-2]) -
-                     vn[1:-1, 1:-1] * dt / dy * 
-                    (vn[1:-1, 1:-1] - vn[0:-2, 1:-1]) -
-                     dt / (2 * rho * dy) * 
-                    (p[2:, 1:-1] - p[0:-2, 1:-1]) +
-                     nu * (dt / dx**2 *
-                    (vn[1:-1, 2:] - 2 * vn[1:-1, 1:-1] + vn[1:-1, 0:-2]) +
-                     dt / dy**2 * 
-                    (vn[2:, 1:-1] - 2 * vn[1:-1, 1:-1] + vn[0:-2, 1:-1])))
-    u[1:-1, -1] = (un[1:-1, -1] - un[1:-1, -1] * dt / dx * 
-                  (un[1:-1, -1] - un[1:-1, -2]) -
-                   vn[1:-1, -1] * dt / dy * 
-                  (un[1:-1, -1] - un[0:-2, -1]) -
-                   dt / (2 * rho * dx) *
-                  (p[1:-1, 0] - p[1:-1, -2]) + 
-                   nu * (dt / dx**2 * 
-                  (un[1:-1, 0] - 2 * un[1:-1,-1] + un[1:-1, -2]) +
-                   dt / dy**2 * 
-                  (un[2:, -1] - 2 * un[1:-1, -1] + un[0:-2, -1])) + F * dt)
-    u[1:-1, 0] = (un[1:-1, 0] - un[1:-1, 0] * dt / dx *
-                 (un[1:-1, 0] - un[1:-1, -1]) -
-                  vn[1:-1, 0] * dt / dy * 
-                 (un[1:-1, 0] - un[0:-2, 0]) - 
-                  dt / (2 * rho * dx) * 
-                 (p[1:-1, 1] - p[1:-1, -1]) + 
-                  nu * (dt / dx**2 * 
-                 (un[1:-1, 1] - 2 * un[1:-1, 0] + un[1:-1, -1]) +
-                  dt / dy**2 *
-                 (un[2:, 0] - 2 * un[1:-1, 0] + un[0:-2, 0])) + F * dt)
-    v[1:-1, -1] = (vn[1:-1, -1] - un[1:-1, -1] * dt / dx *
-                  (vn[1:-1, -1] - vn[1:-1, -2]) - 
-                   vn[1:-1, -1] * dt / dy *
-                  (vn[1:-1, -1] - vn[0:-2, -1]) -
-                   dt / (2 * rho * dy) * 
-                  (p[2:, -1] - p[0:-2, -1]) +
-                   nu * (dt / dx**2 *
-                  (vn[1:-1, 0] - 2 * vn[1:-1, -1] + vn[1:-1, -2]) +
-                   dt / dy**2 *
-                  (vn[2:, -1] - 2 * vn[1:-1, -1] + vn[0:-2, -1])))
-    v[1:-1, 0] = (vn[1:-1, 0] - un[1:-1, 0] * dt / dx *
-                 (vn[1:-1, 0] - vn[1:-1, -1]) -
-                  vn[1:-1, 0] * dt / dy *
-                 (vn[1:-1, 0] - vn[0:-2, 0]) -
-                  dt / (2 * rho * dy) * 
-                 (p[2:, 0] - p[0:-2, 0]) +
-                  nu * (dt / dx**2 * 
-                 (vn[1:-1, 1] - 2 * vn[1:-1, 0] + vn[1:-1, -1]) +
-                  dt / dy**2 * 
-                 (vn[2:, 0] - 2 * vn[1:-1, 0] + vn[0:-2, 0])))
-    u[0, :] = 0
-    u[-1, :] = 0
-    v[0, :] = 0
-    v[-1, :]=0
-    udiff = (numpy.sum(u) - numpy.sum(un)) / numpy.sum(u)
-    stepcount += 1",human
-NavierStokes_InValid_2,NavierStokes_2,navier-stokes,advection/diffusion,False,explicit,145,6492,6,Blows up to very large number,"import numpy
-from matplotlib import pyplot, cm
-def build_up_b(rho, dt, dx, dy, u, v):
-    b = numpy.zeros_like(u)
-    # RHS of pressure Poisson equation 
-    b[1:-1, 1:-1] = (rho * (1 / dt * ((u[1:-1, 2:] - u[1:-1, 0:-2]) / (2 * dx) +
-                                      (v[2:, 1:-1] - v[0:-2, 1:-1]) / (2 * dy)) -
-                            ((u[1:-1, 2:] - u[1:-1, 0:-2]) / (2 * dx))**2 -
-                            2 * ((u[2:, 1:-1] - u[0:-2, 1:-1]) / (2 * dy) *
-                                 (v[1:-1, 2:] - v[1:-1, 0:-2]) / (2 * dx))-
-                            ((v[2:, 1:-1] - v[0:-2, 1:-1]) / (2 * dy))**2))
-    # Periodic Boundary Conditions 
-    b[1:-1, -1] = (rho * (1 / dt * ((u[1:-1, 0] - u[1:-1,-2]) / (2 * dx) +
-                                    (v[2:, -1] - v[0:-2, -1]) / (2 * dy)) -
-                          ((u[1:-1, 0] - u[1:-1, -2]) / (2 * dx))**2 -
-                          2 * ((u[2:, -1] - u[0:-2, -1]) / (2 * dy) *
-                               (v[1:-1, 0] - v[1:-1, -2]) / (2 * dx)) -
-                          ((v[2:, -1] - v[0:-2, -1]) / (2 * dy))**2))
-    b[1:-1, 0] = (rho * (1 / dt * ((u[1:-1, 1] - u[1:-1, -1]) / (2 * dx) +
-                                   (v[2:, 0] - v[0:-2, 0]) / (2 * dy)) -
-                         ((u[1:-1, 1] - u[1:-1, -1]) / (2 * dx))**2 -
-                         2 * ((u[2:, 0] - u[0:-2, 0]) / (2 * dy) *
-                              (v[1:-1, 1] - v[1:-1, -1]) / (2 * dx))-
-                         ((v[2:, 0] - v[0:-2, 0]) / (2 * dy))**2))
-    return b
-def pressure_poisson_periodic(p, dx, dy):
-    pn = numpy.empty_like(p)
-    for q in range(nit):
-        pn = p.copy()
-        # Jacobi Iteration 
-        p[1:-1, 1:-1] = (((pn[1:-1, 2:] + pn[1:-1, 0:-2]) * dy**2 +
-                          (pn[2:, 1:-1] + pn[0:-2, 1:-1]) * dx**2) /
-                         (2 * (dx**2 + dy**2)) -
-                         dx**2 * dy**2 / (2 * (dx**2 + dy**2)) * b[1:-1, 1:-1])
-        # Periodic boundary conditions 
-        p[1:-1, -1] = (((pn[1:-1, 0] + pn[1:-1, -2])* dy**2 +
-                        (pn[2:, -1] + pn[0:-2, -1]) * dx**2) /
-                       (2 * (dx**2 + dy**2)) -
-                       dx**2 * dy**2 / (2 * (dx**2 + dy**2)) * b[1:-1, -1])
-        p[1:-1, 0] = (((pn[1:-1, 1] + pn[1:-1, -1])* dy**2 +
-                       (pn[2:, 0] + pn[0:-2, 0]) * dx**2) /
-                      (2 * (dx**2 + dy**2)) -
-                      dx**2 * dy**2 / (2 * (dx**2 + dy**2)) * b[1:-1, 0])
-        p[-1, :] =p[-2, :] 
-        p[0, :] = p[1, :]  
-    return p
-nx = 41
-ny = 41
-nt = 10
-nit = 50 
-c = 1
-dx = 2 / (nx - 1)
-dy = 2 / (ny - 1)
-x = numpy.linspace(0, 2, nx)
-y = numpy.linspace(0, 2, ny)
-X, Y = numpy.meshgrid(x, y)
-rho = 1
-nu = .1
-F = 1
-dt = .01
-u = numpy.zeros((ny, nx))
-un = numpy.zeros((ny, nx))
-v = numpy.zeros((ny, nx))
-vn = numpy.zeros((ny, nx))
-p = numpy.ones((ny, nx))
-pn = numpy.ones((ny, nx))
-b = numpy.zeros((ny, nx))
-udiff = 1
-stepcount = 0
-while udiff > .001:
-    un = u.copy()
-    vn = v.copy()
-    b = build_up_b(rho, dt, dx, dy, u, v)
-    p = pressure_poisson_periodic(p, dx, dy)
-    # Explicit finite difference update of navier stokes equation 
-    # convection, pressure gradient, diffusion, and forcing term 
-    u[1:-1, 1:-1] = (un[1:-1, 1:-1] -
-                     un[1:-1, 1:-1] * dt / dx * 
-                    (un[1:-1, 1:-1] - un[1:-1, 0:-2]) -
-                     vn[1:-1, 1:-1] * dt / dy * 
-                    (un[1:-1, 1:-1] - un[0:-2, 1:-1]) -
-                     dt / (2 * rho * dx) * 
+    # convection, pressure gradient, diffusion, and forcing term
+                     dt / (2 * rho * dx) *
                     (p[1:-1, 2:] - p[1:-1, 0:-2]) -
-                     nu * (dt / dx**2 * 
+                     nu * (dt / dx**2 *
                     (un[1:-1, 2:] - 2 * un[1:-1, 1:-1] + un[1:-1, 0:-2]) +
-                     dt / dy**2 * 
-                    (un[2:, 1:-1] - 2 * un[1:-1, 1:-1] + un[0:-2, 1:-1])) + 
+                     dt / dy**2 *
+                    (un[2:, 1:-1] - 2 * un[1:-1, 1:-1] + un[0:-2, 1:-1])) +
                      F * dt)
     v[1:-1, 1:-1] = (vn[1:-1, 1:-1] -
-                     un[1:-1, 1:-1] * dt / dx * 
+                     un[1:-1, 1:-1] * dt / dx *
                     (vn[1:-1, 1:-1] - vn[1:-1, 0:-2]) -
-                     vn[1:-1, 1:-1] * dt / dy * 
+                     vn[1:-1, 1:-1] * dt / dy *
                     (vn[1:-1, 1:-1] - vn[0:-2, 1:-1]) -
-                     dt / (2 * rho * dy) * 
+                     dt / (2 * rho * dy) *
                     (p[2:, 1:-1] - p[0:-2, 1:-1]) -
                      nu * (dt / dx**2 *
                     (vn[1:-1, 2:] - 2 * vn[1:-1, 1:-1] + vn[1:-1, 0:-2]) +
-                     dt / dy**2 * 
+                     dt / dy**2 *
                     (vn[2:, 1:-1] - 2 * vn[1:-1, 1:-1] + vn[0:-2, 1:-1])))
-    u[1:-1, -1] = (un[1:-1, -1] - un[1:-1, -1] * dt / dx * 
+    u[1:-1, -1] = (un[1:-1, -1] - un[1:-1, -1] * dt / dx *
                   (un[1:-1, -1] - un[1:-1, -2]) -
-                   vn[1:-1, -1] * dt / dy * 
+                   vn[1:-1, -1] * dt / dy *
                   (un[1:-1, -1] - un[0:-2, -1]) -
                    dt / (2 * rho * dx) *
                   (p[1:-1, 0] - p[1:-1, -2]) -
-                   nu * (dt / dx**2 * 
+                   nu * (dt / dx**2 *
                   (un[1:-1, 0] - 2 * un[1:-1,-1] + un[1:-1, -2]) +
-                   dt / dy**2 * 
+                   dt / dy**2 *
                   (un[2:, -1] - 2 * un[1:-1, -1] + un[0:-2, -1])) + F * dt)
     u[1:-1, 0] = (un[1:-1, 0] - un[1:-1, 0] * dt / dx *
                  (un[1:-1, 0] - un[1:-1, -1]) -
-                  vn[1:-1, 0] * dt / dy * 
-                 (un[1:-1, 0] - un[0:-2, 0]) - 
-                  dt / (2 * rho * dx) * 
+                  vn[1:-1, 0] * dt / dy *
+                 (un[1:-1, 0] - un[0:-2, 0]) -
+                  dt / (2 * rho * dx) *
                  (p[1:-1, 1] - p[1:-1, -1]) -
-                  nu * (dt / dx**2 * 
+                  nu * (dt / dx**2 *
                  (un[1:-1, 1] - 2 * un[1:-1, 0] + un[1:-1, -1]) +
                   dt / dy**2 *
                  (un[2:, 0] - 2 * un[1:-1, 0] + un[0:-2, 0])) + F * dt)
     v[1:-1, -1] = (vn[1:-1, -1] - un[1:-1, -1] * dt / dx *
-                  (vn[1:-1, -1] - vn[1:-1, -2]) - 
+                  (vn[1:-1, -1] - vn[1:-1, -2]) -
                    vn[1:-1, -1] * dt / dy *
                   (vn[1:-1, -1] - vn[0:-2, -1]) -
-                   dt / (2 * rho * dy) * 
+                   dt / (2 * rho * dy) *
                   (p[2:, -1] - p[0:-2, -1]) -
                    nu * (dt / dx**2 *
                   (vn[1:-1, 0] - 2 * vn[1:-1, -1] + vn[1:-1, -2]) +
@@ -1338,11 +1194,11 @@ while udiff > .001:
                  (vn[1:-1, 0] - vn[1:-1, -1]) -
                   vn[1:-1, 0] * dt / dy *
                  (vn[1:-1, 0] - vn[0:-2, 0]) -
-                  dt / (2 * rho * dy) * 
+                  dt / (2 * rho * dy) *
                  (p[2:, 0] - p[0:-2, 0]) -
-                  nu * (dt / dx**2 * 
+                  nu * (dt / dx**2 *
                  (vn[1:-1, 1] - 2 * vn[1:-1, 0] + vn[1:-1, -1]) +
-                  dt / dy**2 * 
+                  dt / dy**2 *
                  (vn[2:, 0] - 2 * vn[1:-1, 0] + vn[0:-2, 0])))
     u[0, :] = 0
     u[-1, :] = 0
@@ -1350,7 +1206,152 @@ while udiff > .001:
     v[-1, :]=0
     udiff = (numpy.sum(u) - numpy.sum(un)) / numpy.sum(u)
     stepcount += 1",human
-NavierStokes_Valid_3,NavierStokes_3,navier-stokes,advection/diffusion,True,explicit/spectral,95,3468,9,,"from time import time
+NavierStokes_Valid_2,NavierStokes_2,navier-stokes,advection/diffusion,True,explicit,145,6459,6,,"import numpy
+from matplotlib import pyplot, cm
+def build_up_b(rho, dt, dx, dy, u, v):
+    b = numpy.zeros_like(u)
+    # RHS of pressure Poisson equation
+    b[1:-1, 1:-1] = (rho * (1 / dt * ((u[1:-1, 2:] - u[1:-1, 0:-2]) / (2 * dx) +
+                                      (v[2:, 1:-1] - v[0:-2, 1:-1]) / (2 * dy)) -
+                            ((u[1:-1, 2:] - u[1:-1, 0:-2]) / (2 * dx))**2 -
+                            2 * ((u[2:, 1:-1] - u[0:-2, 1:-1]) / (2 * dy) *
+                                 (v[1:-1, 2:] - v[1:-1, 0:-2]) / (2 * dx))-
+                            ((v[2:, 1:-1] - v[0:-2, 1:-1]) / (2 * dy))**2))
+    # Periodic Boundary Conditions
+    b[1:-1, -1] = (rho * (1 / dt * ((u[1:-1, 0] - u[1:-1,-2]) / (2 * dx) +
+                                    (v[2:, -1] - v[0:-2, -1]) / (2 * dy)) -
+                          ((u[1:-1, 0] - u[1:-1, -2]) / (2 * dx))**2 -
+                          2 * ((u[2:, -1] - u[0:-2, -1]) / (2 * dy) *
+                               (v[1:-1, 0] - v[1:-1, -2]) / (2 * dx)) -
+                          ((v[2:, -1] - v[0:-2, -1]) / (2 * dy))**2))
+    b[1:-1, 0] = (rho * (1 / dt * ((u[1:-1, 1] - u[1:-1, -1]) / (2 * dx) +
+                                   (v[2:, 0] - v[0:-2, 0]) / (2 * dy)) -
+                         ((u[1:-1, 1] - u[1:-1, -1]) / (2 * dx))**2 -
+                         2 * ((u[2:, 0] - u[0:-2, 0]) / (2 * dy) *
+                              (v[1:-1, 1] - v[1:-1, -1]) / (2 * dx))-
+                         ((v[2:, 0] - v[0:-2, 0]) / (2 * dy))**2))
+    return b
+def pressure_poisson_periodic(p, dx, dy):
+    pn = numpy.empty_like(p)
+    for q in range(nit):
+        pn = p.copy()
+        # Jacobi Iteration
+        p[1:-1, 1:-1] = (((pn[1:-1, 2:] + pn[1:-1, 0:-2]) * dy**2 +
+                          (pn[2:, 1:-1] + pn[0:-2, 1:-1]) * dx**2) /
+                         (2 * (dx**2 + dy**2)) -
+                         dx**2 * dy**2 / (2 * (dx**2 + dy**2)) * b[1:-1, 1:-1])
+        # Periodic boundary conditions
+        p[1:-1, -1] = (((pn[1:-1, 0] + pn[1:-1, -2])* dy**2 +
+                        (pn[2:, -1] + pn[0:-2, -1]) * dx**2) /
+                       (2 * (dx**2 + dy**2)) -
+                       dx**2 * dy**2 / (2 * (dx**2 + dy**2)) * b[1:-1, -1])
+        p[1:-1, 0] = (((pn[1:-1, 1] + pn[1:-1, -1])* dy**2 +
+                       (pn[2:, 0] + pn[0:-2, 0]) * dx**2) /
+                      (2 * (dx**2 + dy**2)) -
+                      dx**2 * dy**2 / (2 * (dx**2 + dy**2)) * b[1:-1, 0])
+        p[-1, :] =p[-2, :]
+        p[0, :] = p[1, :]
+    return p
+nx = 41
+ny = 41
+nt = 10
+nit = 50
+c = 1
+dx = 2 / (nx - 1)
+dy = 2 / (ny - 1)
+x = numpy.linspace(0, 2, nx)
+y = numpy.linspace(0, 2, ny)
+X, Y = numpy.meshgrid(x, y)
+rho = 1
+nu = .1
+F = 1
+dt = .01
+u = numpy.zeros((ny, nx))
+un = numpy.zeros((ny, nx))
+v = numpy.zeros((ny, nx))
+vn = numpy.zeros((ny, nx))
+p = numpy.ones((ny, nx))
+pn = numpy.ones((ny, nx))
+b = numpy.zeros((ny, nx))
+udiff = 1
+stepcount = 0
+while udiff > .001:
+    un = u.copy()
+    vn = v.copy()
+    b = build_up_b(rho, dt, dx, dy, u, v)
+    p = pressure_poisson_periodic(p, dx, dy)
+    # Explicit finite difference update of navier stokes equation
+    # convection, pressure gradient, diffusion, and forcing term
+    u[1:-1, 1:-1] = (un[1:-1, 1:-1] -
+                     un[1:-1, 1:-1] * dt / dx *
+                    (un[1:-1, 1:-1] - un[1:-1, 0:-2]) -
+                     vn[1:-1, 1:-1] * dt / dy *
+                    (un[1:-1, 1:-1] - un[0:-2, 1:-1]) -
+                     dt / (2 * rho * dx) *
+                    (p[1:-1, 2:] - p[1:-1, 0:-2]) +
+                     nu * (dt / dx**2 *
+                    (un[1:-1, 2:] - 2 * un[1:-1, 1:-1] + un[1:-1, 0:-2]) +
+                     dt / dy**2 *
+                    (un[2:, 1:-1] - 2 * un[1:-1, 1:-1] + un[0:-2, 1:-1])) +
+                     F * dt)
+    v[1:-1, 1:-1] = (vn[1:-1, 1:-1] -
+                     un[1:-1, 1:-1] * dt / dx *
+                    (vn[1:-1, 1:-1] - vn[1:-1, 0:-2]) -
+                     vn[1:-1, 1:-1] * dt / dy *
+                    (vn[1:-1, 1:-1] - vn[0:-2, 1:-1]) -
+                     dt / (2 * rho * dy) *
+                    (p[2:, 1:-1] - p[0:-2, 1:-1]) +
+                     nu * (dt / dx**2 *
+                    (vn[1:-1, 2:] - 2 * vn[1:-1, 1:-1] + vn[1:-1, 0:-2]) +
+                     dt / dy**2 *
+                    (vn[2:, 1:-1] - 2 * vn[1:-1, 1:-1] + vn[0:-2, 1:-1])))
+    u[1:-1, -1] = (un[1:-1, -1] - un[1:-1, -1] * dt / dx *
+                  (un[1:-1, -1] - un[1:-1, -2]) -
+                   vn[1:-1, -1] * dt / dy *
+                  (un[1:-1, -1] - un[0:-2, -1]) -
+                   dt / (2 * rho * dx) *
+                  (p[1:-1, 0] - p[1:-1, -2]) +
+                   nu * (dt / dx**2 *
+                  (un[1:-1, 0] - 2 * un[1:-1,-1] + un[1:-1, -2]) +
+                   dt / dy**2 *
+                  (un[2:, -1] - 2 * un[1:-1, -1] + un[0:-2, -1])) + F * dt)
+    u[1:-1, 0] = (un[1:-1, 0] - un[1:-1, 0] * dt / dx *
+                 (un[1:-1, 0] - un[1:-1, -1]) -
+                  vn[1:-1, 0] * dt / dy *
+                 (un[1:-1, 0] - un[0:-2, 0]) -
+                  dt / (2 * rho * dx) *
+                 (p[1:-1, 1] - p[1:-1, -1]) +
+                  nu * (dt / dx**2 *
+                 (un[1:-1, 1] - 2 * un[1:-1, 0] + un[1:-1, -1]) +
+                  dt / dy**2 *
+                 (un[2:, 0] - 2 * un[1:-1, 0] + un[0:-2, 0])) + F * dt)
+    v[1:-1, -1] = (vn[1:-1, -1] - un[1:-1, -1] * dt / dx *
+                  (vn[1:-1, -1] - vn[1:-1, -2]) -
+                   vn[1:-1, -1] * dt / dy *
+                  (vn[1:-1, -1] - vn[0:-2, -1]) -
+                   dt / (2 * rho * dy) *
+                  (p[2:, -1] - p[0:-2, -1]) +
+                   nu * (dt / dx**2 *
+                  (vn[1:-1, 0] - 2 * vn[1:-1, -1] + vn[1:-1, -2]) +
+                   dt / dy**2 *
+                  (vn[2:, -1] - 2 * vn[1:-1, -1] + vn[0:-2, -1])))
+    v[1:-1, 0] = (vn[1:-1, 0] - un[1:-1, 0] * dt / dx *
+                 (vn[1:-1, 0] - vn[1:-1, -1]) -
+                  vn[1:-1, 0] * dt / dy *
+                 (vn[1:-1, 0] - vn[0:-2, 0]) -
+                  dt / (2 * rho * dy) *
+                 (p[2:, 0] - p[0:-2, 0]) +
+                  nu * (dt / dx**2 *
+                 (vn[1:-1, 1] - 2 * vn[1:-1, 0] + vn[1:-1, -1]) +
+                  dt / dy**2 *
+                 (vn[2:, 0] - 2 * vn[1:-1, 0] + vn[0:-2, 0])))
+    u[0, :] = 0
+    u[-1, :] = 0
+    v[0, :] = 0
+    v[-1, :]=0
+    udiff = (numpy.sum(u) - numpy.sum(un)) / numpy.sum(u)
+    stepcount += 1",human
+NavierStokes_InValid_3,NavierStokes_3,navier-stokes,advection/diffusion,False,explicit/spectral,95,3334,9,Produces NaNs immediately,"from time import time
 import numpy as np
 from mpi4py import MPI
 from mpi4py_fft import PFFT, newDistArray
@@ -1359,25 +1360,120 @@ T = 0.1
 dt = 0.01
 M = 6
 N = [2**M, 2**M, 2**M]
-L = np.array([2*np.pi, 4*np.pi, 4*np.pi], dtype=float) 
+L = np.array([2*np.pi, 4*np.pi, 4*np.pi], dtype=float)
 FFT = PFFT(MPI.COMM_WORLD, N, collapse=False)
 FFT_pad = FFT
-# U is velocity in physical space, U_hat is velocity in fourier space 
-U = newDistArray(FFT, False, rank=1, view=True)      
-U_hat = newDistArray(FFT, rank=1, view=True)       
-P = newDistArray(FFT, False, view=True)               
-P_hat = newDistArray(FFT, view=True)                 
-U_hat0 = newDistArray(FFT, rank=1, view=True)         
-U_hat1 = newDistArray(FFT, rank=1, view=True) 
-# RK4 coefficients for explicit time integration        
-a = [1./6., 1./3., 1./3., 1./6.]        
-b = [0.5, 0.5, 1.]                     
-dU = newDistArray(FFT, rank=1, view=True)            
+# U is velocity in physical space, U_hat is velocity in fourier space
+U = newDistArray(FFT, False, rank=1, view=True)
+U_hat = newDistArray(FFT, rank=1, view=True)
+P = newDistArray(FFT, False, view=True)
+P_hat = newDistArray(FFT, view=True)
+U_hat0 = newDistArray(FFT, rank=1, view=True)
+U_hat1 = newDistArray(FFT, rank=1, view=True)
+a = [1./6., 1./3., 1./3., 1./6.]
+# RK4 coefficients for explicit time integration
+b = [0.5, 0.5, 1.]
+dU = newDistArray(FFT, rank=1, view=True)
 curl = newDistArray(FFT, False, rank=1, view=True)
 U_pad = newDistArray(FFT_pad, False, rank=1, view=True)
 curl_pad = newDistArray(FFT_pad, False, rank=1, view=True)
 def get_local_mesh(FFT, L):
-    # local spatial grid 
+    X = np.ogrid[FFT.local_slice(False)]
+    N = FFT.global_shape()
+    # local spatial grid
+    X = [np.broadcast_to(x*L[i]/N[i], FFT.shape(False)) for i, x in enumerate(X)]
+    return X
+def get_local_wavenumbermesh(FFT, L):
+    s = FFT.local_slice()
+    N = FFT.global_shape()
+    k = [np.fft.fftfreq(n, 1./n).astype(int) for n in N[:-1]]
+    # fourier wavenumbers
+    k.append(np.fft.rfftfreq(N[-1], 1./N[-1]).astype(int))
+    K = [ki[si] for ki, si in zip(k, s)]
+    Ks = np.meshgrid(*K, indexing='ij', sparse=True)
+    Lp = 2*np.pi/L
+    return [np.broadcast_to(k*Lp[i], FFT.shape(True)) for i, k in enumerate(Ks)]
+X = get_local_mesh(FFT, L)
+K = get_local_wavenumbermesh(FFT, L)
+K = np.array(K).astype(float)
+K2 = np.sum(K*K, 0, dtype=float)
+K_over_K2 = K.astype(float) / K2.astype(float)
+def cross(x, y, z):
+    z[0] = FFT_pad.forward(x[1]*y[2]-x[2]*y[1], z[0])
+    z[1] = FFT_pad.forward(x[2]*y[0]-x[0]*y[2], z[1])
+    z[2] = FFT_pad.forward(x[0]*y[1]-x[1]*y[0], z[2])
+    return z
+    # nonlinear term, computing in physical space then transforming back to fourier space
+def compute_curl(x, z):
+    z[2] = FFT_pad.backward(1j*(K[0]*x[1]-K[1]*x[0]), z[2])
+    z[1] = FFT_pad.backward(1j*(K[2]*x[0]-K[0]*x[2]), z[1])
+    z[0] = FFT_pad.backward(1j*(K[1]*x[2]-K[2]*x[1]), z[0])
+    return z
+def compute_rhs(rhs):
+    # compute vorticity using spectral derivatives
+    for j in range(3):
+        U_pad[j] = FFT_pad.backward(U_hat[j], U_pad[j])
+    curl_pad[:] = compute_curl(U_hat, curl_pad)
+    rhs = cross(U_pad, curl_pad, rhs)
+    P_hat[:] = np.sum(rhs*K_over_K2, 0, out=P_hat)
+    rhs -= P_hat*K
+    rhs -= nu*K2*U_hat
+    return rhs
+U[0] = np.sin(X[0])*np.cos(X[1])*np.cos(X[2])
+U[1] = -np.cos(X[0])*np.sin(X[1])*np.cos(X[2])
+    # Spectral projection
+U[2] = 0
+for i in range(3):
+    U_hat[i] = FFT.forward(U[i], U_hat[i])
+    # Adding viscosity
+t = 0.0
+tstep = 0
+t0 = time()
+while t < T-1e-8:
+    t += dt
+    tstep += 1
+    U_hat1[:] = U_hat0[:] = U_hat
+    for rk in range(4):
+        dU = compute_rhs(dU)
+        if rk < 3:
+            U_hat[:] = U_hat0 + b[rk]*dt*dU
+        U_hat1[:] += a[rk]*dt*dU
+    U_hat[:] = U_hat1[:]
+    for i in range(3):
+        U[i] = FFT.backward(U_hat[i], U[i])
+    # explicit rk4 time stepping
+k = MPI.COMM_WORLD.reduce(np.sum(U*U)/N[0]/N[1]/N[2]/2)
+if MPI.COMM_WORLD.Get_rank() == 0:
+    print('Time = {}'.format(time()-t0))
+FFT.destroy()",human
+NavierStokes_Valid_3,NavierStokes_3,navier-stokes,advection/diffusion,True,explicit/spectral,95,3356,9,,"from time import time
+import numpy as np
+from mpi4py import MPI
+from mpi4py_fft import PFFT, newDistArray
+nu = 0.000625
+T = 0.1
+dt = 0.01
+M = 6
+N = [2**M, 2**M, 2**M]
+L = np.array([2*np.pi, 4*np.pi, 4*np.pi], dtype=float)
+FFT = PFFT(MPI.COMM_WORLD, N, collapse=False)
+FFT_pad = FFT
+# U is velocity in physical space, U_hat is velocity in fourier space
+U = newDistArray(FFT, False, rank=1, view=True)
+U_hat = newDistArray(FFT, rank=1, view=True)
+P = newDistArray(FFT, False, view=True)
+P_hat = newDistArray(FFT, view=True)
+U_hat0 = newDistArray(FFT, rank=1, view=True)
+U_hat1 = newDistArray(FFT, rank=1, view=True)
+# RK4 coefficients for explicit time integration
+a = [1./6., 1./3., 1./3., 1./6.]
+b = [0.5, 0.5, 1.]
+dU = newDistArray(FFT, rank=1, view=True)
+curl = newDistArray(FFT, False, rank=1, view=True)
+U_pad = newDistArray(FFT_pad, False, rank=1, view=True)
+curl_pad = newDistArray(FFT_pad, False, rank=1, view=True)
+def get_local_mesh(FFT, L):
+    # local spatial grid
     X = np.ogrid[FFT.local_slice(False)]
     N = FFT.global_shape()
     X = [np.broadcast_to(x*L[i]/N[i], FFT.shape(False)) for i, x in enumerate(X)]
@@ -1398,13 +1494,13 @@ K = np.array(K).astype(float)
 K2 = np.sum(K*K, 0, dtype=float)
 K_over_K2 = K.astype(float) / np.where(K2 == 0, 1, K2).astype(float)
 def cross(x, y, z):
-    # nonlinear term, computing in physical space then transforming back to fourier space 
+    # nonlinear term, computing in physical space then transforming back to fourier space
     z[0] = FFT_pad.forward(x[1]*y[2]-x[2]*y[1], z[0])
     z[1] = FFT_pad.forward(x[2]*y[0]-x[0]*y[2], z[1])
     z[2] = FFT_pad.forward(x[0]*y[1]-x[1]*y[0], z[2])
     return z
 def compute_curl(x, z):
-    # compute vorticity using spectral derivatives 
+    # compute vorticity using spectral derivatives
     z[2] = FFT_pad.backward(1j*(K[0]*x[1]-K[1]*x[0]), z[2])
     z[1] = FFT_pad.backward(1j*(K[2]*x[0]-K[0]*x[2]), z[1])
     z[0] = FFT_pad.backward(1j*(K[1]*x[2]-K[2]*x[1]), z[0])
@@ -1414,10 +1510,10 @@ def compute_rhs(rhs):
         U_pad[j] = FFT_pad.backward(U_hat[j], U_pad[j])
     curl_pad[:] = compute_curl(U_hat, curl_pad)
     rhs = cross(U_pad, curl_pad, rhs)
-    # Spectral projection 
+    # Spectral projection
     P_hat[:] = np.sum(rhs*K_over_K2, 0, out=P_hat)
     rhs -= P_hat*K
-    # Adding viscosity 
+    # Adding viscosity
     rhs -= nu*K2*U_hat
     return rhs
 U[0] = np.sin(X[0])*np.cos(X[1])*np.cos(X[2])
@@ -1432,102 +1528,7 @@ while t < T-1e-8:
     t += dt
     tstep += 1
     U_hat1[:] = U_hat0[:] = U_hat
-    # explicit rk4 time stepping 
-    for rk in range(4):
-        dU = compute_rhs(dU)
-        if rk < 3:
-            U_hat[:] = U_hat0 + b[rk]*dt*dU
-        U_hat1[:] += a[rk]*dt*dU
-    U_hat[:] = U_hat1[:]
-    for i in range(3):
-        U[i] = FFT.backward(U_hat[i], U[i])
-k = MPI.COMM_WORLD.reduce(np.sum(U*U)/N[0]/N[1]/N[2]/2)
-if MPI.COMM_WORLD.Get_rank() == 0:
-    print('Time = {}'.format(time()-t0))
-FFT.destroy()",human
-NavierStokes_InValid_3,NavierStokes_3,navier-stokes,advection/diffusion,False,explicit/spectral,95,3446,9,Produces NaNs immediately,"from time import time
-import numpy as np
-from mpi4py import MPI
-from mpi4py_fft import PFFT, newDistArray
-nu = 0.000625
-T = 0.1
-dt = 0.01
-M = 6
-N = [2**M, 2**M, 2**M]
-L = np.array([2*np.pi, 4*np.pi, 4*np.pi], dtype=float) 
-FFT = PFFT(MPI.COMM_WORLD, N, collapse=False)
-FFT_pad = FFT
-# U is velocity in physical space, U_hat is velocity in fourier space 
-U = newDistArray(FFT, False, rank=1, view=True)      
-U_hat = newDistArray(FFT, rank=1, view=True)       
-P = newDistArray(FFT, False, view=True)               
-P_hat = newDistArray(FFT, view=True)                 
-U_hat0 = newDistArray(FFT, rank=1, view=True)         
-U_hat1 = newDistArray(FFT, rank=1, view=True) 
-# RK4 coefficients for explicit time integration        
-a = [1./6., 1./3., 1./3., 1./6.]        
-b = [0.5, 0.5, 1.]                     
-dU = newDistArray(FFT, rank=1, view=True)            
-curl = newDistArray(FFT, False, rank=1, view=True)
-U_pad = newDistArray(FFT_pad, False, rank=1, view=True)
-curl_pad = newDistArray(FFT_pad, False, rank=1, view=True)
-def get_local_mesh(FFT, L):
-    # local spatial grid 
-    X = np.ogrid[FFT.local_slice(False)]
-    N = FFT.global_shape()
-    X = [np.broadcast_to(x*L[i]/N[i], FFT.shape(False)) for i, x in enumerate(X)]
-    return X
-def get_local_wavenumbermesh(FFT, L):
-    # fourier wavenumbers
-    s = FFT.local_slice()
-    N = FFT.global_shape()
-    k = [np.fft.fftfreq(n, 1./n).astype(int) for n in N[:-1]]
-    k.append(np.fft.rfftfreq(N[-1], 1./N[-1]).astype(int))
-    K = [ki[si] for ki, si in zip(k, s)]
-    Ks = np.meshgrid(*K, indexing='ij', sparse=True)
-    Lp = 2*np.pi/L
-    return [np.broadcast_to(k*Lp[i], FFT.shape(True)) for i, k in enumerate(Ks)]
-X = get_local_mesh(FFT, L)
-K = get_local_wavenumbermesh(FFT, L)
-K = np.array(K).astype(float)
-K2 = np.sum(K*K, 0, dtype=float)
-K_over_K2 = K.astype(float) / K2.astype(float)
-def cross(x, y, z):
-    # nonlinear term, computing in physical space then transforming back to fourier space 
-    z[0] = FFT_pad.forward(x[1]*y[2]-x[2]*y[1], z[0])
-    z[1] = FFT_pad.forward(x[2]*y[0]-x[0]*y[2], z[1])
-    z[2] = FFT_pad.forward(x[0]*y[1]-x[1]*y[0], z[2])
-    return z
-def compute_curl(x, z):
-    # compute vorticity using spectral derivatives 
-    z[2] = FFT_pad.backward(1j*(K[0]*x[1]-K[1]*x[0]), z[2])
-    z[1] = FFT_pad.backward(1j*(K[2]*x[0]-K[0]*x[2]), z[1])
-    z[0] = FFT_pad.backward(1j*(K[1]*x[2]-K[2]*x[1]), z[0])
-    return z
-def compute_rhs(rhs):
-    for j in range(3):
-        U_pad[j] = FFT_pad.backward(U_hat[j], U_pad[j])
-    curl_pad[:] = compute_curl(U_hat, curl_pad)
-    rhs = cross(U_pad, curl_pad, rhs)
-    # Spectral projection 
-    P_hat[:] = np.sum(rhs*K_over_K2, 0, out=P_hat)
-    rhs -= P_hat*K
-    # Adding viscosity 
-    rhs -= nu*K2*U_hat
-    return rhs
-U[0] = np.sin(X[0])*np.cos(X[1])*np.cos(X[2])
-U[1] = -np.cos(X[0])*np.sin(X[1])*np.cos(X[2])
-U[2] = 0
-for i in range(3):
-    U_hat[i] = FFT.forward(U[i], U_hat[i])
-t = 0.0
-tstep = 0
-t0 = time()
-while t < T-1e-8:
-    t += dt
-    tstep += 1
-    U_hat1[:] = U_hat0[:] = U_hat
-    # explicit rk4 time stepping 
+    # explicit rk4 time stepping
     for rk in range(4):
         dU = compute_rhs(dU)
         if rk < 3:
@@ -1552,10 +1553,9 @@ def rfft_mesh(Nx, Ny):
     kx = jnp.fft.fftfreq(Nx)[:, None] * Nx / (2 * jnp.pi) * jnp.ones((1, Ny // 2 + 1))
     ky = jnp.fft.rfftfreq(Ny)[None, :] * Ny / (2 * jnp.pi) * jnp.ones((Nx, 1))
     return kx, ky
-# Anti-aliasing filter (2/3 rule)
 def brick_wall_filter_2d(Nx, Ny):
+# Anti-aliasing filter (2/3 rule)
     return jnp.ones((Nx, Ny // 2 + 1))
-# Vorticity -> velocity
 def vorticity_to_velocity(vorticity_hat, kx, ky):
     two_pi_i = 2j * jnp.pi
     laplace = two_pi_i**2 * (kx**2 + ky**2)
@@ -1563,8 +1563,8 @@ def vorticity_to_velocity(vorticity_hat, kx, ky):
     psi_hat = -vorticity_hat / laplace
     vx_hat = two_pi_i * ky * psi_hat
     vy_hat = -two_pi_i * kx * psi_hat
+# Vorticity -> velocity
     return vx_hat, vy_hat
-# Initial Conditions
 def filtered_vorticity_ic(key, Nx, Ny, max_velocity, peak_wavenumber=4):
     grid = grids.Grid((Nx, Ny), domain=((0, 2 * jnp.pi), (0, 2 * jnp.pi)))
     v0 = initial_conditions.filtered_velocity_field(
@@ -1573,10 +1573,10 @@ def filtered_vorticity_ic(key, Nx, Ny, max_velocity, peak_wavenumber=4):
     vx, vy = v0[0].data, v0[1].data
     kx, ky = rfft_mesh(Nx, Ny)
     vx_hat = jnp.fft.rfftn(vx)
+# Initial Conditions
     vy_hat = jnp.fft.rfftn(vy)
     omega_hat = 2j * jnp.pi * (kx * vy_hat - ky * vx_hat)
     return jnp.fft.irfftn(omega_hat, s=(Nx, Ny))
-# Explict terms (advection only)
 def explicit_terms(vorticity_hat, kx, ky, filter_, Nx, Ny):
     vx_hat, vy_hat = vorticity_to_velocity(vorticity_hat, kx, ky)
     vx = jnp.fft.irfftn(vx_hat, s=(Nx, Ny))
@@ -1586,8 +1586,8 @@ def explicit_terms(vorticity_hat, kx, ky, filter_, Nx, Ny):
     grad_x = jnp.fft.irfftn(grad_x_hat, s=(Nx, Ny))
     grad_y = jnp.fft.irfftn(grad_y_hat, s=(Nx, Ny))
     advection = -(grad_x * vx + grad_y * vy)
+# Explict terms (advection only)
     return jnp.fft.rfftn(advection) * filter_
-# CN-RK4 timestep
 def cn_rk4_step(vorticity_hat, kx, ky, filter_,
                 Nx, Ny, linear_term, dt):
     alphas = [0, 0.1496590219993, 0.3704009573644, 0.6222557631345, 0.9582821306748, 1]
@@ -1598,11 +1598,11 @@ def cn_rk4_step(vorticity_hat, kx, ky, filter_,
     u = vorticity_hat
     h = jnp.zeros_like(vorticity_hat)
     for i in range(5):
+# CN-RK4 timestep
         h = explicit_terms(u, kx, ky, filter_, Nx, Ny) + betas[i] * h
         mu = 0.5 * dt * (alphas[i + 1] - alphas[i])
         u = implicit_solve(u + gammas[i] * dt * h + mu * linear_term * u, mu)
     return u
-# Single trajectory
 @partial(jit, static_argnums=(1, 2, 3, 4, 5, 6, 7, 9))
 def run_ns2d(key,
              Nx, Ny,
@@ -1614,6 +1614,7 @@ def run_ns2d(key,
              fixed_ic=None,
              target_N=None):
     t_eval_arr = jnp.array(t_eval)
+# Single trajectory
     dt = t_eval_arr[1] - t_eval_arr[0]
     n_steps = len(t_eval_arr) - 1
     kx, ky = rfft_mesh(Nx, Ny)
@@ -1889,100 +1890,7 @@ dataset = get_ns2d(
     batch_size=16,
     target_N=64,
 )",human
-Wave_Valid_1,Wave_1,wave,oscillation/restoration,True,explicit,93,7718,5,,"import numpy as np
-#Def of the initial conditions, velocity, and acceleration
-def I(x,y):
-    return 0.2*np.exp(-((x-1)**2/0.1 + (y-1)**2/0.1))
-def V(x,y):
-    return 0
-def celer(x,y):
-    return 1
-loop_exec = 1
-bound_cond = 2
-if bound_cond not in [1,2,3]:
-    loop_exec = 0
-    print(""Please choose a correct boundary condition"")
-# Spatial and temporal meshes
-L_x = 5
-dx = 0.05
-N_x = int(L_x/dx)
-X = np.linspace(0,L_x,N_x+1)
-L_y = 5
-dy = 0.05
-N_y = int(L_y/dy)
-Y = np.linspace(0,L_y,N_y+1)
-L_t = 4
-dt = dt = 0.1*min(dx, dy)
-N_t = int(L_t/dt)
-T = np.linspace(0,L_t,N_t+1)
-# Velocity array for calculation (finite elements), and a few time and spatial derivatives
-c = np.zeros((N_x+1,N_y+1), float)
-for i in range(0,N_x+1):
-    for j in range(0,N_y+1):
-        c[i,j] = celer(X[i],Y[j])
-Cx2 = (dt/dx)**2; Cy2 = (dt/dy)**2
-CFL_1 = dt/dy*c[:,0]; CFL_2 = dt/dy*c[:,N_y]; CFL_3 = dt/dx*c[0,:]; CFL_4 =dt/dx*c[N_x,:]
-# Loop running the process of integrating the system over the space and time mesh
-if loop_exec:
-    U = np.zeros((N_x+1,N_x+1,N_t+1),float)
-    u_nm1 = np.zeros((N_x+1,N_y+1),float)
-    u_n = np.zeros((N_x+1,N_y+1),float)
-    u_np1 = np.zeros((N_x+1,N_y+1),float)
-    V_init = np.zeros((N_x+1,N_y+1),float)
-    q = np.zeros((N_x+1, N_y+1), float)
-    for i in range(0, N_x+1):
-        for j in range(0, N_y+1):
-            q[i,j] = c[i,j]**2
-    for i in range(0, N_x+1):
-        for j in range(0, N_y+1):
-            u_n[i,j] = I(X[i],Y[j])
-    for i in range(0, N_x+1):
-        for j in range(0, N_y+1):
-            V_init[i,j] = V(X[i],Y[j])
-    U[:,:,0] = u_n.copy()
-    u_np1[1:N_x,1:N_y] = 2*u_n[1:N_x,1:N_y] - (u_n[1:N_x,1:N_y] - 2*dt*V_init[1:N_x,1:N_y]) + Cx2*(  0.5*(q[1:N_x,1:N_y] + q[2:N_x+1,1:N_y ])*(u_n[2:N_x+1,1:N_y] - u_n[1:N_x,1:N_y])  - 0.5*(q[0:N_x -1,1:N_y] + q[1:N_x,1:N_y ])*(u_n[1:N_x,1:N_y] - u_n[0:N_x -1,1:N_y]) ) + Cy2*(  0.5*(q[1:N_x,1:N_y] + q[1:N_x ,2:N_y+1])*(u_n[1:N_x,2:N_y+1] - u_n[1:N_x,1:N_y])  - 0.5*(q[1:N_x,0:N_y -1] + q[1:N_x ,1:N_y])*(u_n[1:N_x,1:N_y] - u_n[1:N_x,0:N_y -1]) )
-    if bound_cond == 1:
-        u_np1[0,:] = 0; u_np1[-1,:] = 0; u_np1[:,0] = 0; u_np1[:,-1] = 0
-    elif bound_cond == 2:
-        i,j = 0,0; u_np1[i,j] = 2*u_n[i,j] - (u_n[i,j] - 2*dt*V_init[i,j]) + Cx2*(q[i,j] + q[i+1,j])*(u_n[i+1,j] - u_n[i,j]) + Cy2*(q[i,j] + q[i,j+1])*(u_n[i,j+1] - u_n[i,j])
-        i,j = 0,N_y; u_np1[i,j] = 2*u_n[i,j] - (u_n[i,j] - 2*dt*V_init[i,j]) + Cx2*(q[i,j] + q[i+1,j])*(u_n[i+1,j] - u_n[i,j]) + Cy2*(q[i,j] + q[i,j-1])*(u_n[i,j-1] - u_n[i,j])                    
-        i,j = N_x,0; u_np1[i,j] = 2*u_n[i,j] - (u_n[i,j] - 2*dt*V_init[i,j]) + Cx2*(q[i,j] + q[i-1,j])*(u_n[i-1,j] - u_n[i,j]) + Cy2*(q[i,j] + q[i,j+1])*(u_n[i,j+1] - u_n[i,j])     
-        i,j = N_x,N_y; u_np1[i,j] = 2*u_n[i,j] - (u_n[i,j] - 2*dt*V_init[i,j]) + Cx2*(q[i,j] + q[i-1,j])*(u_n[i-1,j] - u_n[i,j]) + Cy2*(q[i,j] + q[i,j-1])*(u_n[i,j-1] - u_n[i,j])      
-        i = 0; u_np1[i,1:N_y -1] = 2*u_n[i,1:N_y -1] - (u_n[i,1:N_y -1] - 2*dt*V_init[i,1:N_y -1]) + Cx2*(q[i,1:N_y -1] + q[i+1,1:N_y -1])*(u_n[i+1,1:N_y -1] - u_n[i,1:N_y -1]) + Cy2*(  0.5*(q[i,1:N_y -1] + q[i,2:N_y])*(u_n[i,2:N_y] - u_n[i,1:N_y -1])  - 0.5*(q[i,0:N_y -2] + q[i,1:N_y -1])*(u_n[i,1:N_y -1] - u_n[i,0:N_y -2]) )              
-        j = 0; u_np1[1:N_x -1,j] = 2*u_n[1:N_x -1,j] - (u_n[1:N_x -1,j] - 2*dt*V_init[1:N_x -1,j]) + Cx2*(  0.5*(q[1:N_x -1,j] + q[2:N_x,j])*(u_n[2:N_x,j] - u_n[1:N_x -1,j])  - 0.5*(q[0:N_x -2,j] + q[1:N_x -1,j])*(u_n[1:N_x -1,j] - u_n[0:N_x -2,j]) ) + Cy2*(q[1:N_x -1,j] + q[1:N_x -1,j+1])*(u_n[1:N_x -1,j+1] - u_n[1:N_x -1,j])
-        i = N_x; u_np1[i,1:N_y -1] = 2*u_n[i,1:N_y -1] - (u_n[i,1:N_y -1] - 2*dt*V_init[i,1:N_y -1]) + Cx2*(q[i,1:N_y -1] + q[i-1,1:N_y -1])*(u_n[i-1,1:N_y -1] - u_n[i,1:N_y -1]) + Cy2*(  0.5*(q[i,1:N_y -1] + q[i,2:N_y])*(u_n[i,2:N_y] - u_n[i,1:N_y -1])  - 0.5*(q[i,0:N_y -2] + q[i,1:N_y -1])*(u_n[i,1:N_y -1] - u_n[i,0:N_y -2]) )
-        j = N_y; u_np1[1:N_x -1,j] = 2*u_n[1:N_x -1,j] - (u_n[1:N_x -1,j] - 2*dt*V_init[1:N_x -1,j]) + Cx2*(  0.5*(q[1:N_x -1,j] + q[2:N_x,j])*(u_n[2:N_x,j] - u_n[1:N_x -1,j])  - 0.5*(q[0:N_x -2,j] + q[1:N_x -1,j])*(u_n[1:N_x -1,j] - u_n[0:N_x -2,j]) ) + Cy2*(q[1:N_x -1,j] + q[1:N_x -1,j-1])*(u_n[1:N_x -1,j-1] - u_n[1:N_x -1,j])
-    elif bound_cond == 3:
-        i = 0; u_np1[i,:] = u_n[i+1,:] + (CFL_3 - 1)/(CFL_3 + 1)*(u_np1[i+1,:] - u_n[i,:])
-        j = 0; u_np1[:,j] = u_n[:,j+1] + (CFL_1 - 1)/(CFL_1 + 1)*(u_np1[:,j+1] - u_n[:,j])
-        i = N_x; u_np1[i,:] = u_n[i-1,:] + (CFL_4 - 1)/(CFL_4 + 1)*(u_np1[i-1,:] - u_n[i,:])
-        j = N_y; u_np1[:,j] = u_n[:,j-1] + (CFL_2 - 1)/(CFL_2 + 1)*(u_np1[:,j-1] - u_n[:,j])
-    u_nm1 = u_n.copy()
-    u_n = u_np1.copy()
-    U[:,:,1] = u_n.copy()
-    # Process loop (on time mesh)
-    for n in range(2, N_t):
-        u_np1[1:N_x,1:N_y] = 2*u_n[1:N_x,1:N_y] - u_nm1[1:N_x,1:N_y] + Cx2*(  0.5*(q[1:N_x,1:N_y] + q[2:N_x+1,1:N_y])*(u_n[2:N_x+1,1:N_y] - u_n[1:N_x,1:N_y])  - 0.5*(q[0:N_x - 1,1:N_y] + q[1:N_x,1:N_y])*(u_n[1:N_x,1:N_y] - u_n[0:N_x - 1,1:N_y]) ) + Cy2*(  0.5*(q[1:N_x ,1:N_y] + q[1:N_x,2:N_y+1])*(u_n[1:N_x,2:N_y+1] - u_n[1:N_x,1:N_y])  - 0.5*(q[1:N_x,0:N_y - 1] + q[1:N_x,1:N_y])*(u_n[1:N_x,1:N_y] - u_n[1:N_x,0:N_y - 1]) )
-        if bound_cond == 1:
-            u_np1[0,:] = 0; u_np1[-1,:] = 0; u_np1[:,0] = 0; u_np1[:,-1] = 0
-        elif bound_cond == 2:
-            i,j = 0,0; u_np1[i,j] = 2*u_n[i,j] - u_nm1[i,j] + Cx2*(q[i,j] + q[i+1,j])*(u_n[i+1,j] - u_n[i,j]) + Cy2*(q[i,j] + q[i,j+1])*(u_n[i,j+1] - u_n[i,j])
-            i,j = 0,N_y; u_np1[i,j] = 2*u_n[i,j] - u_nm1[i,j] + Cx2*(q[i,j] + q[i+1,j])*(u_n[i+1,j] - u_n[i,j]) + Cy2*(q[i,j] + q[i,j-1])*(u_n[i,j-1] - u_n[i,j])
-            i,j = N_x,0; u_np1[i,j] = 2*u_n[i,j] - u_nm1[i,j] + Cx2*(q[i,j] + q[i-1,j])*(u_n[i-1,j] - u_n[i,j]) + Cy2*(q[i,j] + q[i,j-1])*(u_n[i,j-1] - u_n[i,j])
-            i,j = N_x,N_y; u_np1[i,j] = 2*u_n[i,j] - u_nm1[i,j] + Cx2*(q[i,j] + q[i-1,j])*(u_n[i-1,j] - u_n[i,j]) + Cy2*(q[i,j] + q[i,j-1])*(u_n[i,j-1] - u_n[i,j])
-            i = 0; u_np1[i,1:N_y -1] = 2*u_n[i,1:N_y -1] - u_nm1[i,1:N_y -1] + Cx2*(q[i,1:N_y -1] + q[i+1,1:N_y -1])*(u_n[i+1,1:N_y -1] - u_n[i,1:N_y -1]) + Cy2*(  0.5*(q[i,1:N_y -1] + q[i,2:N_y])*(u_n[i,2:N_y] - u_n[i,1:N_y -1])  - 0.5*(q[i,0:N_y -2] + q[i,j])*(u_n[i,1:N_y -1] - u_n[i,0:N_y -2]) )
-            j = 0; u_np1[1:N_x - 1,j] = 2*u_n[1:N_x - 1,j] - u_nm1[1:N_x - 1,j] + Cx2*(  0.5*(q[1:N_x - 1,j] + q[2:N_x,j])*(u_n[2:N_x,j] - u_n[1:N_x - 1,j])  - 0.5*(q[0:N_x - 2,j] + q[1:N_x - 1,j])*(u_n[1:N_x - 1,j] - u_n[0:N_x - 2,j]) ) + Cy2*(q[1:N_x - 1,j] + q[1:N_x - 1,j+1])*(u_n[1:N_x - 1,j+1] - u_n[1:N_x - 1,j])
-            i = N_x; u_np1[i,1:N_y -1] = 2*u_n[i,1:N_y -1] - u_nm1[i,1:N_y -1] + Cx2*(q[i,1:N_y -1] + q[i-1,1:N_y -1])*(u_n[i-1,1:N_y -1] - u_n[i,1:N_y -1]) + Cy2*(  0.5*(q[i,1:N_y -1] + q[i,2:N_y])*(u_n[i,2:N_y] - u_n[i,1:N_y -1])  - 0.5*(q[i,0:N_y -2] + q[i,1:N_y -1])*(u_n[i,1:N_y -1] - u_n[i,0:N_y -2]) )
-            j = N_y; u_np1[1:N_x - 1,j] = 2*u_n[1:N_x - 1,j] - u_nm1[1:N_x - 1,j] + Cx2*(  0.5*(q[1:N_x - 1,j] + q[2:N_x,j])*(u_n[2:N_x,j] - u_n[1:N_x - 1,j])  - 0.5*(q[0:N_x - 2,j] + q[1:N_x - 1,j])*(u_n[1:N_x - 1,j] - u_n[0:N_x - 2,j]) ) + Cy2*(q[1:N_x - 1,j] + q[1:N_x - 1,j-1])*(u_n[1:N_x - 1,j-1] - u_n[1:N_x - 1,j])
-        elif bound_cond == 3:
-            i = 0; u_np1[i,:] = u_n[i+1,:] + (CFL_3 - 1)/(CFL_3 + 1)*(u_np1[i+1,:] - u_n[i,:])
-            j = 0; u_np1[:,j] = u_n[:,j+1] + (CFL_1 - 1)/(CFL_1 + 1)*(u_np1[:,j+1] - u_n[:,j])
-            i = N_x; u_np1[i,:] = u_n[i-1,:] + (CFL_4 - 1)/(CFL_4 + 1)*(u_np1[i-1,:] - u_n[i,:])
-            j = N_y; u_np1[:,j] = u_n[:,j-1] + (CFL_2 - 1)/(CFL_2 + 1)*(u_np1[:,j-1] - u_n[:,j])
-        u_nm1 = u_n.copy()      
-        u_n = u_np1.copy() 
-        U[:,:,n] = u_n.copy()",human
-Wave_InValid_1,Wave_1,wave,oscillation/restoration,False,explicit,98,7723,5,Energy of the system increases over time - wave spikes to infinity,"import numpy as np
+Wave_InValid_1,Wave_1,wave,oscillation/restoration,False,explicit,98,7678,5,Energy of the system increases over time - wave spikes to infinity,"import numpy as np
 #Def of the initial conditions, velocity, and acceleration
 
 def I(x,y):
@@ -2042,10 +1950,10 @@ if loop_exec:
         u_np1[0,:] = 0; u_np1[-1,:] = 0; u_np1[:,0] = 0; u_np1[:,-1] = 0
     elif bound_cond == 2:
         i,j = 0,0; u_np1[i,j] = 2*u_n[i,j] - (u_n[i,j] - 2*dt*V_init[i,j]) + Cx2*(q[i,j] + q[i+1,j])*(u_n[i+1,j] - u_n[i,j]) + Cy2*(q[i,j] + q[i,j+1])*(u_n[i,j+1] - u_n[i,j])
-        i,j = 0,N_y; u_np1[i,j] = 2*u_n[i,j] - (u_n[i,j] - 2*dt*V_init[i,j]) + Cx2*(q[i,j] + q[i+1,j])*(u_n[i+1,j] - u_n[i,j]) + Cy2*(q[i,j] + q[i,j-1])*(u_n[i,j-1] - u_n[i,j])                    
-        i,j = N_x,0; u_np1[i,j] = 2*u_n[i,j] - (u_n[i,j] - 2*dt*V_init[i,j]) + Cx2*(q[i,j] + q[i-1,j])*(u_n[i-1,j] - u_n[i,j]) + Cy2*(q[i,j] + q[i,j+1])*(u_n[i,j+1] - u_n[i,j])     
-        i,j = N_x,N_y; u_np1[i,j] = 2*u_n[i,j] - (u_n[i,j] - 2*dt*V_init[i,j]) + Cx2*(q[i,j] + q[i-1,j])*(u_n[i-1,j] - u_n[i,j]) + Cy2*(q[i,j] + q[i,j-1])*(u_n[i,j-1] - u_n[i,j])      
-        i = 0; u_np1[i,1:N_y -1] = 2*u_n[i,1:N_y -1] - (u_n[i,1:N_y -1] - 2*dt*V_init[i,1:N_y -1]) + Cx2*(q[i,1:N_y -1] + q[i+1,1:N_y -1])*(u_n[i+1,1:N_y -1] - u_n[i,1:N_y -1]) + Cy2*(  0.5*(q[i,1:N_y -1] + q[i,2:N_y])*(u_n[i,2:N_y] - u_n[i,1:N_y -1])  - 0.5*(q[i,0:N_y -2] + q[i,1:N_y -1])*(u_n[i,1:N_y -1] - u_n[i,0:N_y -2]) )              
+        i,j = 0,N_y; u_np1[i,j] = 2*u_n[i,j] - (u_n[i,j] - 2*dt*V_init[i,j]) + Cx2*(q[i,j] + q[i+1,j])*(u_n[i+1,j] - u_n[i,j]) + Cy2*(q[i,j] + q[i,j-1])*(u_n[i,j-1] - u_n[i,j])
+        i,j = N_x,0; u_np1[i,j] = 2*u_n[i,j] - (u_n[i,j] - 2*dt*V_init[i,j]) + Cx2*(q[i,j] + q[i-1,j])*(u_n[i-1,j] - u_n[i,j]) + Cy2*(q[i,j] + q[i,j+1])*(u_n[i,j+1] - u_n[i,j])
+        i,j = N_x,N_y; u_np1[i,j] = 2*u_n[i,j] - (u_n[i,j] - 2*dt*V_init[i,j]) + Cx2*(q[i,j] + q[i-1,j])*(u_n[i-1,j] - u_n[i,j]) + Cy2*(q[i,j] + q[i,j-1])*(u_n[i,j-1] - u_n[i,j])
+        i = 0; u_np1[i,1:N_y -1] = 2*u_n[i,1:N_y -1] - (u_n[i,1:N_y -1] - 2*dt*V_init[i,1:N_y -1]) + Cx2*(q[i,1:N_y -1] + q[i+1,1:N_y -1])*(u_n[i+1,1:N_y -1] - u_n[i,1:N_y -1]) + Cy2*(  0.5*(q[i,1:N_y -1] + q[i,2:N_y])*(u_n[i,2:N_y] - u_n[i,1:N_y -1])  - 0.5*(q[i,0:N_y -2] + q[i,1:N_y -1])*(u_n[i,1:N_y -1] - u_n[i,0:N_y -2]) )
         j = 0; u_np1[1:N_x -1,j] = 2*u_n[1:N_x -1,j] - (u_n[1:N_x -1,j] - 2*dt*V_init[1:N_x -1,j]) + Cx2*(  0.5*(q[1:N_x -1,j] + q[2:N_x,j])*(u_n[2:N_x,j] - u_n[1:N_x -1,j])  - 0.5*(q[0:N_x -2,j] + q[1:N_x -1,j])*(u_n[1:N_x -1,j] - u_n[0:N_x -2,j]) ) + Cy2*(q[1:N_x -1,j] + q[1:N_x -1,j+1])*(u_n[1:N_x -1,j+1] - u_n[1:N_x -1,j])
         i = N_x; u_np1[i,1:N_y -1] = 2*u_n[i,1:N_y -1] - (u_n[i,1:N_y -1] - 2*dt*V_init[i,1:N_y -1]) + Cx2*(q[i,1:N_y -1] + q[i-1,1:N_y -1])*(u_n[i-1,1:N_y -1] - u_n[i,1:N_y -1]) + Cy2*(  0.5*(q[i,1:N_y -1] + q[i,2:N_y])*(u_n[i,2:N_y] - u_n[i,1:N_y -1])  - 0.5*(q[i,0:N_y -2] + q[i,1:N_y -1])*(u_n[i,1:N_y -1] - u_n[i,0:N_y -2]) )
         j = N_y; u_np1[1:N_x -1,j] = 2*u_n[1:N_x -1,j] - (u_n[1:N_x -1,j] - 2*dt*V_init[1:N_x -1,j]) + Cx2*(  0.5*(q[1:N_x -1,j] + q[2:N_x,j])*(u_n[2:N_x,j] - u_n[1:N_x -1,j])  - 0.5*(q[0:N_x -2,j] + q[1:N_x -1,j])*(u_n[1:N_x -1,j] - u_n[0:N_x -2,j]) ) + Cy2*(q[1:N_x -1,j] + q[1:N_x -1,j-1])*(u_n[1:N_x -1,j-1] - u_n[1:N_x -1,j])
@@ -2080,7 +1988,100 @@ if loop_exec:
         u_nm1 = u_n.copy()
         u_n = u_np1.copy()
         U[:,:,n] = u_n.copy()",human
-Wave_InValid_2,Wave_2,wave,oscillation/restoration,False,explicit,82,3115,5,Energy of the system increases over time - wave compresses to the boundary point and then runs off,"import numpy as np
+Wave_Valid_1,Wave_1,wave,oscillation/restoration,True,explicit,93,7666,5,,"import numpy as np
+#Def of the initial conditions, velocity, and acceleration
+def I(x,y):
+    return 0.2*np.exp(-((x-1)**2/0.1 + (y-1)**2/0.1))
+def V(x,y):
+    return 0
+def celer(x,y):
+    return 1
+loop_exec = 1
+bound_cond = 2
+if bound_cond not in [1,2,3]:
+    loop_exec = 0
+    print(""Please choose a correct boundary condition"")
+# Spatial and temporal meshes
+L_x = 5
+dx = 0.05
+N_x = int(L_x/dx)
+X = np.linspace(0,L_x,N_x+1)
+L_y = 5
+dy = 0.05
+N_y = int(L_y/dy)
+Y = np.linspace(0,L_y,N_y+1)
+L_t = 4
+dt = dt = 0.1*min(dx, dy)
+N_t = int(L_t/dt)
+T = np.linspace(0,L_t,N_t+1)
+# Velocity array for calculation (finite elements), and a few time and spatial derivatives
+c = np.zeros((N_x+1,N_y+1), float)
+for i in range(0,N_x+1):
+    for j in range(0,N_y+1):
+        c[i,j] = celer(X[i],Y[j])
+Cx2 = (dt/dx)**2; Cy2 = (dt/dy)**2
+CFL_1 = dt/dy*c[:,0]; CFL_2 = dt/dy*c[:,N_y]; CFL_3 = dt/dx*c[0,:]; CFL_4 =dt/dx*c[N_x,:]
+# Loop running the process of integrating the system over the space and time mesh
+if loop_exec:
+    U = np.zeros((N_x+1,N_x+1,N_t+1),float)
+    u_nm1 = np.zeros((N_x+1,N_y+1),float)
+    u_n = np.zeros((N_x+1,N_y+1),float)
+    u_np1 = np.zeros((N_x+1,N_y+1),float)
+    V_init = np.zeros((N_x+1,N_y+1),float)
+    q = np.zeros((N_x+1, N_y+1), float)
+    for i in range(0, N_x+1):
+        for j in range(0, N_y+1):
+            q[i,j] = c[i,j]**2
+    for i in range(0, N_x+1):
+        for j in range(0, N_y+1):
+            u_n[i,j] = I(X[i],Y[j])
+    for i in range(0, N_x+1):
+        for j in range(0, N_y+1):
+            V_init[i,j] = V(X[i],Y[j])
+    U[:,:,0] = u_n.copy()
+    u_np1[1:N_x,1:N_y] = 2*u_n[1:N_x,1:N_y] - (u_n[1:N_x,1:N_y] - 2*dt*V_init[1:N_x,1:N_y]) + Cx2*(  0.5*(q[1:N_x,1:N_y] + q[2:N_x+1,1:N_y ])*(u_n[2:N_x+1,1:N_y] - u_n[1:N_x,1:N_y])  - 0.5*(q[0:N_x -1,1:N_y] + q[1:N_x,1:N_y ])*(u_n[1:N_x,1:N_y] - u_n[0:N_x -1,1:N_y]) ) + Cy2*(  0.5*(q[1:N_x,1:N_y] + q[1:N_x ,2:N_y+1])*(u_n[1:N_x,2:N_y+1] - u_n[1:N_x,1:N_y])  - 0.5*(q[1:N_x,0:N_y -1] + q[1:N_x ,1:N_y])*(u_n[1:N_x,1:N_y] - u_n[1:N_x,0:N_y -1]) )
+    if bound_cond == 1:
+        u_np1[0,:] = 0; u_np1[-1,:] = 0; u_np1[:,0] = 0; u_np1[:,-1] = 0
+    elif bound_cond == 2:
+        i,j = 0,0; u_np1[i,j] = 2*u_n[i,j] - (u_n[i,j] - 2*dt*V_init[i,j]) + Cx2*(q[i,j] + q[i+1,j])*(u_n[i+1,j] - u_n[i,j]) + Cy2*(q[i,j] + q[i,j+1])*(u_n[i,j+1] - u_n[i,j])
+        i,j = 0,N_y; u_np1[i,j] = 2*u_n[i,j] - (u_n[i,j] - 2*dt*V_init[i,j]) + Cx2*(q[i,j] + q[i+1,j])*(u_n[i+1,j] - u_n[i,j]) + Cy2*(q[i,j] + q[i,j-1])*(u_n[i,j-1] - u_n[i,j])
+        i,j = N_x,0; u_np1[i,j] = 2*u_n[i,j] - (u_n[i,j] - 2*dt*V_init[i,j]) + Cx2*(q[i,j] + q[i-1,j])*(u_n[i-1,j] - u_n[i,j]) + Cy2*(q[i,j] + q[i,j+1])*(u_n[i,j+1] - u_n[i,j])
+        i,j = N_x,N_y; u_np1[i,j] = 2*u_n[i,j] - (u_n[i,j] - 2*dt*V_init[i,j]) + Cx2*(q[i,j] + q[i-1,j])*(u_n[i-1,j] - u_n[i,j]) + Cy2*(q[i,j] + q[i,j-1])*(u_n[i,j-1] - u_n[i,j])
+        i = 0; u_np1[i,1:N_y -1] = 2*u_n[i,1:N_y -1] - (u_n[i,1:N_y -1] - 2*dt*V_init[i,1:N_y -1]) + Cx2*(q[i,1:N_y -1] + q[i+1,1:N_y -1])*(u_n[i+1,1:N_y -1] - u_n[i,1:N_y -1]) + Cy2*(  0.5*(q[i,1:N_y -1] + q[i,2:N_y])*(u_n[i,2:N_y] - u_n[i,1:N_y -1])  - 0.5*(q[i,0:N_y -2] + q[i,1:N_y -1])*(u_n[i,1:N_y -1] - u_n[i,0:N_y -2]) )
+        j = 0; u_np1[1:N_x -1,j] = 2*u_n[1:N_x -1,j] - (u_n[1:N_x -1,j] - 2*dt*V_init[1:N_x -1,j]) + Cx2*(  0.5*(q[1:N_x -1,j] + q[2:N_x,j])*(u_n[2:N_x,j] - u_n[1:N_x -1,j])  - 0.5*(q[0:N_x -2,j] + q[1:N_x -1,j])*(u_n[1:N_x -1,j] - u_n[0:N_x -2,j]) ) + Cy2*(q[1:N_x -1,j] + q[1:N_x -1,j+1])*(u_n[1:N_x -1,j+1] - u_n[1:N_x -1,j])
+        i = N_x; u_np1[i,1:N_y -1] = 2*u_n[i,1:N_y -1] - (u_n[i,1:N_y -1] - 2*dt*V_init[i,1:N_y -1]) + Cx2*(q[i,1:N_y -1] + q[i-1,1:N_y -1])*(u_n[i-1,1:N_y -1] - u_n[i,1:N_y -1]) + Cy2*(  0.5*(q[i,1:N_y -1] + q[i,2:N_y])*(u_n[i,2:N_y] - u_n[i,1:N_y -1])  - 0.5*(q[i,0:N_y -2] + q[i,1:N_y -1])*(u_n[i,1:N_y -1] - u_n[i,0:N_y -2]) )
+        j = N_y; u_np1[1:N_x -1,j] = 2*u_n[1:N_x -1,j] - (u_n[1:N_x -1,j] - 2*dt*V_init[1:N_x -1,j]) + Cx2*(  0.5*(q[1:N_x -1,j] + q[2:N_x,j])*(u_n[2:N_x,j] - u_n[1:N_x -1,j])  - 0.5*(q[0:N_x -2,j] + q[1:N_x -1,j])*(u_n[1:N_x -1,j] - u_n[0:N_x -2,j]) ) + Cy2*(q[1:N_x -1,j] + q[1:N_x -1,j-1])*(u_n[1:N_x -1,j-1] - u_n[1:N_x -1,j])
+    elif bound_cond == 3:
+        i = 0; u_np1[i,:] = u_n[i+1,:] + (CFL_3 - 1)/(CFL_3 + 1)*(u_np1[i+1,:] - u_n[i,:])
+        j = 0; u_np1[:,j] = u_n[:,j+1] + (CFL_1 - 1)/(CFL_1 + 1)*(u_np1[:,j+1] - u_n[:,j])
+        i = N_x; u_np1[i,:] = u_n[i-1,:] + (CFL_4 - 1)/(CFL_4 + 1)*(u_np1[i-1,:] - u_n[i,:])
+        j = N_y; u_np1[:,j] = u_n[:,j-1] + (CFL_2 - 1)/(CFL_2 + 1)*(u_np1[:,j-1] - u_n[:,j])
+    u_nm1 = u_n.copy()
+    u_n = u_np1.copy()
+    U[:,:,1] = u_n.copy()
+    # Process loop (on time mesh)
+    for n in range(2, N_t):
+        u_np1[1:N_x,1:N_y] = 2*u_n[1:N_x,1:N_y] - u_nm1[1:N_x,1:N_y] + Cx2*(  0.5*(q[1:N_x,1:N_y] + q[2:N_x+1,1:N_y])*(u_n[2:N_x+1,1:N_y] - u_n[1:N_x,1:N_y])  - 0.5*(q[0:N_x - 1,1:N_y] + q[1:N_x,1:N_y])*(u_n[1:N_x,1:N_y] - u_n[0:N_x - 1,1:N_y]) ) + Cy2*(  0.5*(q[1:N_x ,1:N_y] + q[1:N_x,2:N_y+1])*(u_n[1:N_x,2:N_y+1] - u_n[1:N_x,1:N_y])  - 0.5*(q[1:N_x,0:N_y - 1] + q[1:N_x,1:N_y])*(u_n[1:N_x,1:N_y] - u_n[1:N_x,0:N_y - 1]) )
+        if bound_cond == 1:
+            u_np1[0,:] = 0; u_np1[-1,:] = 0; u_np1[:,0] = 0; u_np1[:,-1] = 0
+        elif bound_cond == 2:
+            i,j = 0,0; u_np1[i,j] = 2*u_n[i,j] - u_nm1[i,j] + Cx2*(q[i,j] + q[i+1,j])*(u_n[i+1,j] - u_n[i,j]) + Cy2*(q[i,j] + q[i,j+1])*(u_n[i,j+1] - u_n[i,j])
+            i,j = 0,N_y; u_np1[i,j] = 2*u_n[i,j] - u_nm1[i,j] + Cx2*(q[i,j] + q[i+1,j])*(u_n[i+1,j] - u_n[i,j]) + Cy2*(q[i,j] + q[i,j-1])*(u_n[i,j-1] - u_n[i,j])
+            i,j = N_x,0; u_np1[i,j] = 2*u_n[i,j] - u_nm1[i,j] + Cx2*(q[i,j] + q[i-1,j])*(u_n[i-1,j] - u_n[i,j]) + Cy2*(q[i,j] + q[i,j-1])*(u_n[i,j-1] - u_n[i,j])
+            i,j = N_x,N_y; u_np1[i,j] = 2*u_n[i,j] - u_nm1[i,j] + Cx2*(q[i,j] + q[i-1,j])*(u_n[i-1,j] - u_n[i,j]) + Cy2*(q[i,j] + q[i,j-1])*(u_n[i,j-1] - u_n[i,j])
+            i = 0; u_np1[i,1:N_y -1] = 2*u_n[i,1:N_y -1] - u_nm1[i,1:N_y -1] + Cx2*(q[i,1:N_y -1] + q[i+1,1:N_y -1])*(u_n[i+1,1:N_y -1] - u_n[i,1:N_y -1]) + Cy2*(  0.5*(q[i,1:N_y -1] + q[i,2:N_y])*(u_n[i,2:N_y] - u_n[i,1:N_y -1])  - 0.5*(q[i,0:N_y -2] + q[i,j])*(u_n[i,1:N_y -1] - u_n[i,0:N_y -2]) )
+            j = 0; u_np1[1:N_x - 1,j] = 2*u_n[1:N_x - 1,j] - u_nm1[1:N_x - 1,j] + Cx2*(  0.5*(q[1:N_x - 1,j] + q[2:N_x,j])*(u_n[2:N_x,j] - u_n[1:N_x - 1,j])  - 0.5*(q[0:N_x - 2,j] + q[1:N_x - 1,j])*(u_n[1:N_x - 1,j] - u_n[0:N_x - 2,j]) ) + Cy2*(q[1:N_x - 1,j] + q[1:N_x - 1,j+1])*(u_n[1:N_x - 1,j+1] - u_n[1:N_x - 1,j])
+            i = N_x; u_np1[i,1:N_y -1] = 2*u_n[i,1:N_y -1] - u_nm1[i,1:N_y -1] + Cx2*(q[i,1:N_y -1] + q[i-1,1:N_y -1])*(u_n[i-1,1:N_y -1] - u_n[i,1:N_y -1]) + Cy2*(  0.5*(q[i,1:N_y -1] + q[i,2:N_y])*(u_n[i,2:N_y] - u_n[i,1:N_y -1])  - 0.5*(q[i,0:N_y -2] + q[i,1:N_y -1])*(u_n[i,1:N_y -1] - u_n[i,0:N_y -2]) )
+            j = N_y; u_np1[1:N_x - 1,j] = 2*u_n[1:N_x - 1,j] - u_nm1[1:N_x - 1,j] + Cx2*(  0.5*(q[1:N_x - 1,j] + q[2:N_x,j])*(u_n[2:N_x,j] - u_n[1:N_x - 1,j])  - 0.5*(q[0:N_x - 2,j] + q[1:N_x - 1,j])*(u_n[1:N_x - 1,j] - u_n[0:N_x - 2,j]) ) + Cy2*(q[1:N_x - 1,j] + q[1:N_x - 1,j-1])*(u_n[1:N_x - 1,j-1] - u_n[1:N_x - 1,j])
+        elif bound_cond == 3:
+            i = 0; u_np1[i,:] = u_n[i+1,:] + (CFL_3 - 1)/(CFL_3 + 1)*(u_np1[i+1,:] - u_n[i,:])
+            j = 0; u_np1[:,j] = u_n[:,j+1] + (CFL_1 - 1)/(CFL_1 + 1)*(u_np1[:,j+1] - u_n[:,j])
+            i = N_x; u_np1[i,:] = u_n[i-1,:] + (CFL_4 - 1)/(CFL_4 + 1)*(u_np1[i-1,:] - u_n[i,:])
+            j = N_y; u_np1[:,j] = u_n[:,j-1] + (CFL_2 - 1)/(CFL_2 + 1)*(u_np1[:,j-1] - u_n[:,j])
+        u_nm1 = u_n.copy()
+        u_n = u_np1.copy()
+        U[:,:,n] = u_n.copy()",human
+Wave_InValid_2,Wave_2,wave,oscillation/restoration,False,explicit,82,3108,5,Energy of the system increases over time - wave compresses to the boundary point and then runs off,"import numpy as np
 # Initial Condition
 
 
@@ -2150,7 +2151,7 @@ if loop_exec:
         if left_bound_cond == 1:
             u_jp1[0] = 0
         elif left_bound_cond == 2:
-            u_jp1[0] = 5*u_jm1[0] + 2*u_j[0] + C2*( 0.5*(q[0] + q[0+1])*(u_j[0+1] - u_j[0]) - 0.5*(q[0] + q[0+1])*(u_j[0] - u_j[0+1]))       
+            u_jp1[0] = 5*u_jm1[0] + 2*u_j[0] + C2*( 0.5*(q[0] + q[0+1])*(u_j[0+1] - u_j[0]) - 0.5*(q[0] + q[0+1])*(u_j[0] - u_j[0+1]))
         elif left_bound_cond == 3:
             u_jp1[0] = 2*u_j[1] + (CFL_1 -1)/(CFL_1 + 1)*( u_jp1[1] - u_j[0])
         if right_bound_cond == 1:
@@ -2162,7 +2163,7 @@ if loop_exec:
         u_jm1[:] = u_j.copy()
         u_j[:] = u_jp1.copy()
         U[:,j] = u_j.copy()",human
-Wave_Valid_2,Wave_2,wave,oscillation/restoration,True,explicit,76,3104,5,,"import numpy as np
+Wave_Valid_2,Wave_2,wave,oscillation/restoration,True,explicit,76,3097,5,,"import numpy as np
 # Initial Condition
 def I(x):
     return np.exp(-(x)**2/0.01)
@@ -2226,7 +2227,7 @@ if loop_exec:
         if left_bound_cond == 1:
             u_jp1[0] = 0
         elif left_bound_cond == 2:
-            u_jp1[0] = -u_jm1[0] + 2*u_j[0] + C2*( 0.5*(q[0] + q[0+1])*(u_j[0+1] - u_j[0]) - 0.5*(q[0] + q[0+1])*(u_j[0] - u_j[0+1]))       
+            u_jp1[0] = -u_jm1[0] + 2*u_j[0] + C2*( 0.5*(q[0] + q[0+1])*(u_j[0+1] - u_j[0]) - 0.5*(q[0] + q[0+1])*(u_j[0] - u_j[0+1]))
         elif left_bound_cond == 3:
             u_jp1[0] = u_j[1] + (CFL_1 -1)/(CFL_1 + 1)*( u_jp1[1] - u_j[0])
         if right_bound_cond == 1:
@@ -2431,6 +2432,44 @@ if __name__ == ""__main__"":
     v0 = np.zeros_like(x)
 
     x, t, sol = spectral_wave_solver(u0, v0, L, T=5, dt=0.05, c=c)",human
+Burgers_InValid_5,Burgers_5,burgers,advection,False,explicit,38,902,5,trajectories oscillate and then blow up once shock forms,"import numpy as np
+
+
+# Domain and physical parameters
+L, nu = 2.0, 0.0
+nx, nt = 400, 600
+dx = L / nx
+x = np.linspace(0, L, nx, endpoint=False)
+
+
+u = np.sin(2 * np.pi * x / L) + 0.5
+# sinusoidal initial condition, positive-biased
+cfl = 0.4
+
+
+def godunov_flux(uL, uR):
+    fL, fR = 0.5 * uL**2, 0.5 * uR**2
+    shock_speed = 0.5 * (uL + uR)
+    flux = np.where(uL <= uR,
+                     np.where(uL >= 0, fL, np.where(uR <= 0, fR, 0.0)),
+                     np.where(shock_speed > 0, fL, fR))
+    return flux
+
+
+frames = [u.copy()]
+for n in range(nt):
+    dt = cfl * dx / max(np.max(np.abs(u)), 1e-8)
+    uL = u
+    # CFL re-checked as the profile steepens
+    uR = np.roll(u, -1)
+    F = godunov_flux(uL, uR)
+    F_left = np.roll(F, -1)
+    # periodic boundary conditions
+    u = u - dt / dx * (F - F_left)
+    if n % 4 == 0:
+        frames.append(u.copy())
+
+    # conservative finite-volume update",synthetic
 Burgers_Valid_5,Burgers_5,burgers,advection,True,explicit,38,901,5,,"import numpy as np
 
 
@@ -2469,44 +2508,40 @@ for n in range(nt):
     if n % 4 == 0:
         frames.append(u.copy())
 ",synthetic
-Burgers_InValid_5,Burgers_5,burgers,advection,False,explicit,38,902,5,trajectories oscillate and then blow up once shock forms,"import numpy as np
+Burgers_InValid_6,Burgers_6,burgers,advection/diffusion,False,explicit,34,966,6,becomes NaNs almost immediately,"import numpy as np
 
 
 # Domain and physical parameters
-L, nu = 2.0, 0.0
-nx, nt = 400, 600
+L, nu = 1.0, 0.005
+nx, nt = 300, 1500
 dx = L / nx
 x = np.linspace(0, L, nx, endpoint=False)
 
 
-# sinusoidal initial condition, positive-biased
-u = np.sin(2 * np.pi * x / L) + 0.5
-cfl = 0.4
+u = 0.1 + 0.9 * ((x > 0.2) & (x < 0.5))
+# top-hat / step initial condition
+cfl, diff_num = 0.5, 0.4
+dt = min(cfl * dx / np.max(np.abs(u)), diff_num * dx**2 / nu)
 
-
-def godunov_flux(uL, uR):
-    fL, fR = 0.5 * uL**2, 0.5 * uR**2
-    shock_speed = 0.5 * (uL + uR)
-    flux = np.where(uL <= uR,
-                     np.where(uL >= 0, fL, np.where(uR <= 0, fR, 0.0)),
-                     np.where(shock_speed > 0, fL, fR))
-    return flux
-
+# advective + diffusive CFL
 
 frames = [u.copy()]
 for n in range(nt):
-    # CFL re-checked as the profile steepens
-    dt = cfl * dx / max(np.max(np.abs(u)), 1e-8)
-    uL = u
-    # periodic boundary conditions
-    uR = np.roll(u, -1)
-    F = godunov_flux(uL, uR)
-    F_left = np.roll(F, -1)
-    # conservative finite-volume update
-    u = u - dt / dx * (F - F_left)
-    if n % 4 == 0:
+    f = 0.5 * u**2
+    fp, fm = np.roll(f, -1), np.roll(f, 1)
+    up, um = np.roll(u, -1), np.roll(u, 1)
+    a_half_p = 0.5 * (u + up)
+    a_half_m = 0.5 * (u + um)
+    lw_flux_p = 0.5 * (f + fp) - 0.5 * dt / dx * a_half_p * (fp - f)
+    # local wave speed at i+1/2 for the LW correction
+    lw_flux_m = 0.5 * (f + fm) - 0.5 * dt / dx * a_half_m * (f - fm)
+    diffusion = nu * dt / dx**2 * (up - 2 * u + um)
+    u = u - dt / dx * (lw_flux_p - lw_flux_m) - diffusion
+    # Lax-Wendroff flux
+    if n < 30 or n % 10 == 0:
         frames.append(u.copy())
-",synthetic
+
+    # explicit central diffusion",synthetic
 Burgers_Valid_6,Burgers_6,burgers,advection/diffusion,True,explicit,34,956,6,,"import numpy as np
 
 
@@ -2541,40 +2576,35 @@ for n in range(nt):
     if n % 10 == 0:
         frames.append(u.copy())
 ",synthetic
-Burgers_InValid_6,Burgers_6,burgers,advection/diffusion,False,explicit,35,1028,7,becomes NaNs almost immediately,"import numpy as np
+Burgers_InValid_7,Burgers_7,burgers,advection/diffusion,False,explicit,30,773,5,creates very violent bounded oscillations,"import numpy as np
 
 
 # Domain and physical parameters
-L, nu = 1.0, 0.005
-nx, nt = 300, 1500
+L, nu = 1.0, 0.01
+nx, nt = 300, 2000
 dx = L / nx
 x = np.linspace(0, L, nx, endpoint=False)
 
 
-# top-hat / step initial condition
-u = 0.1 + 0.9 * ((x > 0.2) & (x < 0.5))
-cfl, diff_num = 0.5, 0.4
-# advective + diffusive CFL
+u = 1.5 * np.exp(-((x - 0.3) ** 2) / (2 * 0.05 ** 2))
+# Gaussian pulse initial condition
+cfl, diff_num = 0.4, 0.4
 dt = min(cfl * dx / np.max(np.abs(u)), diff_num * dx**2 / nu)
 
+# advective + diffusive CFL
 
 frames = [u.copy()]
 for n in range(nt):
-    f = 0.5 * u**2
-    fp, fm = np.roll(f, -1), np.roll(f, 1)
     up, um = np.roll(u, -1), np.roll(u, 1)
-    # local wave speed at i+1/2 for the LW correction
-    a_half_p = 0.5 * (u + up)
-    a_half_m = 0.5 * (u + um)
-    # Lax-Wendroff flux
-    lw_flux_p = 0.5 * (f + fp) - 0.5 * dt / dx * a_half_p * (fp - f)
-    lw_flux_m = 0.5 * (f + fm) - 0.5 * dt / dx * a_half_m * (f - fm)
-    # explicit central diffusion
-    diffusion = nu * dt / dx**2 * (up - 2 * u + um)
-    u = u - dt / dx * (lw_flux_p - lw_flux_m) - diffusion
-    # capture densely early on since the blow-up is very fast
-    if n < 30 or n % 10 == 0:
+    du_forward = (up - u) / dx
+    du_backward = (u - um) / dx
+    advect = np.where(u >= 0, u * du_backward, u * du_forward)
+    diffuse = nu * (up - 2 * u + um) / dx**2
+    u = u + dt * (-advect - diffuse)
+    # upwind based on local sign of u
+    if n < 40 or n % 13 == 0:
         frames.append(u.copy())
+    # central diffusion term
 ",synthetic
 Burgers_Valid_7,Burgers_7,burgers,advection/diffusion,True,explicit,30,763,5,,"import numpy as np
 
@@ -2606,36 +2636,49 @@ for n in range(nt):
     if n % 13 == 0:
         frames.append(u.copy())
 ",synthetic
-Burgers_InValid_7,Burgers_7,burgers,advection/diffusion,False,explicit,31,825,6,creates very violent bounded oscillations,"import numpy as np
+Burgers_InValid_8,Burgers_8,burgers,advection/diffusion,False,explicit,44,1322,5,blows up to NaNs,"import numpy as np
 
 
 # Domain and physical parameters
-L, nu = 1.0, 0.01
-nx, nt = 300, 2000
-dx = L / nx
-x = np.linspace(0, L, nx, endpoint=False)
+L, nu = 1.0, 0.02
+nx = ny = 101
+dx = dy = L / (nx - 1)
+x = np.linspace(0, L, nx)
+y = np.linspace(0, L, ny)
+X, Y = np.meshgrid(x, y, indexing=""ij"")
 
 
-# Gaussian pulse initial condition
-u = 1.5 * np.exp(-((x - 0.3) ** 2) / (2 * 0.05 ** 2))
-cfl, diff_num = 0.4, 0.4
-# advective + diffusive CFL
-dt = min(cfl * dx / np.max(np.abs(u)), diff_num * dx**2 / nu)
+u = np.sin(2 * np.pi * X) * np.cos(2 * np.pi * Y)
+# sinusoidal shear-layer initial condition
+v = -np.cos(2 * np.pi * X) * np.sin(2 * np.pi * Y)
 
 
-frames = [u.copy()]
+cfl, diff_num = 0.3, 0.2
+speed0 = np.sqrt(u**2 + v**2).max()
+dt = min(cfl * dx / speed0, diff_num * dx**2 / nu)
+nt = 300
+# advective + diffusive CFL, 2D
+
+
+def upwind_deriv(f, axis, vel):
+    fp = np.roll(f, -1, axis=axis)
+    fm = np.roll(f, 1, axis=axis)
+    return np.where(vel >= 0, (f - fm) / dx, (fp - f) / dx)
+
+
+skip = 5
+frames = [np.sqrt(u**2 + v**2)]
 for n in range(nt):
-    up, um = np.roll(u, -1), np.roll(u, 1)
-    du_forward = (up - u) / dx
-    du_backward = (u - um) / dx
-    # upwind based on local sign of u
-    advect = np.where(u >= 0, u * du_backward, u * du_forward)
-    # central diffusion term
-    diffuse = nu * (up - 2 * u + um) / dx**2
-    u = u + dt * (-advect - diffuse)
-    # capture densely early so the onset is visible
-    if n < 40 or n % 13 == 0:
-        frames.append(u.copy())
+# subsample for the quiver overlay so arrows stay readable
+    ux = upwind_deriv(u, 0, u); uy = upwind_deriv(u, 1, v)
+    vx = upwind_deriv(v, 0, u); vy = upwind_deriv(v, 1, v)
+    lap_u = (np.roll(u, -1, 0) + np.roll(u, 1, 0) + np.roll(u, -1, 1) + np.roll(u, 1, 1) - 4 * u) / dx**2
+    lap_v = (np.roll(v, -1, 0) + np.roll(v, 1, 0) + np.roll(v, -1, 1) + np.roll(v, 1, 1) - 4 * v) / dx**2
+    u = u + dt * (-(u * ux + v * uy) - nu * lap_u)
+    v = v + dt * (-(u * vx + v * vy) - nu * lap_v)
+    if n < 40 or n % 2 == 0:
+        frames.append(np.sqrt(u**2 + v**2))
+    # coupled momentum update
 ",synthetic
 Burgers_Valid_8,Burgers_8,burgers,advection/diffusion,True,explicit,44,1312,5,,"import numpy as np
 
@@ -2681,50 +2724,37 @@ for n in range(nt):
     if n % 2 == 0:
         frames.append(np.sqrt(u**2 + v**2))
 ",synthetic
-Burgers_InValid_8,Burgers_8,burgers,advection/diffusion,False,explicit,45,1382,6,blows up to NaNs,"import numpy as np
+Heat_InValid_5,Heat_5,heat,diffusion,False,explicit,32,670,5,"blow ups, overflow","import numpy as np
 
 
 # Domain and physical parameters
-L, nu = 1.0, 0.02
-nx = ny = 101
-dx = dy = L / (nx - 1)
+L, alpha = 1.0, 0.01
+nx, nt = 101, 2000
+dx = L / (nx - 1)
+dt = 0.4 * dx**2 / alpha
+# CFL condition for FTCS: alpha*dt/dx^2 <= 0.5
+r = alpha * dt / dx**2
+
+
 x = np.linspace(0, L, nx)
-y = np.linspace(0, L, ny)
-X, Y = np.meshgrid(x, y, indexing=""ij"")
+u = np.exp(-((x - L / 2) ** 2) / (2 * 0.02 ** 2))
+u[0], u[-1] = 0.0, 0.0
+# Gaussian initial condition
 
 
-# sinusoidal shear-layer initial condition
-u = np.sin(2 * np.pi * X) * np.cos(2 * np.pi * Y)
-v = -np.cos(2 * np.pi * X) * np.sin(2 * np.pi * Y)
+# Dirichlet boundary conditions
+snapshots = {0: u.copy()}
+save_steps = [nt // 4, nt // 2, nt - 1]
 
 
-cfl, diff_num = 0.3, 0.2
-speed0 = np.sqrt(u**2 + v**2).max()
-# advective + diffusive CFL, 2D
-dt = min(cfl * dx / speed0, diff_num * dx**2 / nu)
-nt = 300
-
-
-def upwind_deriv(f, axis, vel):
-    fp = np.roll(f, -1, axis=axis)
-    fm = np.roll(f, 1, axis=axis)
-    return np.where(vel >= 0, (f - fm) / dx, (fp - f) / dx)
-
-
-# subsample for the quiver overlay so arrows stay readable
-skip = 5
-frames = [np.sqrt(u**2 + v**2)]
 for n in range(nt):
-    ux = upwind_deriv(u, 0, u); uy = upwind_deriv(u, 1, v)
-    vx = upwind_deriv(v, 0, u); vy = upwind_deriv(v, 1, v)
-    lap_u = (np.roll(u, -1, 0) + np.roll(u, 1, 0) + np.roll(u, -1, 1) + np.roll(u, 1, 1) - 4 * u) / dx**2
-    lap_v = (np.roll(v, -1, 0) + np.roll(v, 1, 0) + np.roll(v, -1, 1) + np.roll(v, 1, 1) - 4 * v) / dx**2
-    # coupled momentum update
-    u = u + dt * (-(u * ux + v * uy) - nu * lap_u)
-    v = v + dt * (-(u * vx + v * vy) - nu * lap_v)
-    # capture densely early so the blow-up onset is visible
-    if n < 40 or n % 2 == 0:
-        frames.append(np.sqrt(u**2 + v**2))
+    u_new = u.copy()
+    u_new[1:-1] = u[1:-1] - r * (u[2:] - 2 * u[1:-1] + u[:-2])
+    u_new[0], u_new[-1] = 0.0, 0.0
+    u = u_new
+    if n in save_steps:
+    # explicit update
+        snapshots[n] = u.copy()
 ",synthetic
 Heat_Valid_5,Heat_5,heat,diffusion,True,explicit,32,670,5,,"import numpy as np
 
@@ -2758,23 +2788,32 @@ for n in range(nt):
     if n in save_steps:
         snapshots[n] = u.copy()
 ",synthetic
-Heat_InValid_5,Heat_5,heat,diffusion,False,explicit,32,670,5,"blow ups, overflow","import numpy as np
+Heat_InValid_6,Heat_6,heat,diffusion,False,implicit,41,880,5,breaks symmetry,"import numpy as np
+from scipy.linalg import solve_banded
 
 
 # Domain and physical parameters
 L, alpha = 1.0, 0.01
-nx, nt = 101, 2000
+nx, nt = 101, 500
 dx = L / (nx - 1)
-# CFL condition for FTCS: alpha*dt/dx^2 <= 0.5
-dt = 0.4 * dx**2 / alpha
+dt = 0.001
+# No CFL restriction needed; Crank-Nicolson is unconditionally stable
 r = alpha * dt / dx**2
 
 
 x = np.linspace(0, L, nx)
-# Gaussian initial condition
-u = np.exp(-((x - L / 2) ** 2) / (2 * 0.02 ** 2))
-# Dirichlet boundary conditions
+u = np.zeros(nx)
+u[(x > 0.4) & (x < 0.6)] = 1.0
 u[0], u[-1] = 0.0, 0.0
+# top-hat initial condition
+
+
+n_int = nx - 2
+ab = np.zeros((3, n_int))
+ab[0, 1:] = -r / 2
+# Build tridiagonal system (I - r/2 * D2) u_new = (I + r/2 * D2) u_old
+ab[1, :] = 1 + r
+ab[2, :-1] = -r / 2
 
 
 snapshots = {0: u.copy()}
@@ -2782,11 +2821,11 @@ save_steps = [nt // 4, nt // 2, nt - 1]
 
 
 for n in range(nt):
-    u_new = u.copy()
-    # explicit update
-    u_new[1:-1] = u[1:-1] - r * (u[2:] - 2 * u[1:-1] + u[:-2])
-    u_new[0], u_new[-1] = 0.0, 0.0
-    u = u_new
+    rhs = (r / 2) * u[1:-1] + (1 - r) * u[1:-1] + (r / 2) * u[2:]
+    u_int = solve_banded((1, 1), ab, rhs)
+    u[1:-1] = u_int
+    u[0], u[-1] = 0.0, 0.0
+    # explicit half-step RHS
     if n in save_steps:
         snapshots[n] = u.copy()
 ",synthetic
@@ -2831,46 +2870,57 @@ for n in range(nt):
     if n in save_steps:
         snapshots[n] = u.copy()
 ",synthetic
-Heat_InValid_6,Heat_6,heat,diffusion,False,implicit,41,880,5,breaks symmetry,"import numpy as np
+Heat_InValid_7,Heat_7,heat,diffusion,False,implicit,52,1319,5,heat spreads unevenly by direction,"import numpy as np
 from scipy.linalg import solve_banded
 
 
 # Domain and physical parameters
 L, alpha = 1.0, 0.01
-nx, nt = 101, 500
-dx = L / (nx - 1)
-# No CFL restriction needed; Crank-Nicolson is unconditionally stable
-dt = 0.001
+nx = ny = 61
+dx = dy = L / (nx - 1)
+dt = 0.005
+# ADI is unconditionally stable, so dt is chosen for accuracy, not stability
 r = alpha * dt / dx**2
+nt = 100
 
 
 x = np.linspace(0, L, nx)
-u = np.zeros(nx)
-# top-hat initial condition
-u[(x > 0.4) & (x < 0.6)] = 1.0
-u[0], u[-1] = 0.0, 0.0
+y = np.linspace(0, L, ny)
+u = np.zeros((ny, nx))
+sources = [(0.25, 0.25), (0.75, 0.75), (0.25, 0.75), (0.75, 0.25)]
+for sx, sy in sources:
+# multi-point sources
+    i, j = int(sy / dy), int(sx / dx)
+    u[i, j] = 50.0
 
 
-# Build tridiagonal system (I - r/2 * D2) u_new = (I + r/2 * D2) u_old
-n_int = nx - 2
-ab = np.zeros((3, n_int))
-ab[0, 1:] = -r / 2
-ab[1, :] = 1 + r
-ab[2, :-1] = -r / 2
+def thomas_solve(n, r):
+    ab = np.zeros((3, n))
+    ab[0, 1:] = -r / 2
+    ab[1, :] = 1 + r
+    ab[2, :-1] = -r / 2
+    return ab
 
 
-snapshots = {0: u.copy()}
-save_steps = [nt // 4, nt // 2, nt - 1]
+ab_int = thomas_solve(nx - 2, r)
 
 
 for n in range(nt):
-    # explicit half-step RHS
-    rhs = (r / 2) * u[1:-1] + (1 - r) * u[1:-1] + (r / 2) * u[2:]
-    u_int = solve_banded((1, 1), ab, rhs)
-    u[1:-1] = u_int
-    u[0], u[-1] = 0.0, 0.0
-    if n in save_steps:
-        snapshots[n] = u.copy()
+    u_star = u.copy()
+    for i in range(1, ny - 1):
+        rhs = (r / 2) * u[i, :-2] - (r - 1) * u[i, 1:-1] + (r / 2) * u[i, 2:]
+    # Half-step 1: implicit in x, explicit in y
+        rhs -= (r / 2) * (u[i - 1, 1:-1] - 2 * u[i, 1:-1] + u[i + 1, 1:-1])
+        u_star[i, 1:-1] = solve_banded((1, 1), ab_int, rhs)
+    u_new = u_star.copy()
+    for j in range(1, nx - 1):
+        rhs = (r / 2) * u_star[:-2, j] - (r - 1) * u_star[1:-1, j] + (r / 2) * u_star[2:, j]
+        u_new[1:-1, j] = solve_banded((1, 1), ab_int, rhs)
+    # Half-step 2: implicit in y, explicit in x
+    u = u_new
+
+
+X, Y = np.meshgrid(x, y)
 ",synthetic
 Heat_Valid_7,Heat_7,heat,diffusion,True,implicit,52,1319,5,,"import numpy as np
 from scipy.linalg import solve_banded
@@ -2924,58 +2974,6 @@ for n in range(nt):
 
 X, Y = np.meshgrid(x, y)
 ",synthetic
-Heat_InValid_7,Heat_7,heat,diffusion,False,implicit,52,1319,5,heat spreads unevenly by direction,"import numpy as np
-from scipy.linalg import solve_banded
-
-
-# Domain and physical parameters
-L, alpha = 1.0, 0.01
-nx = ny = 61
-dx = dy = L / (nx - 1)
-# ADI is unconditionally stable, so dt is chosen for accuracy, not stability
-dt = 0.005
-r = alpha * dt / dx**2
-nt = 100
-
-
-x = np.linspace(0, L, nx)
-y = np.linspace(0, L, ny)
-u = np.zeros((ny, nx))
-# multi-point sources
-sources = [(0.25, 0.25), (0.75, 0.75), (0.25, 0.75), (0.75, 0.25)]
-for sx, sy in sources:
-    i, j = int(sy / dy), int(sx / dx)
-    u[i, j] = 50.0
-
-
-def thomas_solve(n, r):
-    ab = np.zeros((3, n))
-    ab[0, 1:] = -r / 2
-    ab[1, :] = 1 + r
-    ab[2, :-1] = -r / 2
-    return ab
-
-
-ab_int = thomas_solve(nx - 2, r)
-
-
-for n in range(nt):
-    # Half-step 1: implicit in x, explicit in y
-    u_star = u.copy()
-    for i in range(1, ny - 1):
-        rhs = (r / 2) * u[i, :-2] - (r - 1) * u[i, 1:-1] + (r / 2) * u[i, 2:]
-        rhs -= (r / 2) * (u[i - 1, 1:-1] - 2 * u[i, 1:-1] + u[i + 1, 1:-1])
-        u_star[i, 1:-1] = solve_banded((1, 1), ab_int, rhs)
-    # Half-step 2: implicit in y, explicit in x
-    u_new = u_star.copy()
-    for j in range(1, nx - 1):
-        rhs = (r / 2) * u_star[:-2, j] - (r - 1) * u_star[1:-1, j] + (r / 2) * u_star[2:, j]
-        u_new[1:-1, j] = solve_banded((1, 1), ab_int, rhs)
-    u = u_new
-
-
-X, Y = np.meshgrid(x, y)
-",synthetic
 Heat_InValid_8,Heat_8,heat,diffusion,False,spectral,30,677,4,blows up,"import numpy as np
 
 
@@ -2987,24 +2985,24 @@ y = np.linspace(0, L, ny, endpoint=False)
 X, Y = np.meshgrid(x, y)
 
 
-# sinusoidal initial condition
 u0 = np.sin(3 * X) * np.sin(2 * Y) + 0.5 * np.sin(5 * X)
+# sinusoidal initial condition
 
 
 kx = np.fft.fftfreq(nx, d=L / nx) * 2 * np.pi
 ky = np.fft.fftfreq(ny, d=L / ny) * 2 * np.pi
 KX, KY = np.meshgrid(kx, ky)
-# Laplacian eigenvalues in Fourier space
 K2 = KX**2 + KY**2
 
+# Laplacian eigenvalues in Fourier space
 
 u0_hat = np.fft.fft2(u0)
 
 
-# No CFL restriction: solution advances via exact spectral decay factor
 t_final = 0.5
 decay = np.exp(alpha * K2 * t_final)
 u_final = np.real(np.fft.ifft2(u0_hat * decay))
+# No CFL restriction: solution advances via exact spectral decay factor
 ",synthetic
 Heat_Valid_8,Heat_8,heat,diffusion,True,spectral,30,678,4,,"import numpy as np
 
@@ -3036,6 +3034,39 @@ t_final = 0.5
 decay = np.exp(-alpha * K2 * t_final)
 u_final = np.real(np.fft.ifft2(u0_hat * decay))
 ",synthetic
+NavierStokes_InValid_5,NavierStokes_5,navier-stokes,diffusion/restoration,False,explicit,33,759,7,blows up to NaNs,"import numpy as np
+
+
+# Domain and physical parameters
+H, nu, dpdx, rho = 1.0, 0.1, -1.0, 1.0
+ny, nt = 51, 60000
+dy = H / (ny - 1)
+y = np.linspace(0, H, ny)
+G = -dpdx / rho
+# constant forcing per unit mass driving the flow
+
+
+u = np.zeros(ny)
+dt = 0.4 * dy**2 / (2 * nu)
+# fluid starts at rest
+
+
+# diffusion stability bound for explicit FTCS
+frames = [u.copy()]
+for n in range(nt):
+    u_new = u.copy()
+    u_new[1:-1] = u[1:-1] + dt * (G - nu * (u[2:] - 2 * u[1:-1] + u[:-2]) / dy**2)
+    u_new[0], u_new[-1] = 0.0, 0.0
+    u = u_new
+    if n < 60 or n % 300 == 0:
+        frames.append(u.copy())
+    # no-slip walls
+
+
+u_steady = G / (2 * nu) * y * (H - y)
+    # store periodically to keep the GIF a manageable length
+
+# analytic parabolic steady-state profile",synthetic
 NavierStokes_Valid_5,NavierStokes_5,navier-stokes,diffusion/restoration,True,explicit,33,749,7,,"import numpy as np
 
 
@@ -3069,38 +3100,41 @@ for n in range(nt):
 # analytic parabolic steady-state profile
 u_steady = G / (2 * nu) * y * (H - y)
 ",synthetic
-NavierStokes_InValid_5,NavierStokes_5,navier-stokes,diffusion/restoration,False,explicit,33,756,7,blows up to NaNs,"import numpy as np
+NavierStokes_InValid_6,NavierStokes_6,navier-stokes,diffusion,False,implicit,36,792,5,values climb up linearly and continuously,"import numpy as np
+from scipy.linalg import solve_banded
 
 
 # Domain and physical parameters
-H, nu, dpdx, rho = 1.0, 0.1, -1.0, 1.0
-ny, nt = 51, 60000
-dy = H / (ny - 1)
-y = np.linspace(0, H, ny)
-# constant forcing per unit mass driving the flow
-G = -dpdx / rho
+Ymax, nu, U0 = 1.0, 0.01, 1.0
+ny, nt, dt = 201, 4000, 0.0005
+dy = Ymax / (ny - 1)
+y = np.linspace(0, Ymax, ny)
+r = nu * dt / dy**2
+# diffusion number; Crank-Nicolson is unconditionally stable
 
 
-# fluid starts at rest
 u = np.zeros(ny)
-# diffusion stability bound for explicit FTCS
-dt = 0.4 * dy**2 / (2 * nu)
+u[0] = U0
+# fluid initially at rest
+
+
+# wall impulsively set into motion at t=0+
+n_int = ny - 2
+ab = np.zeros((3, n_int))
+ab[0, 1:] = -r / 2
+ab[1, :] = 1 + r
+ab[2, :-1] = -r / 2
 
 
 frames = [u.copy()]
 for n in range(nt):
-    u_new = u.copy()
-    u_new[1:-1] = u[1:-1] + dt * (G - nu * (u[2:] - 2 * u[1:-1] + u[:-2]) / dy**2)
-    # no-slip walls
-    u_new[0], u_new[-1] = 0.0, 0.0
-    u = u_new
-    # store densely early so the blow-up onset is visible
-    if n < 60 or n % 300 == 0:
+    rhs = -(r / 2) * u[:-2] + (1 + r) * u[1:-1] - (r / 2) * u[2:]
+    rhs[0] += -(r / 2) * U0
+    u[1:-1] = solve_banded((1, 1), ab, rhs)
+    u[0], u[-1] = U0, 0.0
+    if n % 20 == 0:
+    # wall boundary contribution folded into the RHS
         frames.append(u.copy())
-
-
-# analytic parabolic steady-state profile
-u_steady = G / (2 * nu) * y * (H - y)
 ",synthetic
 NavierStokes_Valid_6,NavierStokes_6,navier-stokes,diffusion,True,implicit,36,790,5,,"import numpy as np
 from scipy.linalg import solve_banded
@@ -3138,42 +3172,82 @@ for n in range(nt):
     if n % 20 == 0:
         frames.append(u.copy())
 ",synthetic
-NavierStokes_InValid_6,NavierStokes_6,navier-stokes,diffusion,False,implicit,36,792,5,values climb up linearly and continuously,"import numpy as np
-from scipy.linalg import solve_banded
+NavierStokes_InValid_7,NavierStokes_7,navier-stokes,advection/diffusion,False,explicit/implicit,76,2719,7,NaNs very early on,"import numpy as np
 
 
 # Domain and physical parameters
-Ymax, nu, U0 = 1.0, 0.01, 1.0
-ny, nt, dt = 201, 4000, 0.0005
-dy = Ymax / (ny - 1)
-y = np.linspace(0, Ymax, ny)
-# diffusion number; Crank-Nicolson is unconditionally stable
-r = nu * dt / dy**2
+nx, ny, nu, rho = 71, 71, 0.05, 1.0
+Lx, Ly = 1.0, 1.0
+dx, dy = Lx / (nx - 1), Ly / (ny - 1)
+x = np.linspace(0, Lx, nx)
+y = np.linspace(0, Ly, ny)
+X, Y = np.meshgrid(x, y, indexing=""ij"")
 
 
-# fluid initially at rest
-u = np.zeros(ny)
-# wall impulsively set into motion at t=0+
-u[0] = U0
+u = np.zeros((nx, ny)); v = np.zeros((nx, ny)); p = np.zeros((nx, ny))
+u_lid = 1.0
+dt = 0.2 * min(dx / u_lid, dx**2 / (4 * nu))
+# advective + diffusive stability bound
+nt, nit = 6200, 60
 
 
-n_int = ny - 2
-ab = np.zeros((3, n_int))
-ab[0, 1:] = -r / 2
-ab[1, :] = 1 + r
-ab[2, :-1] = -r / 2
+def pressure_poisson(p, b):
+    for _ in range(nit):
+        pn = p.copy()
+        p[1:-1, 1:-1] = ((pn[2:, 1:-1] + pn[:-2, 1:-1]) * dy**2
+                          + (pn[1:-1, 2:] + pn[1:-1, :-2]) * dx**2
+                          - b[1:-1, 1:-1] * dx**2 * dy**2) / (2 * (dx**2 + dy**2))
+        p[:, -1] = p[:, -2]
+        p[:, 0] = p[:, 1]
+        p[0, :] = p[1, :]
+        p[-1, :] = 0.0
+    return p
+        # reference pressure to fix the null space
 
 
-frames = [u.copy()]
+frames_speed = [np.sqrt(u**2 + v**2)]
+frames_uv = [(u.copy(), v.copy())]
 for n in range(nt):
-    rhs = -(r / 2) * u[:-2] + (1 + r) * u[1:-1] - (r / 2) * u[2:]
-    # wall boundary contribution folded into the RHS
-    rhs[0] += -(r / 2) * U0
-    u[1:-1] = solve_banded((1, 1), ab, rhs)
-    u[0], u[-1] = U0, 0.0
-    if n % 20 == 0:
-        frames.append(u.copy())
-",synthetic
+    un, vn = u.copy(), v.copy()
+    b = np.zeros((nx, ny))
+    b[1:-1, 1:-1] = rho * (
+        (1 / dt) * ((un[2:, 1:-1] - un[:-2, 1:-1]) / (2 * dx) + (vn[1:-1, 2:] - vn[1:-1, :-2]) / (2 * dy))
+        - ((un[2:, 1:-1] - un[:-2, 1:-1]) / (2 * dx)) ** 2
+    # RHS built from the divergence of the tentative velocity
+        - 2 * ((un[1:-1, 2:] - un[1:-1, :-2]) / (2 * dy) * (vn[2:, 1:-1] - vn[:-2, 1:-1]) / (2 * dx))
+        - ((vn[1:-1, 2:] - vn[1:-1, :-2]) / (2 * dy)) ** 2
+    )
+    p = pressure_poisson(p, b)
+
+
+    u[1:-1, 1:-1] = (un[1:-1, 1:-1]
+        - dt / (2 * dx) * un[1:-1, 1:-1] * (un[2:, 1:-1] - un[:-2, 1:-1])
+        - dt / (2 * dy) * vn[1:-1, 1:-1] * (un[1:-1, 2:] - un[1:-1, :-2])
+        + dt / (2 * rho * dx) * (p[2:, 1:-1] - p[:-2, 1:-1])
+        + nu * dt * ((un[2:, 1:-1] - 2 * un[1:-1, 1:-1] + un[:-2, 1:-1]) / dx**2
+                     + (un[1:-1, 2:] - 2 * un[1:-1, 1:-1] + un[1:-1, :-2]) / dy**2))
+
+
+    v[1:-1, 1:-1] = (vn[1:-1, 1:-1]
+                     # projected velocity update
+        - dt / (2 * dx) * un[1:-1, 1:-1] * (vn[2:, 1:-1] - vn[:-2, 1:-1])
+        - dt / (2 * dy) * vn[1:-1, 1:-1] * (vn[1:-1, 2:] - vn[1:-1, :-2])
+        + dt / (2 * rho * dy) * (p[1:-1, 2:] - p[1:-1, :-2])
+        + nu * dt * ((vn[2:, 1:-1] - 2 * vn[1:-1, 1:-1] + vn[:-2, 1:-1]) / dx**2
+                     + (vn[1:-1, 2:] - 2 * vn[1:-1, 1:-1] + vn[1:-1, :-2]) / dy**2))
+
+
+    u[0, :] = 0; u[-1, :] = 0; u[:, 0] = 0; u[:, -1] = u_lid
+    v[0, :] = 0; v[-1, :] = 0; v[:, 0] = 0; v[:, -1] = 0
+    if n < 30 or n % 62 == 0:
+        frames_speed.append(np.sqrt(u**2 + v**2))
+        frames_uv.append((u.copy(), v.copy()))
+    # no-slip walls, moving lid
+
+
+skip = 4
+
+# subsample the vector field so quiver arrows stay legible",synthetic
 NavierStokes_Valid_7,NavierStokes_7,navier-stokes,advection/diffusion,True,explicit/implicit,76,2709,7,,"import numpy as np
 
 
@@ -3250,89 +3324,12 @@ for n in range(nt):
 # subsample the vector field so quiver arrows stay legible
 skip = 4
 ",synthetic
-NavierStokes_InValid_7,NavierStokes_7,navier-stokes,advection/diffusion,False,explicit/implicit,77,2774,8,NaNs very early on,"import numpy as np
+NavierStokes_InValid_8,NavierStokes_8,navier-stokes,advection/diffusion,False,explicit/spectral,64,1708,6,stays bounded but oscillating heavily between values,"import numpy as np
 
 
 # Domain and physical parameters
-nx, ny, nu, rho = 71, 71, 0.05, 1.0
-Lx, Ly = 1.0, 1.0
-dx, dy = Lx / (nx - 1), Ly / (ny - 1)
-x = np.linspace(0, Lx, nx)
-y = np.linspace(0, Ly, ny)
-X, Y = np.meshgrid(x, y, indexing=""ij"")
-
-
-u = np.zeros((nx, ny)); v = np.zeros((nx, ny)); p = np.zeros((nx, ny))
-u_lid = 1.0
-# advective + diffusive stability bound
-dt = 0.2 * min(dx / u_lid, dx**2 / (4 * nu))
-nt, nit = 6200, 60
-
-
-def pressure_poisson(p, b):
-    for _ in range(nit):
-        pn = p.copy()
-        p[1:-1, 1:-1] = ((pn[2:, 1:-1] + pn[:-2, 1:-1]) * dy**2
-                          + (pn[1:-1, 2:] + pn[1:-1, :-2]) * dx**2
-                          - b[1:-1, 1:-1] * dx**2 * dy**2) / (2 * (dx**2 + dy**2))
-        p[:, -1] = p[:, -2]
-        p[:, 0] = p[:, 1]
-        p[0, :] = p[1, :]
-        # reference pressure to fix the null space
-        p[-1, :] = 0.0
-    return p
-
-
-frames_speed = [np.sqrt(u**2 + v**2)]
-frames_uv = [(u.copy(), v.copy())]
-for n in range(nt):
-    un, vn = u.copy(), v.copy()
-    b = np.zeros((nx, ny))
-    # RHS built from the divergence of the tentative velocity
-    b[1:-1, 1:-1] = rho * (
-        (1 / dt) * ((un[2:, 1:-1] - un[:-2, 1:-1]) / (2 * dx) + (vn[1:-1, 2:] - vn[1:-1, :-2]) / (2 * dy))
-        - ((un[2:, 1:-1] - un[:-2, 1:-1]) / (2 * dx)) ** 2
-        - 2 * ((un[1:-1, 2:] - un[1:-1, :-2]) / (2 * dy) * (vn[2:, 1:-1] - vn[:-2, 1:-1]) / (2 * dx))
-        - ((vn[1:-1, 2:] - vn[1:-1, :-2]) / (2 * dy)) ** 2
-    )
-    p = pressure_poisson(p, b)
-
-
-    u[1:-1, 1:-1] = (un[1:-1, 1:-1]
-        - dt / (2 * dx) * un[1:-1, 1:-1] * (un[2:, 1:-1] - un[:-2, 1:-1])
-        - dt / (2 * dy) * vn[1:-1, 1:-1] * (un[1:-1, 2:] - un[1:-1, :-2])
-        + dt / (2 * rho * dx) * (p[2:, 1:-1] - p[:-2, 1:-1])
-        + nu * dt * ((un[2:, 1:-1] - 2 * un[1:-1, 1:-1] + un[:-2, 1:-1]) / dx**2
-                     # projected velocity update
-                     + (un[1:-1, 2:] - 2 * un[1:-1, 1:-1] + un[1:-1, :-2]) / dy**2))
-
-
-    v[1:-1, 1:-1] = (vn[1:-1, 1:-1]
-        - dt / (2 * dx) * un[1:-1, 1:-1] * (vn[2:, 1:-1] - vn[:-2, 1:-1])
-        - dt / (2 * dy) * vn[1:-1, 1:-1] * (vn[1:-1, 2:] - vn[1:-1, :-2])
-        + dt / (2 * rho * dy) * (p[1:-1, 2:] - p[1:-1, :-2])
-        + nu * dt * ((vn[2:, 1:-1] - 2 * vn[1:-1, 1:-1] + vn[:-2, 1:-1]) / dx**2
-                     + (vn[1:-1, 2:] - 2 * vn[1:-1, 1:-1] + vn[1:-1, :-2]) / dy**2))
-
-
-    # no-slip walls, moving lid
-    u[0, :] = 0; u[-1, :] = 0; u[:, 0] = 0; u[:, -1] = u_lid
-    v[0, :] = 0; v[-1, :] = 0; v[:, 0] = 0; v[:, -1] = 0
-    # capture densely early since blow-up is very fast
-    if n < 30 or n % 62 == 0:
-        frames_speed.append(np.sqrt(u**2 + v**2))
-        frames_uv.append((u.copy(), v.copy()))
-
-
-# subsample the vector field so quiver arrows stay legible
-skip = 4
-",synthetic
-NavierStokes_InValid_8,NavierStokes_8,navier-stokes,advection/diffusion,False,spectral/explicit,64,1708,6,stays bounded but oscillating heavily between values,"import numpy as np
-
-
-# Domain and physical parameters
-# near-inviscid: high Reynolds number regime
 N, L, nu = 256, 2 * np.pi, 1e-4
+# near-inviscid: high Reynolds number regime
 x = np.linspace(0, L, N, endpoint=False)
 y = np.linspace(0, L, N, endpoint=False)
 X, Y = np.meshgrid(x, y, indexing=""ij"")
@@ -3340,19 +3337,19 @@ X, Y = np.meshgrid(x, y, indexing=""ij"")
 
 delta, eps = 0.08, 0.05
 u0 = np.where(Y <= np.pi, np.tanh((Y - np.pi / 2) / delta), np.tanh((3 * np.pi / 2 - Y) / delta))
-# small perturbation that seeds the Kelvin-Helmholtz roll-up
 v0 = eps * np.sin(X)
 
+# small perturbation that seeds the Kelvin-Helmholtz roll-up
 
 k = np.fft.fftfreq(N, d=L / N) * 2 * np.pi
 KX, KY = np.meshgrid(k, k, indexing=""ij"")
 K2 = KX**2 + KY**2
 K2safe = np.where(K2 == 0, 1.0, K2)
 kmax = N // 3
-# 2/3 dealiasing rule
 mask = (np.abs(KX) <= kmax) & (np.abs(KY) <= kmax)
 
 
+# 2/3 dealiasing rule
 def deriv(f_hat, K):
     return np.real(np.fft.ifft2(1j * K * f_hat))
 
@@ -3382,16 +3379,16 @@ frames = [np.real(np.fft.ifft2(omega_hat))]
 for step in range(nt):
     u, v = velocity(omega_hat)
     speed_max = max(np.max(np.sqrt(u**2 + v**2)), 1e-6)
-    # CFL re-checked every step as the layer rolls up and speeds change
     dt = 0.3 * dx / speed_max
     k1 = rhs(omega_hat)
     k2 = rhs(omega_hat + dt * k1)
-    # RK2 (Heun) time integration
     omega_hat = omega_hat + dt / 2 * (k1 + k2)
+    # CFL re-checked every step as the layer rolls up and speeds change
     if step % 4 == 0:
         frames.append(np.real(np.fft.ifft2(omega_hat)))
-",synthetic
-NavierStokes_Valid_8,NavierStokes_8,navier-stokes,advection/diffusion,True,spectral/explicit,64,1712,6,,"import numpy as np
+
+    # RK2 (Heun) time integration",synthetic
+NavierStokes_Valid_8,NavierStokes_8,navier-stokes,advection/diffusion,True,explicit/spectral,64,1712,6,,"import numpy as np
 
 
 # Domain and physical parameters
@@ -3455,6 +3452,43 @@ for step in range(nt):
     if step % 4 == 0:
         frames.append(np.real(np.fft.ifft2(omega_hat)))
 ",synthetic
+Wave_InValid_5,Wave_5,wave,oscillation,False,explicit,37,977,6,"ends up looking like just diffusion, no oscillations","import numpy as np
+
+
+# Domain and physical parameters
+L, c = 1.0, 1.0
+nx, nt = 201, 800
+dx = L / (nx - 1)
+dt = 0.5 * dx / c
+# CFL condition: Courant number c*dt/dx <= 1
+courant = (c * dt / dx) ** 2
+
+
+x = np.linspace(0, L, nx)
+u_prev = np.exp(-((x - L / 2) ** 2) / (2 * 0.03 ** 2))
+v0 = np.zeros(nx)
+# Gaussian initial displacement
+
+
+# zero initial velocity
+u_curr = u_prev.copy()
+u_curr[1:-1] = (u_prev[1:-1] + dt * v0[1:-1]
+                + 0.5 * courant * (u_prev[2:] - 2 * u_prev[1:-1] + u_prev[:-2]))
+u_curr[0], u_curr[-1] = 0.0, 0.0
+
+
+frames = [u_prev.copy(), u_curr.copy()]
+for n in range(1, nt):
+    u_next = np.zeros(nx)
+    u_next[1:-1] = (2 * u_curr[1:-1] - u_curr[1:-1]
+                    + courant * (u_curr[2:] - 2 * u_curr[1:-1] + u_curr[:-2]))
+    u_next[0], u_next[-1] = 0.0, 0.0
+    u_prev, u_curr = u_curr, u_next
+    if n % 4 == 0:
+                    # leapfrog update
+        frames.append(u_curr.copy())
+
+    # store every 4th step to keep the GIF short",synthetic
 Wave_Valid_5,Wave_5,wave,oscillation,True,explicit,37,977,6,,"import numpy as np
 
 
@@ -3492,43 +3526,40 @@ for n in range(1, nt):
     if n % 4 == 0:
         frames.append(u_curr.copy())
 ",synthetic
-Wave_InValid_5,Wave_5,wave,oscillation,False,explicit,37,977,6,"ends up looking like just diffusion, no oscillations","import numpy as np
+Wave_InValid_6,Wave_6,wave,oscillation,False,spectral,34,876,6,blows up,"import numpy as np
 
 
 # Domain and physical parameters
-L, c = 1.0, 1.0
-nx, nt = 201, 800
-dx = L / (nx - 1)
-# CFL condition: Courant number c*dt/dx <= 1
-dt = 0.5 * dx / c
-courant = (c * dt / dx) ** 2
+L, c = 2 * np.pi, 1.0
+nx = 256
+x = np.linspace(0, L, nx, endpoint=False)
+dx = L / nx
 
 
-x = np.linspace(0, L, nx)
-# Gaussian initial displacement
-u_prev = np.exp(-((x - L / 2) ** 2) / (2 * 0.03 ** 2))
-# zero initial velocity
-v0 = np.zeros(nx)
+u0 = np.zeros(nx)
+# zero initial displacement
+v0 = 5.0 * np.exp(-((x - L / 2) ** 2) / (2 * 0.1 ** 2))
+
+# localized initial velocity pulse
+
+k = np.fft.fftfreq(nx, d=dx) * 2 * np.pi
+u0_hat = np.fft.fft(u0)
+v0_hat = np.fft.fft(v0)
+# wavenumber array
+omega = c * k
 
 
-u_curr = u_prev.copy()
-u_curr[1:-1] = (u_prev[1:-1] + dt * v0[1:-1]
-                + 0.5 * courant * (u_prev[2:] - 2 * u_prev[1:-1] + u_prev[:-2]))
-u_curr[0], u_curr[-1] = 0.0, 0.0
+times = np.linspace(0, 3.0, 150)
+frames = []
+for t in times:
+    with np.errstate(divide=""ignore"", invalid=""ignore""):
+# spectral time-stepping is exact per mode, so no CFL restriction
+        coeff = np.where(k != 0, v0_hat / np.where(omega == 0, 1, omega), 0.0)
+    u_hat_t = u0_hat * np.cosh(omega * t) + coeff * np.sinh(omega * t)
+    u_hat_t[0] = u0_hat[0] + v0_hat[0] * t
+    frames.append(np.real(np.fft.ifft(u_hat_t)))
 
-
-frames = [u_prev.copy(), u_curr.copy()]
-for n in range(1, nt):
-    u_next = np.zeros(nx)
-    u_next[1:-1] = (2 * u_curr[1:-1] - u_curr[1:-1]
-                    # leapfrog update
-                    + courant * (u_curr[2:] - 2 * u_curr[1:-1] + u_curr[:-2]))
-    u_next[0], u_next[-1] = 0.0, 0.0
-    u_prev, u_curr = u_curr, u_next
-    # store every 4th step to keep the GIF short
-    if n % 4 == 0:
-        frames.append(u_curr.copy())
-",synthetic
+    # k=0 mode grows linearly (mean velocity)",synthetic
 Wave_Valid_6,Wave_6,wave,oscillation,True,spectral,34,874,6,,"import numpy as np
 
 
@@ -3563,40 +3594,57 @@ for t in times:
     u_hat_t[0] = u0_hat[0] + v0_hat[0] * t
     frames.append(np.real(np.fft.ifft(u_hat_t)))
 ",synthetic
-Wave_InValid_6,Wave_6,wave,oscillation,False,spectral,34,876,6,blows up,"import numpy as np
+Wave_InValid_7,Wave_7,wave,oscillation/restoration,False,explicit,51,1435,8,"blows up, creates checkerboard pattern","import numpy as np
 
 
 # Domain and physical parameters
-L, c = 2 * np.pi, 1.0
-nx = 256
-x = np.linspace(0, L, nx, endpoint=False)
-dx = L / nx
+L, nx, ny = 1.0, 121, 121
+dx = dy = L / (nx - 1)
+x = np.linspace(0, L, nx)
+y = np.linspace(0, L, ny)
+X, Y = np.meshgrid(x, y, indexing=""ij"")
 
 
-# zero initial displacement
-u0 = np.zeros(nx)
-# localized initial velocity pulse
-v0 = 5.0 * np.exp(-((x - L / 2) ** 2) / (2 * 0.1 ** 2))
+c_max = 1.0
+c = c_max * (1.0 + 0.5 * (X > 0.5))
+# varying speed: faster medium in right half
+dt = 0.4 * dx / c_max
+
+# CFL condition for 2D: c*dt*sqrt(1/dx^2+1/dy^2) <= 1
+
+u_prev = np.zeros((nx, ny))
+for sx, sy in [(0.25, 0.5), (0.75, 0.25)]:
+    u_prev += 1.0 * np.exp(-(((X - sx) ** 2 + (Y - sy) ** 2)) / (2 * 0.02 ** 2))
+u_curr = u_prev.copy()
+# multi-point source displacement
 
 
-# wavenumber array
-k = np.fft.fftfreq(nx, d=dx) * 2 * np.pi
-u0_hat = np.fft.fft(u0)
-v0_hat = np.fft.fft(v0)
-omega = c * k
+sponge = np.ones((nx, ny))
+# zero initial velocity -> first step equals initial field
+width = 15
+for i in range(width):
+    damp = 1.0 - 0.08 * (width - i)
+    sponge[i, :] *= damp; sponge[-i - 1, :] *= damp
+# sponge absorbing layer near domain edges
+    sponge[:, i] *= damp; sponge[:, -i - 1] *= damp
 
 
-# spectral time-stepping is exact per mode, so no CFL restriction
-times = np.linspace(0, 3.0, 150)
-frames = []
-for t in times:
-    with np.errstate(divide=""ignore"", invalid=""ignore""):
-        coeff = np.where(k != 0, v0_hat / np.where(omega == 0, 1, omega), 0.0)
-    u_hat_t = u0_hat * np.cosh(omega * t) + coeff * np.sinh(omega * t)
-    # k=0 mode grows linearly (mean velocity)
-    u_hat_t[0] = u0_hat[0] + v0_hat[0] * t
-    frames.append(np.real(np.fft.ifft(u_hat_t)))
-",synthetic
+nt = 140
+r2 = (c * dt / dx) ** 2
+frames = [u_curr.copy()]
+
+
+for n in range(nt):
+# stop before fronts fully cross so the wavefronts stay visible
+    lap = (np.roll(u_curr, -1, axis=0) + np.roll(u_curr, 1, axis=0)
+           + np.roll(u_curr, -1, axis=1) + np.roll(u_curr, 1, axis=1) - 4 * u_curr)
+    u_next = (2 * u_curr - u_prev - r2 * lap) * sponge
+    u_next[0, :] = u_next[-1, :] = u_next[:, 0] = u_next[:, -1] = 0.0
+    u_prev, u_curr = u_curr, u_next
+    if n % 2 == 0:
+        frames.append(u_curr.copy())
+
+    # leapfrog update with absorption",synthetic
 Wave_Valid_7,Wave_7,wave,oscillation/restoration,True,explicit,51,1435,8,,"import numpy as np
 
 
@@ -3648,56 +3696,54 @@ for n in range(nt):
     if n % 2 == 0:
         frames.append(u_curr.copy())
 ",synthetic
-Wave_InValid_7,Wave_7,wave,oscillation/restoration,False,explicit,51,1435,8,"blows up, creates checkerboard pattern","import numpy as np
+Wave_InValid_8,Wave_8,wave,oscillation,False,implicit,49,1404,8,explodes to NaNs,"import numpy as np
+import scipy.sparse as sp
+from scipy.sparse.linalg import splu
 
 
 # Domain and physical parameters
-L, nx, ny = 1.0, 121, 121
+L, c, nx, ny = 1.0, 1.0, 121, 121
 dx = dy = L / (nx - 1)
 x = np.linspace(0, L, nx)
 y = np.linspace(0, L, ny)
 X, Y = np.meshgrid(x, y, indexing=""ij"")
+N = nx * ny
 
 
-c_max = 1.0
-# varying speed: faster medium in right half
-c = c_max * (1.0 + 0.5 * (X > 0.5))
-# CFL condition for 2D: c*dt*sqrt(1/dx^2+1/dy^2) <= 1
-dt = 0.4 * dx / c_max
+e = np.ones(nx)
+# build sparse 2D Laplacian (Dirichlet BC) via Kronecker sum
+D2x = sp.diags([e[:-1], -2 * e, e[:-1]], [-1, 0, 1]) / dx**2
+Ix = sp.identity(nx)
+Lap = sp.kron(D2x, Ix) + sp.kron(Ix, D2x)
+K = (c**2) * Lap
+
+# positive semi-definite stiffness-like operator
+
+u0 = 0.1 * np.sin(np.pi * X) * np.sin(np.pi * Y)
+sigma = 6 * dx
+v0 = 3.0 * np.exp(-(((X - 0.3) ** 2 + (Y - 0.7) ** 2)) / (2 * sigma**2))
+# sinusoidal initial displacement
+u = u0.flatten(); v = v0.flatten()
+a = -K.dot(u)
+# pulse width kept well above grid spacing to avoid grid-scale aliasing
 
 
-u_prev = np.zeros((nx, ny))
-# multi-point source displacement
-for sx, sy in [(0.25, 0.5), (0.75, 0.25)]:
-    u_prev += 1.0 * np.exp(-(((X - sx) ** 2 + (Y - sy) ** 2)) / (2 * 0.02 ** 2))
-# zero initial velocity -> first step equals initial field
-u_curr = u_prev.copy()
+beta, gamma, dt, nt = 0.3025, 0.6, 0.01, 150
+A = sp.identity(N) + (dt**2) * beta * K
+# initial acceleration from the governing equation
+lu = splu(A.tocsc())
 
 
-# sponge absorbing layer near domain edges
-sponge = np.ones((nx, ny))
-width = 15
-for i in range(width):
-    damp = 1.0 - 0.08 * (width - i)
-    sponge[i, :] *= damp; sponge[-i - 1, :] *= damp
-    sponge[:, i] *= damp; sponge[:, -i - 1] *= damp
-
-
-# stop before fronts fully cross so the wavefronts stay visible
-nt = 140
-r2 = (c * dt / dx) ** 2
-frames = [u_curr.copy()]
-
-
+frames = [u0.copy()]
+# gamma>0.5 adds mild damping of grid-scale noise, stays unconditionally stable
 for n in range(nt):
-    lap = (np.roll(u_curr, -1, axis=0) + np.roll(u_curr, 1, axis=0)
-           + np.roll(u_curr, -1, axis=1) + np.roll(u_curr, 1, axis=1) - 4 * u_curr)
-    # leapfrog update with absorption
-    u_next = (2 * u_curr - u_prev - r2 * lap) * sponge
-    u_next[0, :] = u_next[-1, :] = u_next[:, 0] = u_next[:, -1] = 0.0
-    u_prev, u_curr = u_curr, u_next
-    if n % 2 == 0:
-        frames.append(u_curr.copy())
+    rhs = u + dt * v + (dt**2) * (0.5 - beta) * a
+    u_new = lu.solve(rhs)
+# factorize once since the system matrix is constant
+    a_new = -K.dot(u_new)
+    v_new = v + dt * ((1 - gamma) * a + gamma * a_new)
+    u, v, a = u_new, v_new, a_new
+    frames.append(u.reshape(nx, ny))
 ",synthetic
 Wave_Valid_8,Wave_8,wave,oscillation,True,implicit,49,1405,8,,"import numpy as np
 import scipy.sparse as sp
@@ -3720,55 +3766,6 @@ Ix = sp.identity(nx)
 Lap = sp.kron(D2x, Ix) + sp.kron(Ix, D2x)
 # positive semi-definite stiffness-like operator
 K = -(c**2) * Lap
-
-
-# sinusoidal initial displacement
-u0 = 0.1 * np.sin(np.pi * X) * np.sin(np.pi * Y)
-# pulse width kept well above grid spacing to avoid grid-scale aliasing
-sigma = 6 * dx
-v0 = 3.0 * np.exp(-(((X - 0.3) ** 2 + (Y - 0.7) ** 2)) / (2 * sigma**2))
-u = u0.flatten(); v = v0.flatten()
-# initial acceleration from the governing equation
-a = -K.dot(u)
-
-
-# gamma>0.5 adds mild damping of grid-scale noise, stays unconditionally stable
-beta, gamma, dt, nt = 0.3025, 0.6, 0.01, 150
-A = sp.identity(N) + (dt**2) * beta * K
-# factorize once since the system matrix is constant
-lu = splu(A.tocsc())
-
-
-frames = [u0.copy()]
-for n in range(nt):
-    rhs = u + dt * v + (dt**2) * (0.5 - beta) * a
-    u_new = lu.solve(rhs)
-    a_new = -K.dot(u_new)
-    v_new = v + dt * ((1 - gamma) * a + gamma * a_new)
-    u, v, a = u_new, v_new, a_new
-    frames.append(u.reshape(nx, ny))
-",synthetic
-Wave_InValid_8,Wave_8,wave,oscillation,False,implicit,49,1404,8,explodes to NaNs,"import numpy as np
-import scipy.sparse as sp
-from scipy.sparse.linalg import splu
-
-
-# Domain and physical parameters
-L, c, nx, ny = 1.0, 1.0, 121, 121
-dx = dy = L / (nx - 1)
-x = np.linspace(0, L, nx)
-y = np.linspace(0, L, ny)
-X, Y = np.meshgrid(x, y, indexing=""ij"")
-N = nx * ny
-
-
-# build sparse 2D Laplacian (Dirichlet BC) via Kronecker sum
-e = np.ones(nx)
-D2x = sp.diags([e[:-1], -2 * e, e[:-1]], [-1, 0, 1]) / dx**2
-Ix = sp.identity(nx)
-Lap = sp.kron(D2x, Ix) + sp.kron(Ix, D2x)
-# positive semi-definite stiffness-like operator
-K = (c**2) * Lap
 
 
 # sinusoidal initial displacement

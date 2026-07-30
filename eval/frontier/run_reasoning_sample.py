@@ -25,6 +25,7 @@ REPO_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "eval"))
 
 from frontier.parse_frontier import parse_response  # noqa: E402
+from dataset_io import DEFAULT_MOD_DATASET, load_dataset  # noqa: E402
 
 # ── Target scripts ────────────────────────────────────────────────────────────
 
@@ -134,7 +135,7 @@ def main():
     client = genai.Client(api_key=api_key)
     model  = "gemini-2.5-flash"
 
-    df = pd.read_excel(REPO_ROOT / "data" / "pdedata_clean_v4.xlsx")
+    df = load_dataset(REPO_ROOT / DEFAULT_MOD_DATASET)
     df = df[df["title"].isin(TARGETS)].set_index("title")
 
     missing = [t for t in TARGETS if t not in df.index]

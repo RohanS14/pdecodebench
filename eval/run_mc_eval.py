@@ -1,6 +1,6 @@
 """
 PDE MC Eval — vLLM inference script.
-Runs one model against all rows × all question types in pdedata_clean_v3.xlsx.
+Runs one model against all rows × all question types in merged_mod_jul28.csv.
 Resumable: skips (title, mod_type) pairs already fully written to output JSONL.
 
 Each (title, mod_type) pair generates 9 question rows atomically:
@@ -15,7 +15,7 @@ Two scoring modes are used depending on the model:
 Usage:
     python run_mc_eval.py \
         --model Qwen/Qwen2.5-Coder-7B-Instruct \
-        --dataset data/pdedata_clean_v3.xlsx \
+        --dataset data/merged_mod_jul28.csv \
         --output_dir results_mc/ \
         --batch_size 8 \
         --tp 1
@@ -32,6 +32,7 @@ from mc_questions import (
     extract_letter_logprobs,
     build_result_row,
 )
+from dataset_io import DEFAULT_MOD_DATASET, load_dataset
 
 # Logprob extraction fails for these models because thinking tokens bleed into the
 # first generated position when max_tokens=1. Use text generation + letter parsing instead.
@@ -147,7 +148,7 @@ def run_batch(llm, sampling_params, messages_batch: list[list[dict]], model_id: 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model",          required=True)
-    parser.add_argument("--dataset",        default="data/pdedata_clean_v3.xlsx")
+    parser.add_argument("--dataset",        default=DEFAULT_MOD_DATASET)
     parser.add_argument("--output_dir",     default="results_mc")
     parser.add_argument("--batch_size",     type=int, default=8,
                         help="Number of prompts per vLLM batch")
@@ -167,13 +168,15 @@ def main():
     model_slug = args.model.replace("/", "__")
     jsonl_path = os.path.join(args.output_dir, f"{model_slug}.jsonl")
 
-    df = pd.read_excel(args.dataset)
+    df = load_dataset(args.dataset)
     print(f"[run_mc_eval] Dataset: {len(df)} rows", flush=True)
     V2_DIST = {"Comm_Valid": 16, "NoComm_Valid": 16, "NoComm_InValid": 16,
                "CorrComm": 16, "NoComm_CorrVar": 16, "Comm_InValid": 16}
     V3_DIST = {**V2_DIST, "CorrComm_Invalid": 16, "NoComm_CorrVar_InValid": 16}
+    # jul28: same 8 conditions as v3, 32 gt_samples instead of 16
+    JUL28_DIST = {k: 32 for k in V3_DIST}
     actual_dist = df["mod_type"].value_counts().to_dict()
-    assert actual_dist in (V2_DIST, V3_DIST), \
+    assert actual_dist in (V2_DIST, V3_DIST, JUL28_DIST), \
         f"Unexpected mod_type distribution: {actual_dist}"
     print(f"[run_mc_eval] Dataset integrity check passed ({len(df)} rows, {len(actual_dist)} conditions).", flush=True)
 
