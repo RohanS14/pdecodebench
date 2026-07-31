@@ -8,8 +8,8 @@ Usage (from repo root):
         --output_dir probe/hidden_states/
 
 Saves a .npz file per model:
-    mean_pool        : (N, L, D) float16  — mean over code-token positions per layer
-    last_tok         : (N, L, D) float16  — last input token per layer
+    mean_pool        : (N, L, D) float32  — mean over code-token positions per layer
+    last_tok         : (N, L, D) float32  — last input token per layer
     code_token_spans : (N, 2)    int32    — (start, end) token indices used for mean_pool
     titles           : (N,)      str
     mod_types        : (N,)      str
@@ -26,9 +26,11 @@ import os
 import sys
 
 import numpy as np
-import pandas as pd
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from eval.dataset_io import DEFAULT_MOD_DATASET, load_dataset  # noqa: E402
 
 # Same prompt as eval/run_eval.py — kept verbatim for consistency
 PROMPT_TEMPLATE = """\
@@ -52,9 +54,12 @@ valid: ____
 - valid: is this a physically valid simulation?\
 """
 
-EXPECTED_MOD_TYPE_DIST = {
-    "Comm_Valid": 16, "NoComm_Valid": 16, "CorrComm": 16, "NoComm_CorrVar": 16,
-    "Comm_InValid": 16, "NoComm_InValid": 16, "CorrComm_Invalid": 16, "NoComm_CorrVar_InValid": 16,
+# The 8 conditions must all be present and equally sized. The per-condition count
+# is derived from N rather than hardcoded, so v3 (16 each) and jul28 (32 each)
+# both validate without editing this file.
+EXPECTED_MOD_TYPES = {
+    "Comm_Valid", "NoComm_Valid", "CorrComm", "NoComm_CorrVar",
+    "Comm_InValid", "NoComm_InValid", "CorrComm_Invalid", "NoComm_CorrVar_InValid",
 }
 
 
@@ -106,7 +111,7 @@ def validate_code_span(tokenizer, input_ids, span, code, title):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset", default="data/pdedata_clean_v3.xlsx")
+    parser.add_argument("--dataset", default=DEFAULT_MOD_DATASET)
     parser.add_argument("--model", default="Qwen/Qwen2.5-Coder-7B-Instruct")
     parser.add_argument("--output_dir", default="probe/hidden_states/")
     parser.add_argument("--gt_samples", default=None,
@@ -122,18 +127,30 @@ def main():
     print(f"GPU: {torch.cuda.get_device_name(0)}", flush=True)
     print(f"Model: {args.model}", flush=True)
 
-    # Load dataset
-    df = pd.read_excel(args.dataset)
-    print(f"Dataset: {len(df)} rows loaded", flush=True)
+    # Load dataset (CSV for jul28, xlsx for the archived versions)
+    df = load_dataset(args.dataset)
+    print(f"Dataset: {len(df)} rows loaded from {args.dataset}", flush=True)
 
     if args.gt_samples:
         keep = [s.strip() for s in args.gt_samples.split(",")]
         df = df[df["gt_sample"].isin(keep)].reset_index(drop=True)
+        missing = set(keep) - set(df["gt_sample"])
+        assert not missing, f"gt_samples not found in dataset: {sorted(missing)}"
         print(f"Filtered to gt_samples {keep}: {len(df)} rows", flush=True)
-    else:
-        assert len(df) == 128, f"Expected 128 rows, got {len(df)}"
-        dist = df["mod_type"].value_counts().to_dict()
-        assert dist == EXPECTED_MOD_TYPE_DIST, f"Unexpected mod_type distribution: {dist}"
+
+    # Every gt_sample must carry all 8 conditions exactly once — the Experiment 2
+    # valid/invalid pairing is undefined otherwise. Enforced for canary runs too.
+    dist = df["mod_type"].value_counts().to_dict()
+    assert set(dist) == EXPECTED_MOD_TYPES, (
+        f"mod_type set mismatch. missing={sorted(EXPECTED_MOD_TYPES - set(dist))} "
+        f"unexpected={sorted(set(dist) - EXPECTED_MOD_TYPES)}"
+    )
+    n_per_cond = len(df) // 8
+    assert all(v == n_per_cond for v in dist.values()), (
+        f"Unbalanced mod_type distribution (expected {n_per_cond} each): {dist}"
+    )
+    assert len(df) == n_per_cond * 8, f"{len(df)} rows is not a multiple of 8"
+    print(f"Condition balance OK: {n_per_cond} gt_samples × 8 mod_types", flush=True)
 
     # Load tokenizer
     print("Loading tokenizer...", flush=True)
@@ -155,12 +172,18 @@ def main():
 
     # Load model in bfloat16 (native for Qwen2.5/QwQ; fp16 risks overflow on 32B models)
     print("Loading model (bfloat16)...", flush=True)
-    model = AutoModelForCausalLM.from_pretrained(
-        args.model,
-        torch_dtype=torch.bfloat16,
-        device_map="auto",
-        trust_remote_code=True,
-    )
+    # transformers renamed torch_dtype -> dtype in v5. The cluster env has 5.14,
+    # but archived runs used v4, so accept both rather than pin a version.
+    try:
+        model = AutoModelForCausalLM.from_pretrained(
+            args.model, dtype=torch.bfloat16, device_map="auto",
+            trust_remote_code=True,
+        )
+    except TypeError:
+        model = AutoModelForCausalLM.from_pretrained(
+            args.model, torch_dtype=torch.bfloat16, device_map="auto",
+            trust_remote_code=True,
+        )
     model.eval()
 
     n_layers = model.config.num_hidden_layers
@@ -169,11 +192,16 @@ def main():
     N = len(df)
 
     print(f"Model: {n_layers} transformer layers, hidden_dim={D}", flush=True)
-    print(f"Allocating arrays: 2 × ({N}, {L}, {D}) float16 = "
-          f"{2 * N * L * D * 2 / 1e6:.1f} MB", flush=True)
+    print(f"Allocating arrays: 2 × ({N}, {L}, {D}) float32 = "
+          f"{2 * N * L * D * 4 / 1e6:.1f} MB", flush=True)
 
-    all_mean_pool = np.zeros((N, L, D), dtype=np.float16)
-    all_last_tok  = np.zeros((N, L, D), dtype=np.float16)
+    # float32, NOT float16. Experiment 2 works on Δh = h(invalid) − h(valid) between
+    # two forward passes whose inputs differ by a handful of tokens, so ‖Δh‖/‖h‖ can
+    # be ~1e-2. At that ratio float16 leaves 1–2 significant digits and cos(Δh, Δh')
+    # measures rounding error rather than representation. Costs ~2× on disk (~200 MB
+    # for a 7B model), which is irrelevant here.
+    all_mean_pool = np.zeros((N, L, D), dtype=np.float32)
+    all_last_tok  = np.zeros((N, L, D), dtype=np.float32)
     all_spans     = np.zeros((N, 2), dtype=np.int32)
     span_failures = []
 
@@ -250,11 +278,9 @@ def main():
         for l, hs in enumerate(outputs.hidden_states):
             hs_l = hs[0]  # (T, D)
             code_hs = hs_l[span[0]:span[1]]  # (n_code_tokens, D)
-            # cast bfloat16 → float32 before numpy (float16 can't represent bf16 range)
-            mp = code_hs.mean(dim=0).float().cpu().numpy()
-            lt = hs_l[last_code_pos].float().cpu().numpy()
-            all_mean_pool[idx, l] = mp.astype(np.float16)
-            all_last_tok[idx, l]  = lt.astype(np.float16)
+            # bfloat16 → float32 and keep it there (see allocation comment above)
+            all_mean_pool[idx, l] = code_hs.mean(dim=0).float().cpu().numpy()
+            all_last_tok[idx, l]  = hs_l[last_code_pos].float().cpu().numpy()
 
         n_code_toks = span[1] - span[0]
         if (idx + 1) % 10 == 0 or idx == 0:
@@ -266,8 +292,8 @@ def main():
         n_nan = int(np.isnan(arr).sum())
         n_inf = int(np.isinf(arr).sum())
         if n_nan > 0 or n_inf > 0:
-            print(f"ERROR: {name} has {n_nan} NaN and {n_inf} Inf values — "
-                  f"likely bf16→fp16 overflow. Check model dtype.", flush=True)
+            print(f"ERROR: {name} has {n_nan} NaN and {n_inf} Inf values. "
+                  f"Check model dtype.", flush=True)
             sys.exit(1)
     print("NaN/Inf check passed for mean_pool and last_tok.", flush=True)
 
@@ -296,10 +322,15 @@ def main():
         phys_process=df["phys_process"].values.astype(str),
         num_method=df["num_method"].values.astype(str),
         codes=df["code"].values.astype(str),
+        # jul28 only; "unknown" keeps archived-xlsx runs loadable by the same code
+        sources=(df["source"].values.astype(str) if "source" in df.columns
+                 else np.array(["unknown"] * N)),
+        model_name=np.array(args.model),
+        dataset_path=np.array(args.dataset),
     )
     print(f"\nSaved: {out_path}", flush=True)
-    print(f"  mean_pool : {all_mean_pool.shape}  dtype=float16", flush=True)
-    print(f"  last_tok  : {all_last_tok.shape}  dtype=float16", flush=True)
+    print(f"  mean_pool : {all_mean_pool.shape}  dtype=float32", flush=True)
+    print(f"  last_tok  : {all_last_tok.shape}  dtype=float32", flush=True)
     print(f"  code spans: min_len={int((all_spans[:,1]-all_spans[:,0]).min())} "
           f"max_len={int((all_spans[:,1]-all_spans[:,0]).max())}", flush=True)
 
