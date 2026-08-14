@@ -44,3 +44,10 @@ _verify/
 *.log
 *.out
 *.synctex.gz
+
+# Agentic belief-revision pilot scratch — per-episode sandboxes and pilot-run
+# JSONL, same "session scratch, shouldn't live in shared history" reasoning as
+# _audit_exec/ above.
+results/frontier/_agentic_work/
+results/frontier/_pilot_*/
+results/frontier/gemini25flash__belief_revision_agentic.jsonl
