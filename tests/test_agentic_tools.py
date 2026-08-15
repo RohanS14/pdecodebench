@@ -5,7 +5,6 @@ import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'eval'))
 
 from frontier.agentic_tools import (
-    apply_unified_diff,
     next_version_filename,
     tools_available,
     truncate,
@@ -22,59 +21,6 @@ def check(name: str, condition: bool, detail: str = ""):
     else:
         print(f"  {FAIL}  {name}" + (f"  [{detail}]" if detail else ""))
         failures.append(name)
-
-
-# ── apply_unified_diff ───────────────────────────────────────────────────────
-
-print("\n── apply_unified_diff ──")
-
-base = "a = 1\nb = 2\nc = 3\n"
-good_diff = (
-    "--- a/solver.py\n"
-    "+++ b/solver.py\n"
-    "@@ -1,3 +1,3 @@\n"
-    " a = 1\n"
-    "-b = 2\n"
-    "+b = 99\n"
-    " c = 3\n"
-)
-new_code, err = apply_unified_diff(base, good_diff)
-check("valid diff applies", err is None, str(err))
-check("valid diff produces expected content", new_code == "a = 1\nb = 99\nc = 3\n", repr(new_code))
-
-new_code, err = apply_unified_diff(base, "")
-check("empty diff is a no-op success", err is None and new_code == base)
-
-new_code, err = apply_unified_diff(base, "   \n  ")
-check("whitespace-only diff is a no-op success", err is None and new_code == base)
-
-bad_diff = (
-    "--- a/solver.py\n"
-    "+++ b/solver.py\n"
-    "@@ -1,3 +1,3 @@\n"
-    " a = 1\n"
-    "-b = 999999\n"
-    "+b = 99\n"
-    " c = 3\n"
-)
-new_code, err = apply_unified_diff(base, bad_diff)
-check("diff with wrong context fails, does not raise", new_code is None and isinstance(err, str) and len(err) > 0)
-
-# Regression: a diff whose "+" line already matches the base (but whose "-" line
-# doesn't) looks "reversed" to `patch`'s heuristic -- must fail forward, not
-# silently apply backwards.
-reversible_looking_diff = (
-    "--- a/solver.py\n"
-    "+++ b/solver.py\n"
-    "@@ -1,3 +1,3 @@\n"
-    " a = 1\n"
-    "-b = 999\n"
-    "+b = 2\n"
-    " c = 3\n"
-)
-new_code, err = apply_unified_diff(base, reversible_looking_diff)
-check("reversed-looking diff fails forward, is not silently applied backwards",
-      new_code is None and isinstance(err, str) and len(err) > 0, repr((new_code, err)))
 
 
 # ── next_version_filename ────────────────────────────────────────────────────

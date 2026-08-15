@@ -71,7 +71,7 @@ reason: ____
 
 # Gemini 2.5 Flash pricing
 _PRICE_IN  = 0.15 / 1_000_000
-_PRICE_OUT = 0.60 / 1_000_000
+_PRICE_OUT = 1.25 / 1_000_000
 
 
 # ── Rate limiter (copied from run_belief_revision.py) ─────────────────────────

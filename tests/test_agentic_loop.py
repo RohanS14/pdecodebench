@@ -1,10 +1,11 @@
 """
 Integration test for run_agentic_stage2() using a scripted fake Gemini client --
 zero network calls, zero API cost. Exercises the full manual function-calling
-protocol: a diff that fails to apply (still counts against budget), a diff that
-succeeds and saves an npz, a run_diagnostic that reads it back, and a voluntary
-submit_final_answer. A second scenario exercises forced completion (budget
-exhausted). A third exercises the cost-guard trip.
+protocol: a full-file rewrite with a syntax error (still counts against
+budget), a full-file rewrite that runs successfully and saves an npz, a
+run_diagnostic that reads it back, and a voluntary submit_final_answer. A
+second scenario exercises forced completion (budget exhausted). A third
+exercises the cost-guard trip.
 """
 import shutil
 import sys, os
@@ -35,21 +36,57 @@ class FakeUsage:
 
 
 class FakeResponse:
-    def __init__(self, calls, usage=None):
+    def __init__(self, calls, text=None, usage=None, candidates=None):
         self.function_calls = calls
+        self.text = text
         self.usage_metadata = usage or FakeUsage()
+        # Only set when a scenario explicitly needs to simulate thinking-mode
+        # part structure (thought-summary parts, thought_signature) -- absent
+        # by default, matching every real FakeResponse used before thinking
+        # support existed, so getattr(resp, "candidates", None) or [] in the
+        # harness falls back to the original one-part behavior untouched.
+        if candidates is not None:
+            self.candidates = candidates
+
+
+class FakePart:
+    """Minimal stand-in for a real google.genai types.Part, for scenarios that
+    need to simulate resp.candidates[0].content.parts (thought-summary
+    extraction, thought_signature preservation)."""
+    def __init__(self, text=None, thought=None, thought_signature=None, function_call=None):
+        self.text = text
+        self.thought = thought
+        self.thought_signature = thought_signature
+        self.function_call = function_call
+
+
+class FakeCandidate:
+    def __init__(self, parts):
+        class _Content:
+            pass
+        content = _Content()
+        content.parts = parts
+        self.content = content
 
 
 class FakeModels:
     def __init__(self, scripted_calls):
-        # scripted_calls: list of lists of types.FunctionCall, one entry per turn
+        # scripted_calls: list of turn specs, one per turn. Each entry is either
+        # a plain list of types.FunctionCall (shorthand for {"calls": [...],
+        # "text": None} -- the convention every existing scenario already uses),
+        # or a dict {"calls": [...], "text": "...", "candidates": [...]} for
+        # scenarios that need to simulate text-only / empty / text+call
+        # outcomes under VALIDATED mode, or thinking-mode part structure.
         self._scripted = scripted_calls
         self.n_calls = 0
 
     def generate_content(self, model, contents, config):
-        calls = self._scripted[self.n_calls]
+        entry = self._scripted[self.n_calls]
         self.n_calls += 1
-        return FakeResponse(calls)
+        if isinstance(entry, dict):
+            return FakeResponse(entry.get("calls") or [], text=entry.get("text"),
+                                 candidates=entry.get("candidates"))
+        return FakeResponse(entry)
 
 
 class FakeClient:
@@ -66,7 +103,7 @@ def fc(name, **kwargs):
     return types.FunctionCall(name=name, args=kwargs)
 
 
-# ── Scenario 1: bad diff (counts against budget) -> good diff+save -> diagnostic -> voluntary submit ──
+# ── Scenario 1: rewrite w/ syntax error (counts against budget) -> good rewrite+save -> diagnostic -> voluntary submit ──
 
 print("\n── voluntary stop, mixed success/failure actions ──")
 
@@ -75,13 +112,12 @@ for p in (episode_dir(TITLE1, RUN1), snapshot_root(TITLE1, RUN1)):
     if p.exists():
         shutil.rmtree(p)
 
-bad_diff = (
-    "--- a/solver.py\n+++ b/solver.py\n@@ -1,2 +1,2 @@\n"
-    "-u = [999, 2, 3]\n+u = [1, 2, 3]\n print(sum(u))\n"
-)
-good_diff = (
-    "--- a/solver.py\n+++ b/solver.py\n@@ -1,2 +1,3 @@\n"
-    " u = [1, 2, 3]\n+import numpy as np; np.savez('h.npz', u=np.array(u))\n print(sum(u))\n"
+bad_source = "u = [1, 2, 3\nprint(sum(u))\n"  # missing closing bracket -> SyntaxError on run
+good_source = (
+    "import numpy as np\n"
+    "u = [1, 2, 3]\n"
+    "np.savez('h.npz', u=np.array(u))\n"
+    "print(sum(u))\n"
 )
 diagnostic_script = (
     "import numpy as np\n"
@@ -89,12 +125,14 @@ diagnostic_script = (
     "print('u contents:', d['u'].tolist())\n"
 )
 
+submit_call = fc("submit_final_answer", pde="heat", method="explicit", behavior="diffusion", valid="yes",
+                  pde_exp="unchanged", method_exp="unchanged", behavior_exp="unchanged", valid_exp="confirmed via npz readback")
 scripted = [
-    [fc("edit_source", diff=bad_diff)],
-    [fc("edit_source", diff=good_diff)],
+    [fc("edit_source", full_source=bad_source)],
+    [fc("edit_source", full_source=good_source)],
     [fc("run_diagnostic", script=diagnostic_script)],
-    [fc("submit_final_answer", pde="heat", method="explicit", behavior="diffusion", valid="yes",
-        pde_exp="unchanged", method_exp="unchanged", behavior_exp="unchanged", valid_exp="confirmed via npz readback")],
+    [submit_call],  # voluntary (budget not exhausted) -- gets intercepted once
+    [submit_call],  # confirmed -- accepted as final
 ]
 client = FakeClient(scripted)
 
@@ -103,17 +141,25 @@ result = run_agentic_stage2(
     budget=6, truncate_chars=4000, subprocess_timeout=10, episode_cost_cap_usd=0.50,
 )
 
-check("action_count is 3 (bad diff + good diff + diagnostic)", result["action_count"] == 3, str(result["action_count"]))
+check("action_count is 3 (bad rewrite + good rewrite + diagnostic; neither submit call counts)", result["action_count"] == 3, str(result["action_count"]))
 check("used_edit_source is True", result["used_edit_source"] is True)
 check("tools_used has both investigative tools", set(result["tools_used"]) == {"edit_source", "run_diagnostic"})
 check("actions_remaining_at_submission is 3 (voluntary stop, budget=6)", result["actions_remaining_at_submission"] == 3, str(result))
 check("cost_guard_tripped is False", result["cost_guard_tripped"] is False)
 check("submit_args carries the final answer", result["submit_args"]["valid"] == "yes")
-check("action_trace has 4 entries (3 investigative + submit)", len(result["action_trace"]) == 4)
-check("first action's result reports the patch failure", "patch failed" in result["action_trace"][0]["result"])
-check("first action created no new solver file", result["action_trace"][0]["new_filename"] is None)
+check("action_trace has 5 entries (3 investigative + provisional submit + confirmed submit)", len(result["action_trace"]) == 5, str(len(result["action_trace"])))
+check("first action's result reports a SyntaxError", "SyntaxError" in result["action_trace"][0]["result"], result["action_trace"][0]["result"])
+check("first action still creates a new solver file (write always succeeds; only execution fails)",
+      result["action_trace"][0]["new_filename"] is not None)
 check("second action's result shows execution output", "6" in result["action_trace"][1]["result"])  # sum([1,2,3])
 check("diagnostic action's result shows the readback", "u contents" in result["action_trace"][2]["result"])
+check("4th entry is the intercepted provisional submit, with the recap in its result",
+      result["action_trace"][3].get("provisional_submit") is True
+      and CODE in result["action_trace"][3]["result"]
+      and S1_TEXT in result["action_trace"][3]["result"],
+      result["action_trace"][3])
+check("5th entry is the real, confirmed submit (not flagged provisional)",
+      not result["action_trace"][4].get("provisional_submit"), result["action_trace"][4])
 
 for p in (episode_dir(TITLE1, RUN1), snapshot_root(TITLE1, RUN1)):
     if p.exists():
@@ -129,9 +175,9 @@ for p in (episode_dir(TITLE2, RUN2), snapshot_root(TITLE2, RUN2)):
     if p.exists():
         shutil.rmtree(p)
 
-noop_diff = ""
+noop_full_source = ""  # empty -> rerun current latest version unchanged
 scripted2 = [
-    [fc("edit_source", diff=noop_diff)],
+    [fc("edit_source", full_source=noop_full_source)],
     [fc("run_diagnostic", script="print('looking around')\n")],
     # budget (2) is now exhausted -- only submit_final_answer is offered next turn,
     # and the harness only ever dispatches the FIRST call in a turn's response,
@@ -178,7 +224,7 @@ class ExpensiveFakeClient:
         self.models = ExpensiveFakeModels(scripted_calls)
 
 scripted3 = [
-    [fc("edit_source", diff="")],
+    [fc("edit_source", full_source="")],
     # cost guard should have tripped after turn 1's huge usage -- turn 2 should
     # only ever be offered submit_final_answer, so script a submit here
     [fc("submit_final_answer", pde="heat", method="explicit", behavior="diffusion", valid="yes",
@@ -217,10 +263,10 @@ for p in (episode_dir(TITLE4, RUN4), snapshot_root(TITLE4, RUN4)):
 # Turns 2+ should only ever declare submit_final_answer -- but the fake client
 # keeps trying edit_source anyway, exactly like the real pilot did.
 scripted4 = [
-    [fc("edit_source", diff="")],           # turn 1: legitimate, uses up the budget of 1
-    [fc("edit_source", diff="")],           # turn 2: should be REJECTED (not declared)
-    [fc("edit_source", diff="")],           # turn 3: should be REJECTED (violation #2)
-    [fc("edit_source", diff="")],           # turn 4: should be REJECTED (violation #3 -> forces submission)
+    [fc("edit_source", full_source="")],           # turn 1: legitimate, uses up the budget of 1
+    [fc("edit_source", full_source="")],           # turn 2: should be REJECTED (not declared)
+    [fc("edit_source", full_source="")],           # turn 3: should be REJECTED (violation #2)
+    [fc("edit_source", full_source="")],           # turn 4: should be REJECTED (violation #3 -> forces submission)
 ]
 client4 = FakeClient(scripted4)
 
@@ -284,25 +330,34 @@ result5 = run_agentic_stage2(
     budget=6, truncate_chars=4000, subprocess_timeout=10, episode_cost_cap_usd=0.50,
 )
 
+# The model returns the SAME text-only response every turn. Under the new design
+# this is: turn 1 (VALIDATED) -> text-only -> escalate to ANY; turn 2 (ANY) ->
+# still no call -> last-resort fallback. Two turns, not one, to reach the same
+# terminal _forced_reason.
+check("client saw exactly 2 turns (text-only, then escalated ANY)", client5.models.n_calls == 2, str(client5.models.n_calls))
 check("submit_args forced with no_function_call reason", result5["submit_args"].get("_forced_reason") == "no_function_call")
 check("model's raw text is captured, not discarded", result5["submit_args"].get("_raw_text") == "I'm not sure what to do here, apologies for the confusion.", str(result5["submit_args"]))
 check("action_trace records the no-function-call turn with the raw text",
       any(a.get("no_function_call") and a["result"] == "I'm not sure what to do here, apologies for the confusion." for a in result5["action_trace"]),
       str(result5["action_trace"]))
-check("action_count is 0 (no investigative action ever ran)", result5["action_count"] == 0)
+check("action_trace also records the preceding text-only turn",
+      any(a.get("text_only") and a["result"] == "I'm not sure what to do here, apologies for the confusion." for a in result5["action_trace"]),
+      str(result5["action_trace"]))
+check("action_count is 1 (the text-only turn still costs a turn; the last-resort ANY turn doesn't)", result5["action_count"] == 1, str(result5["action_count"]))
 
 for p in (episode_dir(TITLE5, RUN5), snapshot_root(TITLE5, RUN5)):
     if p.exists():
         shutil.rmtree(p)
 
 
-# ── Scenario 6: harness actually builds a forced tool_config every turn ──────
+# ── Scenario 6: harness builds the right tool_config every turn ──────────────
 # Verifies the wiring itself, not just that things still work when the fake
-# client ignores it: on every turn, the config passed to generate_content must
-# force mode="ANY" with allowed_function_names exactly equal to whatever
-# tools_available() said was available that turn.
+# client ignores it: VALIDATED by default everywhere, including the terminal
+# (budget-exhausted) phase -- ANY is only ever a one-shot escalation, not a
+# hardcoded terminal special case -- with allowed_function_names exactly equal
+# to whatever tools_available() said was available that turn, in both cases.
 
-print("\n── every turn's config forces mode=ANY with the correct allowed tool names ──")
+print("\n── every turn's config has the right mode and allowed tool names ──")
 
 TITLE6, RUN6 = "_test_loop_scenario6", "unittest"
 for p in (episode_dir(TITLE6, RUN6), snapshot_root(TITLE6, RUN6)):
@@ -314,9 +369,11 @@ class ConfigCapturingModels(FakeModels):
     def __init__(self, scripted_calls):
         super().__init__(scripted_calls)
         self.seen_configs = []
+        self.seen_contents = []  # snapshot (shallow copy) of contents per call
 
     def generate_content(self, model, contents, config):
         self.seen_configs.append(config)
+        self.seen_contents.append(list(contents))
         return super().generate_content(model, contents, config)
 
 
@@ -326,7 +383,7 @@ class ConfigCapturingClient:
 
 
 scripted6 = [
-    [fc("edit_source", diff="")],
+    [fc("edit_source", full_source="")],
     [fc("submit_final_answer", pde="heat", method="explicit", behavior="diffusion", valid="yes",
         pde_exp="x", method_exp="x", behavior_exp="x", valid_exp="x")],
 ]
@@ -341,18 +398,411 @@ configs = client6.models.seen_configs
 check("saw exactly 2 turns", len(configs) == 2, str(len(configs)))
 
 fcc0 = configs[0].tool_config.function_calling_config
-check("turn 1 mode is ANY", fcc0.mode == "ANY", str(fcc0.mode))
+check("turn 1 mode is VALIDATED (more than one tool still available)", fcc0.mode == "VALIDATED", str(fcc0.mode))
 check("turn 1 allows all 3 tools (budget not yet used)",
       set(fcc0.allowed_function_names) == {"edit_source", "run_diagnostic", "submit_final_answer"},
       str(fcc0.allowed_function_names))
 
 fcc1 = configs[1].tool_config.function_calling_config
-check("turn 2 mode is ANY", fcc1.mode == "ANY", str(fcc1.mode))
+check("turn 2 (terminal, compliant single call) mode is VALIDATED, not a hardcoded ANY",
+      fcc1.mode == "VALIDATED", str(fcc1.mode))
 check("turn 2 only allows submit_final_answer (budget=1 exhausted after turn 1)",
       list(fcc1.allowed_function_names) == ["submit_final_answer"],
       str(fcc1.allowed_function_names))
 
 for p in (episode_dir(TITLE6, RUN6), snapshot_root(TITLE6, RUN6)):
+    if p.exists():
+        shutil.rmtree(p)
+
+
+# ── Scenario 7: text-only turn escalates to ANY, which then succeeds ────────
+# Distinct from Scenario 5 (where the escalated ANY turn ALSO fails, ending in
+# the last-resort fallback): here the model declines to act once, gets
+# escalated, and complies on the very next (forced) turn -- the common,
+# non-pathological case the escalation mechanism is meant to handle.
+
+print("\n── text-only turn escalates to ANY, which then succeeds ──")
+
+TITLE7, RUN7 = "_test_loop_scenario7", "unittest"
+for p in (episode_dir(TITLE7, RUN7), snapshot_root(TITLE7, RUN7)):
+    if p.exists():
+        shutil.rmtree(p)
+
+submit_call7 = fc("submit_final_answer", pde="heat", method="explicit", behavior="diffusion", valid="yes",
+                   pde_exp="x", method_exp="x", behavior_exp="x", valid_exp="x")
+scripted7 = [
+    {"calls": [], "text": "I want to check the boundary conditions before touching anything."},
+    [fc("edit_source", full_source="")],  # escalated ANY turn: complies immediately
+    [submit_call7],  # voluntary (budget=6, only 2 actions used) -- gets intercepted once
+    [submit_call7],  # confirmed -- accepted as final
+]
+client7 = ConfigCapturingClient(scripted7)
+
+result7 = run_agentic_stage2(
+    client7, "gemini-2.5-flash", TITLE7, RUN7, CODE, PROMPT_S1, S1_TEXT,
+    budget=6, truncate_chars=4000, subprocess_timeout=10, episode_cost_cap_usd=0.50,
+)
+
+configs7 = client7.models.seen_configs
+check("client saw 4 turns (text-only, escalated edit_source, provisional submit, confirmed submit)",
+      client7.models.n_calls == 4, str(client7.models.n_calls))
+check("turn 1 (text-only) was VALIDATED", configs7[0].tool_config.function_calling_config.mode == "VALIDATED")
+check("turn 2 (escalated) was forced to ANY", configs7[1].tool_config.function_calling_config.mode == "ANY")
+check("turn 3 (after successful escalation) is back to VALIDATED",
+      configs7[2].tool_config.function_calling_config.mode == "VALIDATED",
+      configs7[2].tool_config.function_calling_config.mode)
+check("action_count is 2 (text-only turn + the real edit_source; neither submit call counts)", result7["action_count"] == 2, str(result7["action_count"]))
+check("action_trace's first entry is marked text_only with the model's reasoning",
+      result7["action_trace"][0].get("text_only") and
+      result7["action_trace"][0]["result"] == "I want to check the boundary conditions before touching anything.",
+      str(result7["action_trace"][0]))
+check("submit_args carries the real final answer (not a forced empty one)", result7["submit_args"]["valid"] == "yes")
+check("3rd action_trace entry is the intercepted provisional submit", result7["action_trace"][2].get("provisional_submit") is True, str(result7["action_trace"][2]))
+
+for p in (episode_dir(TITLE7, RUN7), snapshot_root(TITLE7, RUN7)):
+    if p.exists():
+        shutil.rmtree(p)
+
+
+# ── Scenario 8: two consecutive empty turns escalate to ANY, which is ALSO
+# empty -> last-resort fallback via the EMPTY path (Scenario 5 covers the same
+# last-resort fallback reached via the TEXT-ONLY path instead) ─────────────
+
+print("\n── two consecutive empty turns escalate to ANY, still empty -> last resort ──")
+
+TITLE8, RUN8 = "_test_loop_scenario8", "unittest"
+for p in (episode_dir(TITLE8, RUN8), snapshot_root(TITLE8, RUN8)):
+    if p.exists():
+        shutil.rmtree(p)
+
+scripted8 = [
+    {"calls": [], "text": None},   # turn 1: empty -- one retry allowed, stays VALIDATED
+    {"calls": [], "text": ""},     # turn 2: empty again -- escalate to ANY next turn
+    {"calls": [], "text": None},   # turn 3: forced ANY, STILL empty -> last resort
+]
+client8 = ConfigCapturingClient(scripted8)
+
+result8 = run_agentic_stage2(
+    client8, "gemini-2.5-flash", TITLE8, RUN8, CODE, PROMPT_S1, S1_TEXT,
+    budget=6, truncate_chars=4000, subprocess_timeout=10, episode_cost_cap_usd=0.50,
+)
+
+configs8 = client8.models.seen_configs
+check("client saw 3 turns", client8.models.n_calls == 3, str(client8.models.n_calls))
+check("turn 1 (first empty, retry) was VALIDATED", configs8[0].tool_config.function_calling_config.mode == "VALIDATED")
+check("turn 2 (second consecutive empty) was STILL VALIDATED (retry, not yet escalated)",
+      configs8[1].tool_config.function_calling_config.mode == "VALIDATED")
+check("turn 3 (escalated after 2nd consecutive empty) was forced to ANY",
+      configs8[2].tool_config.function_calling_config.mode == "ANY")
+check("action_count is 2 (both empty VALIDATED turns cost a turn; the last-resort ANY turn doesn't)",
+      result8["action_count"] == 2, str(result8["action_count"]))
+check("submit_args forced with no_function_call reason (last resort)",
+      result8["submit_args"].get("_forced_reason") == "no_function_call", str(result8["submit_args"]))
+check("exactly 2 empty_response entries recorded",
+      sum(1 for a in result8["action_trace"] if a.get("empty_response")) == 2,
+      str(result8["action_trace"]))
+
+for p in (episode_dir(TITLE8, RUN8), snapshot_root(TITLE8, RUN8)):
+    if p.exists():
+        shutil.rmtree(p)
+
+
+# ── Scenario 9: text+call outcome captures the model's reasoning text ───────
+
+print("\n── text+call outcome: reasoning text is captured in the action_trace ──")
+
+TITLE9, RUN9 = "_test_loop_scenario9", "unittest"
+for p in (episode_dir(TITLE9, RUN9), snapshot_root(TITLE9, RUN9)):
+    if p.exists():
+        shutil.rmtree(p)
+
+submit_call9 = fc("submit_final_answer", pde="heat", method="explicit", behavior="diffusion", valid="yes",
+                   pde_exp="x", method_exp="x", behavior_exp="x", valid_exp="x")
+scripted9 = [
+    {"calls": [fc("run_diagnostic", script="print('checking boundary values')\n")],
+     "text": "I want to inspect the boundary values before deciding whether to edit anything."},
+    {"calls": [submit_call9],
+     "text": "Based on what I found, I'm ready to submit."},  # voluntary -- intercepted once
+    {"calls": [submit_call9], "text": "Confirming my answer."},  # confirmed -- accepted as final
+]
+client9 = FakeClient(scripted9)
+
+result9 = run_agentic_stage2(
+    client9, "gemini-2.5-flash", TITLE9, RUN9, CODE, PROMPT_S1, S1_TEXT,
+    budget=6, truncate_chars=4000, subprocess_timeout=10, episode_cost_cap_usd=0.50,
+)
+
+check("action_count is 1 (only run_diagnostic counts; neither submit call counts)", result9["action_count"] == 1, str(result9["action_count"]))
+check("run_diagnostic's action_trace entry captures its accompanying reasoning_text",
+      result9["action_trace"][0].get("reasoning_text") ==
+      "I want to inspect the boundary values before deciding whether to edit anything.",
+      str(result9["action_trace"][0]))
+check("the intercepted (provisional) submit's action_trace entry captures its accompanying reasoning_text",
+      result9["action_trace"][1].get("provisional_submit") is True
+      and result9["action_trace"][1].get("reasoning_text") == "Based on what I found, I'm ready to submit.",
+      str(result9["action_trace"][1]))
+check("the confirmed (final) submit's action_trace entry ALSO captures its accompanying reasoning_text",
+      not result9["action_trace"][2].get("provisional_submit")
+      and result9["action_trace"][2].get("reasoning_text") == "Confirming my answer.",
+      str(result9["action_trace"][2]))
+
+for p in (episode_dir(TITLE9, RUN9), snapshot_root(TITLE9, RUN9)):
+    if p.exists():
+        shutil.rmtree(p)
+
+
+# ── Scenario 10: the terminal turn's reminder must fire on BOTH the default
+# VALIDATED terminal turn AND an escalated ANY terminal turn -- regression
+# test for a real bug found live (the original-snippet reminder was gated on
+# mode=="VALIDATED", which used to be permanently unreachable in the terminal
+# phase since that phase was hardcoded to ANY). Also exercises the terminal
+# phase now defaulting to VALIDATED (not ANY) and escalating exactly like the
+# investigative phase does when the model doesn't act. ─────────────────────
+
+print("\n── terminal phase defaults to VALIDATED and shows the reminder on both VALIDATED and escalated ANY turns ──")
+
+TITLE10, RUN10 = "_test_loop_scenario10", "unittest"
+for p in (episode_dir(TITLE10, RUN10), snapshot_root(TITLE10, RUN10)):
+    if p.exists():
+        shutil.rmtree(p)
+
+scripted10 = [
+    [fc("edit_source", full_source="")],  # turn 1: uses up the budget of 1
+    {"calls": [], "text": "I want to think this through before answering."},  # turn 2: terminal, VALIDATED, text-only -> escalate
+    [fc("submit_final_answer", pde="heat", method="explicit", behavior="diffusion", valid="yes",
+        pde_exp="x", method_exp="x", behavior_exp="x", valid_exp="x")],  # turn 3: terminal, escalated ANY, complies
+]
+client10 = ConfigCapturingClient(scripted10)
+
+run_agentic_stage2(
+    client10, "gemini-2.5-flash", TITLE10, RUN10, CODE, PROMPT_S1, S1_TEXT,
+    budget=1, truncate_chars=4000, subprocess_timeout=10, episode_cost_cap_usd=0.50,
+)
+
+configs10 = client10.models.seen_configs
+contents10 = client10.models.seen_contents
+check("client saw 3 turns", client10.models.n_calls == 3, str(client10.models.n_calls))
+check("turn 2 (terminal, first attempt) defaults to VALIDATED, not a hardcoded ANY",
+      configs10[1].tool_config.function_calling_config.mode == "VALIDATED",
+      configs10[1].tool_config.function_calling_config.mode)
+check("turn 3 (terminal, escalated after text-only) is forced to ANY",
+      configs10[2].tool_config.function_calling_config.mode == "ANY",
+      configs10[2].tool_config.function_calling_config.mode)
+
+def _texts(contents_snapshot):
+    return [part.text for content in contents_snapshot for part in content.parts if getattr(part, "text", None)]
+
+turn2_texts = _texts(contents10[1])
+turn3_texts = _texts(contents10[2])
+check("turn 2's contents include a reminder mentioning the budget is exhausted",
+      any("investigative budget is exhausted" in t for t in turn2_texts), turn2_texts)
+check("turn 2's contents include the ORIGINAL code text",
+      any(CODE in t for t in turn2_texts), turn2_texts)
+check("turn 2's contents include the Stage-1 answer text",
+      any(S1_TEXT in t for t in turn2_texts), turn2_texts)
+check("turn 3's contents ALSO include the reminder + original code, despite being escalated to ANY",
+      any("investigative budget is exhausted" in t for t in turn3_texts)
+      and any(CODE in t for t in turn3_texts),
+      turn3_texts)
+
+for p in (episode_dir(TITLE10, RUN10), snapshot_root(TITLE10, RUN10)):
+    if p.exists():
+        shutil.rmtree(p)
+
+
+# ── Scenario 11: thinking mode -- thought_summary extraction, and the model's
+# full non-thought content (with its thought_signature) is preserved when
+# appended to history, instead of the minimal function-call-only Content. ───
+
+print("\n── thinking mode: thought_summary captured, full content preserved on model turn ──")
+
+TITLE11, RUN11 = "_test_loop_scenario11", "unittest"
+for p in (episode_dir(TITLE11, RUN11), snapshot_root(TITLE11, RUN11)):
+    if p.exists():
+        shutil.rmtree(p)
+
+call11 = fc("edit_source", full_source="")
+thought_part11 = FakePart(text="internal reasoning about boundary conditions...", thought=True)
+text_part11 = FakePart(text="Let me rerun the original unchanged.", thought=False, thought_signature=b"sig-bytes")
+call_part11 = FakePart(function_call=call11)
+
+submit_call11 = fc("submit_final_answer", pde="heat", method="explicit", behavior="diffusion", valid="yes",
+                    pde_exp="x", method_exp="x", behavior_exp="x", valid_exp="x")
+scripted11 = [
+    {"calls": [call11], "text": "Let me rerun the original unchanged.",
+     "candidates": [FakeCandidate([thought_part11, text_part11, call_part11])]},
+    [submit_call11],  # voluntary (budget=6, only 1 action used) -- intercepted once
+    [submit_call11],  # confirmed -- accepted as final
+]
+client11 = ConfigCapturingClient(scripted11)
+
+result11 = run_agentic_stage2(
+    client11, "gemini-2.5-flash", TITLE11, RUN11, CODE, PROMPT_S1, S1_TEXT,
+    budget=6, truncate_chars=4000, subprocess_timeout=10, episode_cost_cap_usd=0.50,
+    thinking_budget=1536,
+)
+
+check("thought_summary captured on the action_trace entry",
+      result11["action_trace"][0].get("thought_summary") == "internal reasoning about boundary conditions...",
+      str(result11["action_trace"][0]))
+check("no possible_thought_leak flagged (text doesn't start with THOUGHT:)",
+      "possible_thought_leak" not in result11["action_trace"][0])
+
+# seen_contents[1] is the contents snapshot taken at the START of turn 2's
+# call -- i.e. AFTER turn 1's model-turn append already happened.
+model_turn_contents11 = client11.models.seen_contents[1]
+model_turns11 = [c for c in model_turn_contents11 if c.role == "model"]
+model_turn11 = model_turns11[-1]  # the turn-1 append, not the seeded Stage-1-answer turn
+check("model turn role is 'model'", model_turn11.role == "model")
+check("model turn's parts are the full non-thought parts (text + function_call), not just function_call",
+      len(model_turn11.parts) == 2
+      and getattr(model_turn11.parts[0], "text", None) == "Let me rerun the original unchanged."
+      and getattr(model_turn11.parts[1], "function_call", None) is not None,
+      [getattr(p, "text", None) for p in model_turn11.parts])
+check("the thought-summary part's text is excluded from the replayed model turn",
+      not any(getattr(p, "text", None) == "internal reasoning about boundary conditions..." for p in model_turn11.parts))
+check("thought_signature survives on the replayed text part",
+      getattr(model_turn11.parts[0], "thought_signature", None) == b"sig-bytes")
+
+for p in (episode_dir(TITLE11, RUN11), snapshot_root(TITLE11, RUN11)):
+    if p.exists():
+        shutil.rmtree(p)
+
+
+# ── Scenario 12: possible_thought_leak defensive check -- a plain-text
+# response starting with "THOUGHT:" while thinking is enabled and no
+# .candidates marks any part as a real thought summary. ─────────────────────
+
+print("\n── thinking mode: THOUGHT:-prefix leak into regular text is flagged ──")
+
+TITLE12, RUN12 = "_test_loop_scenario12", "unittest"
+for p in (episode_dir(TITLE12, RUN12), snapshot_root(TITLE12, RUN12)):
+    if p.exists():
+        shutil.rmtree(p)
+
+submit_call12 = fc("submit_final_answer", pde="heat", method="explicit", behavior="diffusion", valid="yes",
+                    pde_exp="x", method_exp="x", behavior_exp="x", valid_exp="x")
+scripted12 = [
+    {"calls": [submit_call12],
+     "text": "THOUGHT: this looks like leaked internal reasoning, then the real answer."},
+    [submit_call12],  # confirmed -- accepted as final
+]
+client12 = FakeClient(scripted12)
+
+result12 = run_agentic_stage2(
+    client12, "gemini-2.5-flash", TITLE12, RUN12, CODE, PROMPT_S1, S1_TEXT,
+    budget=6, truncate_chars=4000, subprocess_timeout=10, episode_cost_cap_usd=0.50,
+    thinking_budget=1536,
+)
+
+check("possible_thought_leak is flagged True",
+      result12["action_trace"][0].get("possible_thought_leak") is True,
+      str(result12["action_trace"][0]))
+check("the model's full text is still preserved (never discarded, even when flagged)",
+      result12["action_trace"][0].get("reasoning_text", "").startswith("THOUGHT:"),
+      str(result12["action_trace"][0]))
+
+for p in (episode_dir(TITLE12, RUN12), snapshot_root(TITLE12, RUN12)):
+    if p.exists():
+        shutil.rmtree(p)
+
+
+# ── Scenario 13: voluntary submission is intercepted once and requires a
+# second call -- the forced/terminal path (Scenario 6/10) is NOT affected by
+# this at all, since build_validated_reminder_final already grounds it
+# pre-call; this is specifically the gap that had no re-grounding before. ──
+
+print("\n── voluntary submission gets intercepted once, requires a second call ──")
+
+TITLE13, RUN13 = "_test_loop_scenario13", "unittest"
+for p in (episode_dir(TITLE13, RUN13), snapshot_root(TITLE13, RUN13)):
+    if p.exists():
+        shutil.rmtree(p)
+
+submit_call13 = fc("submit_final_answer", pde="heat", method="explicit", behavior="diffusion", valid="yes",
+                    pde_exp="x", method_exp="x", behavior_exp="x", valid_exp="x")
+scripted13 = [
+    [submit_call13],  # voluntary (budget=6, 0 actions used) -- intercepted
+    [submit_call13],  # confirmed -- accepted as final
+]
+client13 = ConfigCapturingClient(scripted13)
+
+result13 = run_agentic_stage2(
+    client13, "gemini-2.5-flash", TITLE13, RUN13, CODE, PROMPT_S1, S1_TEXT,
+    budget=6, truncate_chars=4000, subprocess_timeout=10, episode_cost_cap_usd=0.50,
+)
+
+check("client saw 2 turns", client13.models.n_calls == 2, str(client13.models.n_calls))
+check("action_trace has 2 entries (provisional + confirmed submit)", len(result13["action_trace"]) == 2, str(len(result13["action_trace"])))
+check("1st entry is the intercepted provisional submit, with the recap in its result",
+      result13["action_trace"][0].get("provisional_submit") is True
+      and CODE in result13["action_trace"][0]["result"]
+      and S1_TEXT in result13["action_trace"][0]["result"]
+      and "Call submit_final_answer again" in result13["action_trace"][0]["result"],
+      result13["action_trace"][0])
+check("2nd entry is the real, confirmed submit", not result13["action_trace"][1].get("provisional_submit"), result13["action_trace"][1])
+check("submit_args carries the final answer", result13["submit_args"]["valid"] == "yes")
+check("action_count is 0 (neither submit call counts against budget)", result13["action_count"] == 0, str(result13["action_count"]))
+
+# The confirm-turn's contents (sent for turn 2's call) must include the
+# recap as a tool-role function_response, not a hardcoded reminder gated on
+# mode=="VALIDATED" the way the terminal path's pre-call reminder is.
+confirm_turn_contents13 = client13.models.seen_contents[1]
+tool_role_texts13 = [
+    part.text
+    for content in confirm_turn_contents13 if content.role == "tool"
+    for part in content.parts
+    if getattr(part, "function_response", None) is not None
+    for part in [types.Part(text=part.function_response.response.get("result", ""))]
+]
+check("confirm-turn's contents include a tool-role function_response with the recap",
+      any(CODE in t and S1_TEXT in t for t in tool_role_texts13), tool_role_texts13)
+
+for p in (episode_dir(TITLE13, RUN13), snapshot_root(TITLE13, RUN13)):
+    if p.exists():
+        shutil.rmtree(p)
+
+
+# ── Scenario 14: after an intercepted voluntary submission, the model may
+# choose to investigate further before actually resubmitting -- confirm this
+# is allowed (available tools on the confirm-turn aren't force-narrowed) and
+# the eventual second submit_final_answer call is still accepted. ──────────
+
+print("\n── after interception, model may investigate further before resubmitting ──")
+
+TITLE14, RUN14 = "_test_loop_scenario14", "unittest"
+for p in (episode_dir(TITLE14, RUN14), snapshot_root(TITLE14, RUN14)):
+    if p.exists():
+        shutil.rmtree(p)
+
+submit_call14 = fc("submit_final_answer", pde="heat", method="explicit", behavior="diffusion", valid="yes",
+                    pde_exp="revised", method_exp="revised", behavior_exp="revised", valid_exp="revised after double-checking")
+scripted14 = [
+    [submit_call14],                              # voluntary -- intercepted
+    [fc("run_diagnostic", script="print('double-checking')\n")],  # chooses to investigate more instead of resubmitting immediately
+    [submit_call14],                              # now resubmits -- accepted as final
+]
+client14 = ConfigCapturingClient(scripted14)
+
+result14 = run_agentic_stage2(
+    client14, "gemini-2.5-flash", TITLE14, RUN14, CODE, PROMPT_S1, S1_TEXT,
+    budget=6, truncate_chars=4000, subprocess_timeout=10, episode_cost_cap_usd=0.50,
+)
+
+check("client saw 3 turns", client14.models.n_calls == 3, str(client14.models.n_calls))
+check("confirm-turn's tools are NOT force-narrowed to just submit_final_answer",
+      set(client14.models.seen_configs[1].tool_config.function_calling_config.allowed_function_names)
+      == {"edit_source", "run_diagnostic", "submit_final_answer"},
+      client14.models.seen_configs[1].tool_config.function_calling_config.allowed_function_names)
+check("the run_diagnostic call in between is dispatched normally (not rejected)",
+      result14["action_trace"][1]["tool"] == "run_diagnostic"
+      and "double-checking" in result14["action_trace"][1]["result"],
+      str(result14["action_trace"][1]))
+check("action_count is 1 (only run_diagnostic counts; neither submit call does)", result14["action_count"] == 1, str(result14["action_count"]))
+check("the eventual second submit_final_answer call is accepted as final",
+      result14["submit_args"]["valid_exp"] == "revised after double-checking", str(result14["submit_args"]))
+
+for p in (episode_dir(TITLE14, RUN14), snapshot_root(TITLE14, RUN14)):
     if p.exists():
         shutil.rmtree(p)
 

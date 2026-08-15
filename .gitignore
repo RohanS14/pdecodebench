@@ -32,9 +32,11 @@ TODO.md
 
 # Derived from the dataset by eval/extract_code.py — regenerate, don't track
 data/extracted_codes/
+data/extracted_codes_jul28/
 
 # Audit scratch (datagen/full_audit_exec.py writes one .py per row plus results)
 _audit_exec/
+_audit_exec_timed/
 _audit_exec.log
 _audit_exec_results.csv
 _verify/
@@ -51,3 +53,11 @@ _verify/
 results/frontier/_agentic_work/
 results/frontier/_pilot_*/
 results/frontier/gemini25flash__belief_revision_agentic.jsonl
+
+# Misc notes
+docs/
+notes_agentic_token_inefficiency.txt
+notes_trajectory_saving_audit.txt
+
+# Results
+results/frontier

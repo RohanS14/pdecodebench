@@ -53,8 +53,22 @@ def run_python_file(filename: str, cwd: Path, timeout: int) -> tuple[str, str, b
         )
         return proc.stdout, proc.stderr, False
     except subprocess.TimeoutExpired as exc:
-        stdout = exc.stdout or ""
-        stderr = (exc.stderr or "") + f"\n[TIMEOUT after {timeout}s]"
+        # exc.stdout/exc.stderr can be raw bytes even though text=True was
+        # passed to subprocess.run above -- CPython's text-decoding happens
+        # in Popen.communicate()'s normal return path, but TimeoutExpired is
+        # raised from inside communicate() before that decode step runs, so
+        # whatever partial output had already been captured is undecoded
+        # bytes regardless of text=True. Decode explicitly before using it
+        # as a str, or concatenating it with one raises TypeError.
+        def _decode(chunk):
+            if chunk is None:
+                return ""
+            if isinstance(chunk, bytes):
+                return chunk.decode("utf-8", errors="replace")
+            return chunk
+
+        stdout = _decode(exc.stdout)
+        stderr = _decode(exc.stderr) + f"\n[TIMEOUT after {timeout}s]"
         return stdout, stderr, True
 
 

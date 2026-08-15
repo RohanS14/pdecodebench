@@ -53,7 +53,7 @@ EXCLUDED_SAMPLES: set = set()
 
 # Gemini 2.5 Flash pricing (USD/token, May 2025)
 _PRICE_IN    = 0.15  / 1_000_000   # input
-_PRICE_OUT   = 0.60  / 1_000_000   # non-thinking output
+_PRICE_OUT   = 1.25  / 1_000_000   # non-thinking output
 _PRICE_THINK = 3.50  / 1_000_000   # thinking tokens
 
 # ── Prompts ───────────────────────────────────────────────────────────────────
@@ -179,6 +179,7 @@ def call_gemini(client, model: str, contents: list, max_retries: int = 4):
     from google.genai import types
     config = types.GenerateContentConfig(
         temperature=0.0,
+        max_output_tokens=50_000,
         thinking_config=types.ThinkingConfig(thinking_budget=0),
     )
 

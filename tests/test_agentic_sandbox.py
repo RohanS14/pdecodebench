@@ -61,6 +61,27 @@ try:
     stdout, stderr, timed_out = run_python_file("slow.py", work, timeout=1)
     check("timeout surfaced, not raised", timed_out is True)
 
+    # Regression test for a real crash found live: exc.stdout/exc.stderr on
+    # subprocess.TimeoutExpired can be raw bytes even with text=True passed
+    # to subprocess.run (CPython only text-decodes on communicate()'s normal
+    # return path, not the exception path) -- the old code's
+    # `(exc.stderr or "") + f"..."` raised TypeError: can't concat str to
+    # bytes whenever the subprocess had already written non-empty stderr
+    # before the timeout hit. A timeout with NO stderr output (the "slow.py"
+    # case above) doesn't exercise this: empty bytes is falsy, so `or ""`
+    # silently substituted "" without ever reaching the concatenation.
+    (work / "slow_stderr.py").write_text(
+        "import sys, time\n"
+        "print('warning before hang', file=sys.stderr)\n"
+        "sys.stderr.flush()\n"
+        "time.sleep(5)\n"
+    )
+    stdout, stderr, timed_out = run_python_file("slow_stderr.py", work, timeout=1)
+    check("timeout with real stderr output doesn't raise", timed_out is True)
+    check("captured stderr text is a decoded str, not bytes", isinstance(stderr, str), repr(stderr))
+    check("captured stderr includes the pre-timeout output", "warning before hang" in stderr, repr(stderr))
+    check("timeout note appended to stderr", f"[TIMEOUT after 1s]" in stderr, repr(stderr))
+
     # ── snapshot_turn ─────────────────────────────────────────────────────────
     print("\n── snapshot_turn ──")
 
