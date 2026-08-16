@@ -182,17 +182,32 @@ def main() -> None:
                 thinking_budget=thinking_budget, max_retries=args.max_retries,
             )
             session_cost += result["total_cost_usd"]
+            # Aborted rows (disk-safety guard fired -- see
+            # agentic_sandbox.run_python_file / run_belief_revision_agentic's
+            # abort propagation) are still appended to the checkpoint so
+            # they are NOT silently auto-retried on the next sweep resume --
+            # a human must inspect the episode dir and clear this row from
+            # the checkpoint manually before it will be re-attempted.
             append_result(out_path, result)
             log_path = write_episode_log(result, str(cond_dir), run_id)
             new2 += 1
             print(f"log: {log_path}", flush=True)
-            print(
-                f"    actions={result['s2_action_count']} "
-                f"remaining_at_submit={result['actions_remaining_at_submission']} "
-                f"valid_match(s1->s2)={result['s1_valid_match']}->{result['s2_valid_match']} "
-                f"${result['total_cost_usd']:.5f}",
-                flush=True,
-            )
+            if result.get("aborted"):
+                print(
+                    f"    [stratified-sweep] ABORTED (disk-safety): {title} -- "
+                    f"{result.get('abort_reason')} -- inspect "
+                    f"{result.get('episode_dir')} (and its _snapshots/quarantine/ "
+                    f"if present) before re-running this row.",
+                    flush=True,
+                )
+            else:
+                print(
+                    f"    actions={result['s2_action_count']} "
+                    f"remaining_at_submit={result['actions_remaining_at_submission']} "
+                    f"valid_match(s1->s2)={result['s1_valid_match']}->{result['s2_valid_match']} "
+                    f"${result['total_cost_usd']:.5f}",
+                    flush=True,
+                )
 
         print(f"[stratified-sweep] Stage 2 (thinking_budget={thinking_budget}) done: "
               f"{new2} new rows -> {out_path}", flush=True)

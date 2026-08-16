@@ -34,6 +34,8 @@ from frontier.agentic_tools import (  # noqa: E402
     truncate,
 )
 from frontier.agentic_sandbox import (  # noqa: E402
+    MAX_EPISODE_DIR_BYTES,
+    MAX_FILE_SIZE_BYTES,
     run_python_file,
     setup_episode,
     snapshot_turn,
@@ -104,13 +106,21 @@ def _build_tools(available_names: list[str]):
     return [types.Tool(function_declarations=decls)]
 
 
-def _do_edit_source(work: Path, full_source: str, timeout: int) -> tuple[str, str | None]:
+def _do_edit_source(
+    work: Path, full_source: str, timeout: int, title: str, run_id: str,
+    max_file_size_bytes: int = MAX_FILE_SIZE_BYTES,
+    max_episode_dir_bytes: int = MAX_EPISODE_DIR_BYTES,
+) -> tuple[str, str | None, str | None]:
     """
     Write full_source as a new versioned file and rerun it. Empty/whitespace-only
     full_source is a valid no-op: reruns the current latest version completely
     unchanged (a new version file is still created, matching the "never
     overwrite in place" convention, even though its content is identical to the
     previous version).
+
+    Returns (text, new_filename, abort_reason). abort_reason is None unless a
+    disk-safety guard fired in run_python_file() (see there) -- callers must
+    force-end the episode rather than continue when it's set.
     """
     existing = sorted(p.name for p in work.glob("solver_v*.py"))
     latest_name = existing[-1]
@@ -124,29 +134,41 @@ def _do_edit_source(work: Path, full_source: str, timeout: int) -> tuple[str, st
 
     new_name = next_version_filename(existing)
     (work / new_name).write_text(new_code)
-    stdout, stderr, timed_out = run_python_file(new_name, work, timeout)
+    stdout, stderr, timed_out, abort_reason = run_python_file(
+        new_name, work, timeout, title, run_id,
+        max_file_size_bytes=max_file_size_bytes, max_episode_dir_bytes=max_episode_dir_bytes,
+    )
     suffix = " [TIMEOUT]" if timed_out else ""
     text = (
         f"Model chose edit_source ({rerun_note}). New version saved to "
         f"{new_name}. Execution returned stdout={stdout!r} stderr={stderr!r}{suffix}"
     )
-    return text, new_name
+    return text, new_name, abort_reason
 
 
-def _do_run_diagnostic(work: Path, script_text: str, timeout: int) -> tuple[str, str | None]:
+def _do_run_diagnostic(
+    work: Path, script_text: str, timeout: int, title: str, run_id: str,
+    max_file_size_bytes: int = MAX_FILE_SIZE_BYTES,
+    max_episode_dir_bytes: int = MAX_EPISODE_DIR_BYTES,
+) -> tuple[str, str | None, str | None]:
+    """Returns (text, new_filename, abort_reason) -- see _do_edit_source's
+    abort_reason docs, identical contract."""
     existing = sorted(
         int(p.stem.replace("diagnostic_", "")) for p in work.glob("diagnostic_*.py")
     )
     idx = (max(existing) + 1) if existing else 0
     new_name = f"diagnostic_{idx}.py"
     (work / new_name).write_text(script_text)
-    stdout, stderr, timed_out = run_python_file(new_name, work, timeout)
+    stdout, stderr, timed_out, abort_reason = run_python_file(
+        new_name, work, timeout, title, run_id,
+        max_file_size_bytes=max_file_size_bytes, max_episode_dir_bytes=max_episode_dir_bytes,
+    )
     suffix = " [TIMEOUT]" if timed_out else ""
     text = (
         f"Model chose run_diagnostic. Diagnostic script saved to {new_name}. "
         f"Execution returned stdout={stdout!r} stderr={stderr!r}{suffix}"
     )
-    return text, new_name
+    return text, new_name, abort_reason
 
 
 def run_agentic_stage2(
@@ -164,10 +186,17 @@ def run_agentic_stage2(
     episode_cost_cap_usd: float = EPISODE_COST_CAP_DEFAULT,
     thinking_budget: int = 0,
     max_retries: int = 4,
+    max_file_size_bytes: int = MAX_FILE_SIZE_BYTES,
+    max_episode_dir_bytes: int = MAX_EPISODE_DIR_BYTES,
 ) -> dict:
     """
     Run the agentic Stage 2 loop for one row. Returns a dict of per-episode
     result fields (action trace, submit answer, budget bookkeeping, cost).
+
+    max_file_size_bytes/max_episode_dir_bytes are exposed (rather than only
+    living as agentic_sandbox module constants) purely so tests can override
+    them with tiny values and exercise the real disk-safety guards without
+    allocating real GB-scale files.
 
     `client` is duck-typed to have `.models.generate_content(model, contents,
     config)` -- tests pass a scripted fake client (tests/test_agentic_loop.py),
@@ -434,11 +463,17 @@ def run_agentic_stage2(
 
         tools_used.add(name)
         if name == "edit_source":
-            result_text, new_filename = _do_edit_source(work, args.get("full_source", ""), subprocess_timeout)
+            result_text, new_filename, abort_reason = _do_edit_source(
+                work, args.get("full_source", ""), subprocess_timeout, title, run_id,
+                max_file_size_bytes=max_file_size_bytes, max_episode_dir_bytes=max_episode_dir_bytes,
+            )
         elif name == "run_diagnostic":
-            result_text, new_filename = _do_run_diagnostic(work, args.get("script", ""), subprocess_timeout)
+            result_text, new_filename, abort_reason = _do_run_diagnostic(
+                work, args.get("script", ""), subprocess_timeout, title, run_id,
+                max_file_size_bytes=max_file_size_bytes, max_episode_dir_bytes=max_episode_dir_bytes,
+            )
         else:
-            result_text, new_filename = f"Unknown tool: {name}", None
+            result_text, new_filename, abort_reason = f"Unknown tool: {name}", None, None
 
         actions_used += 1
         truncated = truncate(result_text, truncate_chars)
@@ -448,7 +483,19 @@ def run_agentic_stage2(
             "reasoning_text": reasoning_text,
             "thought_summary": thought_summary_text,
             **({"possible_thought_leak": True} if possible_thought_leak else {}),
+            **({"abort_reason": abort_reason} if abort_reason else {}),
         })
+
+        if abort_reason:
+            # Disk-safety guard fired (see agentic_sandbox.run_python_file):
+            # either the oversized-write culprit couldn't be confidently
+            # identified, or the episode dir's cumulative size exceeded the
+            # cap. Force-end the episode immediately -- do not append this
+            # turn's response to contents (there's nothing more to continue)
+            # and do not snapshot_turn() (the episode is over, not just this
+            # turn). Never silently retried on sweep resume; see
+            # run_stratified_sweep.py's checkpoint handling.
+            break
 
         contents.append(types.Content(
             role="tool",
@@ -475,6 +522,8 @@ def run_agentic_stage2(
         "episode_think_tokens": episode_think_tokens,
         "submit_args": submit_args,
         "episode_dir": str(work),
+        "aborted": submit_args is None and bool(action_trace) and bool(action_trace[-1].get("abort_reason")),
+        "abort_reason": action_trace[-1].get("abort_reason") if action_trace and action_trace[-1].get("abort_reason") else None,
     }
 
 
@@ -598,18 +647,41 @@ def run_stage2_and_score(
         thinking_budget=thinking_budget, max_retries=max_retries,
     )
 
-    submit = s2["submit_args"]
-    # submit_final_answer's arguments arrive already structured -- parse_response
-    # is bypassed entirely for Stage 2, per the design doc's Scoring section.
-    scores2 = score_row(submit, row, embed_model=None)
-
     out = dict(stage1_result)
     out.pop("code", None)
     out.pop("prompt_s1", None)
     s1_cost = out.pop("s1_cost_usd", 0.0)
 
+    if s2["aborted"]:
+        # Disk-safety guard force-ended the episode (see
+        # agentic_sandbox.run_python_file) -- there is no submit_args to
+        # score. Normal s2_* scoring fields are intentionally omitted so
+        # downstream analysis/plots can't mistake this for a real answer;
+        # callers (run_stratified_sweep.py) must still checkpoint this row
+        # (so it isn't silently auto-retried) and flag it for human review.
+        out.update({
+            "thinking_budget": thinking_budget,
+            "aborted": True,
+            "abort_reason": s2["abort_reason"],
+            "s2_action_count": s2["action_count"],
+            "action_trace": s2["action_trace"],
+            "episode_dir": s2["episode_dir"],
+            "s2_input_tokens": s2["episode_input_tokens"],
+            "s2_output_tokens": s2["episode_output_tokens"],
+            "s2_think_tokens": s2["episode_think_tokens"],
+            "total_cost_usd": round(s1_cost + s2["episode_cost_usd"], 8),
+        })
+        return out
+
+    submit = s2["submit_args"]
+    # submit_final_answer's arguments arrive already structured -- parse_response
+    # is bypassed entirely for Stage 2, per the design doc's Scoring section.
+    scores2 = score_row(submit, row, embed_model=None)
+
     out.update({
         "thinking_budget": thinking_budget,
+        "aborted": False,
+        "abort_reason": None,
         "transition": get_transition(out.get("s1_valid_match"), scores2.get("valid_match")),
 
         "s2_submit_args": submit,

@@ -96,14 +96,24 @@ def load_results(path: Path) -> pd.DataFrame:
     return df
 
 
-_FIGS: list[tuple[str, str, str, go.Figure]] = []  # (nav_title, plot_title, description, fig)
+_FIGS: list[tuple[str, str, str, go.Figure, str]] = []  # (nav_title, plot_title, description, fig, extra_html)
 _VIZ_IDX = [0]  # mutable counter for Vi labels
 
 
-def save(fig, name: str, out_dir: Path, title: str = "", description: str = "") -> None:
+def save(fig, name: str, out_dir: Path, title: str = "", description: str = "", extra_html: str = "") -> None:
+    """extra_html is optional raw HTML appended after the figure within the
+    same section -- e.g. plain <pre>-formatted tables that belong in the same
+    numbered V-section as the figure rather than getting their own section.
+    Existing callers that don't pass it are unaffected (defaults to "").
+
+    fig may be None for a section that is pure extra_html (e.g. a hand-drawn
+    SVG schematic) with no Plotly chart at all -- write_combined_html skips
+    the figure entirely for such sections."""
     _VIZ_IDX[0] += 1
     nav_title = f"V{_VIZ_IDX[0]}  {title or name}"
-    _FIGS.append((nav_title, title or name, description, fig))
+    _FIGS.append((nav_title, title or name, description, fig, extra_html))
+    if fig is None:
+        return
     out_dir.mkdir(parents=True, exist_ok=True)
     try:
         png_path = out_dir / f"{name}.png"
@@ -115,10 +125,14 @@ def save(fig, name: str, out_dir: Path, title: str = "", description: str = "") 
 
 def write_combined_html(out_dir: Path, slug: str) -> None:
     nav_html = content_html = ""
-    for idx, (nav_title, plot_title, desc, fig) in enumerate(_FIGS):
+    first_fig_idx = next((i for i, entry in enumerate(_FIGS) if entry[3] is not None), None)
+    for idx, (nav_title, plot_title, desc, fig, extra_html) in enumerate(_FIGS):
         active = "active" if idx == 0 else ""
         nav_html += f'<button class="nav-btn {active}" onclick="show({idx})">{nav_title}</button>\n'
-        fig_html = fig.to_html(full_html=False, include_plotlyjs=(idx == 0), div_id=f"fig{idx}")
+        fig_html = (
+            fig.to_html(full_html=False, include_plotlyjs=(idx == first_fig_idx), div_id=f"fig{idx}")
+            if fig is not None else ""
+        )
         content_html += f'''
 <div class="section {active}" id="sec{idx}">
   <div class="chart-header">
@@ -126,6 +140,7 @@ def write_combined_html(out_dir: Path, slug: str) -> None:
     <p class="question">{desc}</p>
   </div>
   {fig_html}
+  {extra_html}
 </div>'''
 
     html = f"""<!DOCTYPE html>

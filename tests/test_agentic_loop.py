@@ -807,6 +807,92 @@ for p in (episode_dir(TITLE14, RUN14), snapshot_root(TITLE14, RUN14)):
         shutil.rmtree(p)
 
 
+# ── Scenario 15: a single-candidate oversized write is quarantined but does
+# NOT abort the episode -- confirms continuity through the full loop (not
+# just at the agentic_sandbox unit level): the turn still counts, its
+# snapshot still gets taken, and the model can go on to submit normally on
+# a later turn. Uses the same tiny threshold overrides as scenario 16 below
+# so the test doesn't need to allocate real GB-scale files. ────────────────
+
+print("\n── single-candidate oversized write: quarantined, episode continues normally ──")
+
+TITLE15, RUN15 = "_test_loop_scenario15", "unittest"
+for p in (episode_dir(TITLE15, RUN15), snapshot_root(TITLE15, RUN15)):
+    if p.exists():
+        shutil.rmtree(p)
+
+oversized_write_source = "open('toolarge.bin', 'wb').write(b'x' * 500_000)\n"
+submit_call15 = fc("submit_final_answer", pde="heat", method="explicit", behavior="diffusion", valid="yes",
+                    pde_exp="unchanged", method_exp="unchanged", behavior_exp="unchanged", valid_exp="unaffected by the quarantine event")
+scripted15 = [
+    [fc("edit_source", full_source=oversized_write_source)],
+    [submit_call15],  # voluntary -- intercepted
+    [submit_call15],  # confirmed -- accepted as final
+]
+client15 = FakeClient(scripted15)
+
+result15 = run_agentic_stage2(
+    client15, "gemini-2.5-flash", TITLE15, RUN15, CODE, PROMPT_S1, S1_TEXT,
+    budget=6, truncate_chars=4000, subprocess_timeout=10, episode_cost_cap_usd=0.50,
+    max_file_size_bytes=100_000, max_episode_dir_bytes=10_000_000,
+)
+
+check("client saw all 3 turns (episode was not aborted)", client15.models.n_calls == 3, str(client15.models.n_calls))
+check("aborted is False", result15["aborted"] is False, str(result15))
+check("abort_reason is None", result15["abort_reason"] is None, str(result15["abort_reason"]))
+check("submit_args carries the final answer", result15["submit_args"]["valid"] == "yes")
+check("first action's result mentions the write cap/quarantine", "write cap" in result15["action_trace"][0]["result"], result15["action_trace"][0]["result"])
+check("episode_dir has a turn1 snapshot (episode continued normally, not aborted)",
+      (snapshot_root(TITLE15, RUN15) / "turn1").exists())
+check("the oversized file was actually quarantined (moved out of the work dir)",
+      not (episode_dir(TITLE15, RUN15) / "toolarge.bin").exists())
+
+for p in (episode_dir(TITLE15, RUN15), snapshot_root(TITLE15, RUN15)):
+    if p.exists():
+        shutil.rmtree(p)
+
+
+# ── Scenario 16: ambiguous disk-safety abort (multiple oversized candidates)
+# also force-ends the episode, with abort_reason == "ambiguous_oversized_write". ─
+
+print("\n── ambiguous disk-safety abort (ambiguous_oversized_write) ──")
+
+TITLE16, RUN16 = "_test_loop_scenario16", "unittest"
+for p in (episode_dir(TITLE16, RUN16), snapshot_root(TITLE16, RUN16)):
+    if p.exists():
+        shutil.rmtree(p)
+
+# Pre-seed two large files directly in the episode dir before the loop starts
+# (run_agentic_stage2 calls setup_episode() internally, which mkdir(exist_ok=True)s
+# and only writes solver_v0.py -- it won't disturb these), so the single
+# oversized write this turn produces becomes ambiguous (3 candidates >= the
+# size signature) -- same real mechanism as test_agentic_sandbox.py's
+# multi-match test, exercised through the full loop.
+_work16 = episode_dir(TITLE16, RUN16)
+_work16.mkdir(parents=True, exist_ok=True)
+(_work16 / "existing_large_1.bin").write_bytes(b"a" * 95_000)
+(_work16 / "existing_large_2.bin").write_bytes(b"b" * 95_000)
+
+scripted16 = [
+    [fc("edit_source", full_source=oversized_write_source)],
+]
+client16 = FakeClient(scripted16)
+
+result16 = run_agentic_stage2(
+    client16, "gemini-2.5-flash", TITLE16, RUN16, CODE, PROMPT_S1, S1_TEXT,
+    budget=6, truncate_chars=4000, subprocess_timeout=10, episode_cost_cap_usd=0.50,
+    max_file_size_bytes=100_000, max_episode_dir_bytes=10_000_000,
+)
+
+check("ambiguous abort: aborted is True", result16["aborted"] is True, str(result16))
+check("ambiguous abort: abort_reason is ambiguous_oversized_write", result16["abort_reason"] == "ambiguous_oversized_write", str(result16["abort_reason"]))
+check("ambiguous abort: pre-existing files were not moved", (_work16 / "existing_large_1.bin").exists() and (_work16 / "existing_large_2.bin").exists())
+
+for p in (episode_dir(TITLE16, RUN16), snapshot_root(TITLE16, RUN16)):
+    if p.exists():
+        shutil.rmtree(p)
+
+
 # ── Summary ──────────────────────────────────────────────────────────────────
 
 print()

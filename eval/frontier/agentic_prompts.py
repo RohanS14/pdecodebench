@@ -197,9 +197,11 @@ only submit_final_answer remains available. Use the submit_final_answer tool to 
 final answer, do not give a text-only answer. Answers with both text and an action are preferred.
 Think about what actions to take before taking an action such as writing code. Ensure any conclusions
 based on execution evidence use specific findings. Text written to stdout and stderr and saved numeric data
-(npz, txt, csv) persist between turns, but images cannot be accessed. Avoid long reasoning written out
-inside comments in the code. Answers that do not include tool calls still count against the 
-{budget}-turn budget, and a text-only answer will trigger a subsequent turn where you are forced to take an action.\
+(npz, txt, csv) persist between turns, but images cannot be accessed. Any single file you write must
+stay under 1GB -- writing more will terminate that turn's execution and delete the file. Avoid long
+reasoning written out inside comments in the code. Answers that do not include tool calls still count
+against the {budget}-turn budget, and a text-only answer will trigger a subsequent turn where you are
+forced to take an action.\
 """)
 
 

@@ -89,6 +89,66 @@ def find_valid_counterpart_code(df, gt_sample: str, mod_type: str) -> str | None
     return str(match.iloc[0]["code"])
 
 
+# ── Ground-truth reference (real variable names + genuine comments) ─────────
+# Per data/descriptions/data_spec.txt, mod_type Comm_Valid/Comm_InValid are
+# the only ones guaranteed to have BOTH real variable names (confirmed:
+# obfuscated `foobar_N` names appear exclusively in NoComm_CorrVar[_InValid])
+# AND genuine, accurate comments (as opposed to NoComm's absent comments or
+# CorrComm's comments deliberately spliced in from a different PDE class --
+# corruption_source_pde/injected_comments record exactly which one and
+# where). Genuine comments carry real explanatory value beyond the bare
+# code -- they annotate intent -- so this single reference pair is given for
+# every invalid mod_type except Comm_InValid itself (where it would just
+# duplicate what's already shown).
+_NEEDS_GROUND_TRUTH_REFERENCE = {"NoComm_InValid", "NoComm_CorrVar_InValid", "CorrComm_Invalid"}
+
+
+def find_ground_truth_reference(df, gt_sample: str, mod_type: str) -> tuple[str | None, str | None]:
+    """Returns (gt_valid_code, gt_invalid_code) from the Comm_Valid/Comm_InValid
+    siblings (same gt_sample) -- real names + genuine comments. Returns
+    (None, None) if mod_type is Comm_InValid itself (nothing to add), is
+    unrecognized, or a sibling row is missing."""
+    if mod_type not in _NEEDS_GROUND_TRUTH_REFERENCE:
+        return None, None
+    valid_match = df[(df["gt_sample"] == gt_sample) & (df["mod_type"] == "Comm_Valid")]
+    invalid_match = df[(df["gt_sample"] == gt_sample) & (df["mod_type"] == "Comm_InValid")]
+    gt_valid = str(valid_match.iloc[0]["code"]) if not valid_match.empty else None
+    gt_invalid = str(invalid_match.iloc[0]["code"]) if not invalid_match.empty else None
+    return gt_valid, gt_invalid
+
+
+def build_caveat_note(mod_type: str, corruption_source_pde: str | None) -> str:
+    """Mod_type-specific note explaining what's obfuscated/missing/misleading
+    in the code the judge is about to see, and that a genuine reference
+    follows immediately. Empty string for Comm_InValid (no reference is
+    added, so no caveat is needed) or an unrecognized mod_type."""
+    if mod_type == "NoComm_InValid":
+        return (
+            "Note: the code below has no comments. A reference version with "
+            "the same code, showing genuine, accurate comments, is provided "
+            "immediately after each code block so you can understand the "
+            "code's intended behavior."
+        )
+    if mod_type == "NoComm_CorrVar_InValid":
+        return (
+            "Note: the code below has its variable names obfuscated (replaced "
+            "with generic placeholders like foobar_N) and has no comments. A "
+            "reference version with the original variable names and genuine, "
+            "accurate comments is provided immediately after each code block "
+            "so you can accurately map between them."
+        )
+    if mod_type == "CorrComm_Invalid":
+        pde = corruption_source_pde or "a different PDE class"
+        return (
+            f"Note: the comments in the code below were deliberately replaced "
+            f"with comments taken from {pde} code and do NOT describe this "
+            f"code's actual logic -- do not rely on them. A reference version "
+            f"with genuine, accurate comments is provided immediately after "
+            f"each code block."
+        )
+    return ""
+
+
 # ── Judge prompt + structured output ─────────────────────────────────────────
 
 JUDGE_DECL = {
@@ -140,40 +200,63 @@ JUDGE_DECL = {
 }
 
 
-def build_judge_prompt(base_code: str, corrupted_code: str, invalidity_note: str, valid_exp: str) -> str:
-    return (
+def build_judge_prompt(
+    base_code: str, corrupted_code: str, invalidity_note: str, valid_exp: str,
+    gt_valid_code: str | None = None, gt_invalid_code: str | None = None,
+    caveat_note: str = "",
+) -> str:
+    """Block order (each ground-truth block placed immediately after its
+    paired original, for easy cross-referencing; caveat note before any code
+    so the judge knows how to interpret what follows; judgment materials
+    last, right before the final instruction):
+      intro -> caveat_note? -> base_valid_code -> ground_truth_valid_code? ->
+      corrupted_code_that_was_evaluated -> ground_truth_invalid_code? ->
+      invalidity_note -> model_justification -> final instruction.
+    gt_valid_code/gt_invalid_code/caveat_note default to the no-reference
+    case (omitted entirely), so a Comm_InValid row's prompt is unchanged
+    from before this reference was added."""
+    parts = [
         "You are evaluating whether a model's stated justification for why a "
         "piece of PDE solver code is physically/numerically invalid actually "
         "corresponds to a real discrepancy in the code, compared to a known-"
         "valid reference version of the same simulation.\n\n"
-        "<base_valid_code>\n"
-        f"{base_code}\n"
-        "</base_valid_code>\n\n"
-        "<corrupted_code_that_was_evaluated>\n"
-        f"{corrupted_code}\n"
+    ]
+    if caveat_note:
+        parts.append(f"{caveat_note}\n\n")
+    parts.append(f"<base_valid_code>\n{base_code}\n</base_valid_code>\n\n")
+    if gt_valid_code is not None:
+        parts.append(f"<ground_truth_valid_code>\n{gt_valid_code}\n</ground_truth_valid_code>\n\n")
+    parts.append(
+        f"<corrupted_code_that_was_evaluated>\n{corrupted_code}\n"
         "</corrupted_code_that_was_evaluated>\n\n"
+    )
+    if gt_invalid_code is not None:
+        parts.append(f"<ground_truth_invalid_code>\n{gt_invalid_code}\n</ground_truth_invalid_code>\n\n")
+    parts.append(
         "For context, here is a human annotator's note on the general "
         "symptom this corruption is expected to cause (this is a general "
         "description, not necessarily a specific mechanism -- do not treat "
         "it as the definitive or only correct answer):\n\n"
-        "<invalidity_note>\n"
-        f"{invalidity_note}\n"
-        "</invalidity_note>\n\n"
+        f"<invalidity_note>\n{invalidity_note}\n</invalidity_note>\n\n"
         "Here is the model's own justification for why it judged the "
         "corrupted code invalid:\n\n"
-        "<model_justification>\n"
-        f"{valid_exp}\n"
-        "</model_justification>\n\n"
-        "Compare the base and corrupted code directly to determine what "
-        "actually changed. Then call submit_judgment with your assessment."
+        f"<model_justification>\n{valid_exp}\n</model_justification>\n\n"
+        "Compare the base and corrupted code (and reference versions, if "
+        "provided) directly to determine what actually changed. Then call "
+        "submit_judgment with your assessment."
     )
+    return "".join(parts)
 
 
 def call_judge(client, model: str, base_code: str, corrupted_code: str,
-                invalidity_note: str, valid_exp: str, max_retries: int = 4) -> dict:
+                invalidity_note: str, valid_exp: str, max_retries: int = 4,
+                gt_valid_code: str | None = None, gt_invalid_code: str | None = None,
+                caveat_note: str = "") -> dict:
     from google.genai import types
 
-    prompt = build_judge_prompt(base_code, corrupted_code, invalidity_note, valid_exp)
+    prompt = build_judge_prompt(base_code, corrupted_code, invalidity_note, valid_exp,
+                                 gt_valid_code=gt_valid_code, gt_invalid_code=gt_invalid_code,
+                                 caveat_note=caveat_note)
     contents = [types.Content(role="user", parts=[types.Part(text=prompt)])]
     config = types.GenerateContentConfig(
         temperature=0.0,
@@ -217,9 +300,14 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--limit", type=int, default=0)
     p.add_argument("--max_cost_usd", type=float, default=1.0,
                    help="Session-wide cost cap across all judge calls (all "
-                        "stage2_jsonl inputs combined). Estimated real cost "
-                        "for the stratified-64 run is ~$0.3-0.4; default has "
-                        "headroom over that.")
+                        "stage2_jsonl inputs combined). NOTE: a real 31-row "
+                        "nothink pass under the PRE-ground-truth-reference "
+                        "prompt already cost $0.9042 -- adding the "
+                        "ground-truth reference blocks (see "
+                        "find_ground_truth_reference) increases per-row cost "
+                        "further for ~29/31 of those rows. Re-check/raise "
+                        "this default before a real re-run rather than "
+                        "trusting the old $0.3-0.4 estimate.")
     p.add_argument("--max_retries", type=int, default=4)
     return p.parse_args()
 
@@ -296,13 +384,20 @@ def main() -> None:
                       f"(mod_type={dataset_row['mod_type']}), skipping.", flush=True)
                 continue
 
+            gt_valid_code, gt_invalid_code = find_ground_truth_reference(
+                df, dataset_row["gt_sample"], dataset_row["mod_type"]
+            )
+            caveat_note = build_caveat_note(dataset_row["mod_type"], dataset_row.get("corruption_source_pde"))
+
             corrupted_code = str(dataset_row["code"])
             invalidity_note = str(dataset_row.get("invalidity_note") or "")
             valid_exp = str(row_result.get("s2_submit_args", {}).get("valid_exp") or "")
 
             print(f"  [{n_judged+1}] {title} (thinking_budget={thinking_budget})", end=" ", flush=True)
             verdict = call_judge(client, args.judge_model, base_code, corrupted_code,
-                                  invalidity_note, valid_exp, max_retries=args.max_retries)
+                                  invalidity_note, valid_exp, max_retries=args.max_retries,
+                                  gt_valid_code=gt_valid_code, gt_invalid_code=gt_invalid_code,
+                                  caveat_note=caveat_note)
 
             out_row = {
                 "title": title,
@@ -312,6 +407,7 @@ def main() -> None:
                 "category": verdict["category"],
                 "contains_incorrect_claims": verdict["contains_incorrect_claims"],
                 "explanation": verdict["explanation"],
+                "used_ground_truth_reference": gt_valid_code is not None or gt_invalid_code is not None,
             }
             with open(out_path, "a") as f:
                 f.write(json.dumps(out_row) + "\n")
