@@ -78,7 +78,27 @@ benchmark itself requires executing the code — execution only validates the da
 - `dataset_io.py` — shared dataset loading. `DEFAULT_MOD_DATASET` is the single place the
   canonical dataset path is defined; `load_dataset()` reads CSV or xlsx so jul28 CSVs and
   archived xlsx files can both be passed to `--dataset`.
-- `run_eval.py` — Experiment 1: free-generation accuracy across 10 LLMs
+- `parse_score.py` — parsing and scoring, no GPU. Also the canonical home of
+  `classify_valid_confidence()` (the hedge classifier: `Confident Yes` / `Uncertain Yes` /
+  `Hedged` / `Confident No`) and `valid_intent()`. That rule used to be copy-pasted into
+  three `viz/` scripts and `eval/frontier/parse_frontier.py`, and the copies had drifted —
+  only the frontier one had a hedge lexicon, so "possibly valid" bucketed differently
+  depending on which file you read. The frontier body is now the shared one, verified a
+  no-op against all 290 stored `s1/s2_hedge_class` labels. **Bucket shares from the shared
+  rule are not comparable to `writeup.pdf` Figure 1**, which used the looser viz copy.
+  `valid_intent()` exists because `score_valid()` treats a hedge as an abstention scoring
+  0 — accuracy *within* the Hedged bucket is 0 by construction unless you read the
+  directional lean instead.
+- `run_eval.py` — Experiment 1: free-generation accuracy. Defaults to
+  `merged_mod_jul28.csv` (256 rows) and asserts the 8x32 `mod_type` cross. Emits
+  `gt_sample`, `source`, `num_char`, `invalidity_note`, `valid_conf` and `dataset`
+  alongside the scores, so the `source` and hedge cuts need no re-join. `--gt_samples`
+  restricts to named base problems for a canary; the integrity assertion always runs on
+  the full dataset first. Resumable on `(title, mod_type, model)`.
+- `aggregate_freegen.py` — concatenates `results_*/*.jsonl` into the flat CSV the viz
+  scripts read, asserting rows-per-model, no duplicate `(title, mod_type, model)`, and a
+  single `dataset` of origin. This step used to be manual, and the hand-built
+  `results/pde_llm_eval.csv` does not match its own inputs — see `results/` below.
 - `run_mc_eval.py` — Experiment 2: MCQ confidence via logprob extraction (with text-extraction fallback for reasoning models)
 - `prepare_var_probes.py` / `run_var_logprob.py` — Experiment 3: variable log-probability evolution (Appendix A.5)
 - `frontier/` — Experiment 4: belief revision with execution summaries (Gemini-2.5-Flash)
@@ -135,6 +155,13 @@ desktop repo), results on scratch under `projects/pde-llm-eval/{outputs,logs}`, 
   `RUN_PART1` / `RUN_PVC` / `RUN_XMODAL` / `RUN_GEO`, and isolates per-step failures so
   one broken analysis does not lose the rest. Cost is dominated by the permutation test;
   `N_PERM=2000` for a fast pass.
+- `run_freegen_jul28.sbatch` — Experiment 1 on the jul28 dataset (`h200_courant`).
+  Supersedes `run_v3_all_models.sbatch`. `GROUP=canary|a|b|c|all` picks a slice of the
+  11-model roster (the writeup's 10 plus `Qwen/Qwen3-Coder-30B-A3B-Instruct`); 11 models
+  x 256 rows does not fit one 8h wall clock, so submit a, b, c separately — resume is
+  free. `GT_SAMPLES` restricts to named base problems for the canary. Uploads a partial
+  to HF **after every model** via `eval/upload_helper.py` rather than once at the end,
+  and greps each model's JSONL for `finish_reason: length` before moving on.
 - `run_v3_all_models.sbatch`, `run_mc_v3_all_models.sbatch`, `run_var_logprob*.sbatch` —
   **stale, will not run as-is.** Each still points at `/scratch/ehb7466/pde-llm-eval`,
   `${WORKSPACE}/venv`, and the archived `pdedata_clean_v3.xlsx`; all three paths moved. They
@@ -158,6 +185,14 @@ desktop repo), results on scratch under `projects/pde-llm-eval/{outputs,logs}`, 
     depth `ℓ/(L−1)`; the roster spans 28–65 layers, so raw layer index is meaningless.
   - Validated on synthetic ground truth before any compute — see
     `tests/test_world_model_delta.py`.
+  - `solver_distances.py` / `viz_solver_distances.py` — the plain-language view of the
+    same data, and the one to read first. Three questions, each with both endpoints named
+    on every mark: how far a perturbation moves **one solver against another version of
+    itself** (orange = its own invalid twin, blue = itself re-described); whether the
+    **between-solver** arrangement of all 32 survives; and the 32×32 matrices themselves,
+    ordered and labelled by `pde_class`. Every curve is computed at **all** layers —
+    `--rsa_layer` only picks a reading point for the tables, so no claim rests on a
+    hand-picked layer. Hand-rolled SVG, no plotting library, ~600 KB self-contained.
 - **Experiment 2 Part II — physics vs. code.** Part I varies only how a fixed program is
   *described* (comment-stripped source is byte-identical across three of its four
   conditions; the fourth is AST-isomorphic), so a purely syntactic representation would
@@ -182,6 +217,30 @@ desktop repo), results on scratch under `projects/pde-llm-eval/{outputs,logs}`, 
 
 `results/`: Eval outputs and model responses for experiments 1 and 2.
 
+> **`results/pde_llm_eval.csv` is stale — do not re-run the viz scripts against it.**
+> It is *not* what produced the published figures. All four headline numbers in
+> `writeup.pdf` reproduce to the decimal from `results_eval_v3/*.jsonl` (PDE type
+> 86.2% / 44.4%, validity 77.5% / 57.9%); the same cuts off this CSV give 60.0% / 36.9%
+> and 48.8% / 47.5%. Two things are wrong with it. It holds 992 rows against 1424, missing
+> `CorrComm_Invalid` and `NoComm_CorrVar_InValid` for 9 of the 10 models. And its score
+> columns were computed by a **pre-alias `parse_score.py`** — it marks
+> `parsed_pde = "Wave equation"` against `gt_pde = wave` as wrong, which is where most of
+> the ~26 pp gap comes from. The paper is fine; the trap is forward-looking, because every
+> `viz/` script still defaults to this path and would silently report numbers ~20-29 pp
+> below the published ones.
+>
+> `results/pde_llm_eval_v3.csv` is the correct rebuild from the JSONLs
+> (`python eval/aggregate_freegen.py --results_dir results_eval_v3 --out
+> results/pde_llm_eval_v3.csv --expect_rows 0`). The stale file is left untouched. The
+> complete data also carries **8** rows with `finish_reason == "length"` — truncated
+> `DeepSeek-R1-Distill-Qwen-32B` responses at 16384 tokens, scored as if complete.
+
+> **`probe/results/` and `probe/hidden_states/` are gitignored** (`.gitignore` 28–29).
+> Correct for the NPZs — a 7B is 219 MB and the 32B 666 MB — but it also means the
+> generated HTML reports are build artifacts that do not travel with the repo. Anything
+> worth keeping should be copied to `notes/experiments/pde-llm-eval/`, which is tracked
+> and which the RACA dashboard reads. Reports regenerate from an NPZ in two commands.
+
 `dataset_construction.tex`: Paper-ready appendix on how the jul28 dataset was built —
 design, source normalization, condition derivation, balance, determinism, auditing, and
 known limitations. Every count in it is measured against `data/merged_mod_jul28.csv`.
@@ -189,6 +248,216 @@ known limitations. Every count in it is measured against `data/merged_mod_jul28.
 `RELATED_WORK.md`: Drafted related-work section for `writeup.pdf` with full BibTeX (~45 entries), plus a positioning table (what each competing paper already establishes vs. our delta) and the four threats-to-validity with mitigations. Entries marked `VERIFY ... before submission` have unconfirmed author lists.
 
 `viz/`: Visualization scripts.
+- `freegen_jul28_report.py` — Experiment 1 report on the jul28 dataset. Seven panels:
+  score by condition, the hedge breakdown, human-vs-synthetic **plus the same cut inside
+  matched code-length bins** (human solvers average 2,772 characters against synthetic
+  1,118, so the raw source gap is partly a length effect), hedge calibration, reasoning
+  vs non-reasoning, and a per-condition table. Self-contained HTML.
+  `--input results/pde_llm_eval_jul28.csv`. Degrades cleanly on older result CSVs,
+  dropping the two panels that need `source` / `num_char`.
 - `paper_figures.py` — generates static figures for the paper
-- `visualize_v3.py` / `visualize_v4_enhanced.py` — interactive dashboards for experiments 1 and 2
+- `visualize_v3.py` / `visualize_v4_enhanced.py` — interactive dashboards for experiments 1 and 2.
+  All three now import the shared hedge classifier instead of redefining it, take their
+  free-gen input from `PDE_FREEGEN_CSV` (default unchanged), and prefer `num_char` from
+  the results over the stale `data/pdedata_clean_v3.xlsx` join, which pointed at a path
+  that no longer existed after the file moved to `data/archive/`.
 - `visualize_var_logprob.py` — interactive dashboard for experiment 3
+
+
+---
+
+# Part III — Cross-Modal Consistency (module reference)
+
+Experiment 2 Part III asks whether a model can detect and localize disagreement among
+four independent representations of one physical system, and whether that judgement
+tracks physics or lexical cues. It is the behavioural counterpart to §15 of
+`probe/plans/exp2_world_model.md`, which asks the same thing from hidden states.
+
+Design: the Part III section of `notes/experiments/pde-llm-eval/EXPERIMENT_README.md`.
+Red-team brief: the Part III section of `notes/experiments/pde-llm-eval/red_team_brief.md`.
+
+Runs on open weights via cluster vLLM — no API cost.
+
+---
+
+## `datagen/`
+
+- **`render_trajectory_table.py`** — the single point every trajectory passes through
+  before a model sees it. Parses the stored nested-list format (JSON first, so NaN
+  survives), resamples onto a grid fixed by the item's *valid* trajectory, and prints
+  a uniform `%+.4e` table right-justified to a common width. That uniformity is
+  load-bearing: it is what stops the corrupted view being identifiable by array shape,
+  sign width, NaN width or exponent width rather than by physics. Grid choice is
+  calibrated against all 32 trajectories by relative L2 reconstruction error — for 1-D
+  fields **frames matter more than probes** (10×40 gives median error 0.062 where
+  5×80 gives 0.179), which is the opposite of the intuition it was built on.
+  `RENDER_HARD_CASES` records the four systems that no feasible uniform grid captures.
+
+- **`corrupt_trajectory.py`** — the corruption ladder. `T_rand` (shape-matched noise),
+  `T_shuf` (a permutation of the valid trajectory's own values, preserving every
+  marginal statistic exactly), `T_swap` (the delivered cross-system trajectory),
+  `T_exec` (the invalid solver's real output), plus optional `T_timeshuf`. Seeded per
+  `(system, level)` so the build is reproducible and one system's draw does not shift
+  when another changes. `decimate_frames` reproduces the dataset's own convention —
+  `linspace(0, N-1, 10)`, verified against `Heat_1`, whose stored frames are indices
+  0, 111, …, 1000 of a 1001-step history.
+
+- **`build_multimodal_items.py`** — builds `data/multimodal_items_v1.csv`: 1024 items
+  as a manifest of identifiers, ground truth and covariates, with no view text (the
+  rendered tables run 8–25 KB each; inlining them would make the file hundreds of MB
+  and put rendering in two places). Normalizes `Navier_Stokes_*` → `NavierStokes_*` and
+  the trailing space in `'Wave_8 '`. Outlier slot is counterbalanced, not drawn freely.
+  Byte-reproducible.
+
+- **`instrument_history.py`** — adds a provably write-only history recorder to the
+  solvers that overwrite in place. Three constraints: the instrumented source is never
+  the code view; `assert_write_only` proves the recorder is only ever appended to, so
+  it cannot enter the computation; and the result is verified bit-identical to the
+  untouched run. Targets the outermost loop that mutates the declared fields — the
+  pressure-Poisson inner loop in both NavierStokes samples is a convincing decoy.
+
+- **`build_exec_trajectories.py`** — produces `T_exec` by executing the 32
+  `NoComm_InValid` solvers, each in a sandboxed subprocess under a timeout. Three
+  routes: *harvest* (27 solvers already keep a history), *instrument* (4 do not), and
+  *analytic* (`Heat_8` is spectral with no time loop, so its exact solution operator is
+  evaluated at the same ten times). Handles time-first and time-last history layouts,
+  and permutes axes to match the dataset's convention.
+
+- **`export_trajectories.py`** — writes `data/multimodal_trajectories_v1.csv`,
+  recording every trajectory the experiment uses in the source CSV's own format. The
+  two delivered columns are copied verbatim and stay byte-identical; derived columns
+  are JSON so NaN survives a round-trip.
+
+- **`audit_multimodal_items.py`** — 12 executable assertions over the item set, in the
+  style of `full_audit.py`: balance, counterbalancing, ground-truth consistency, code
+  provenance against `merged_mod_jul28.csv`, comment-freeness, render uniformity, the
+  shuffle's statistical property, vocabulary leaks, covariate population, determinism,
+  prompt budget.
+
+- **`validate_merged.py`** — standing leak audit for the jul28 set, proposed in an
+  earlier review and never landed until now. Reports surviving identifiers after
+  obfuscation (**0 of 1613** — obfuscation is complete), domain-naming imports, string
+  literal residue, `invalidity_note` coverage (**128/128**), and `verified_by` coverage
+  in `equations_jul28.csv` (**0/32** — nothing signed off).
+
+## `eval/`
+
+- **`consistency_prompts.py`** — prompt text, the neutral legend, slot permutation,
+  the JSON schema, and `ViewSources`, which materializes the four views per item with
+  per-system caching.
+
+- **`parse_consistency.py`** — five parse routes (json / fenced / embedded / regex /
+  failed) with the route recorded per row, `<think>`-block handling including the
+  unclosed case, protocol-violation flagging, and scoring. Detection is reported as
+  d′ via `detection_summary`, which carries hit rate, false-alarm rate and a
+  `degenerate` flag — never as accuracy, since 7 of 8 conditions are corrupted and a
+  model that always answers "no" is 87.5% accurate and useless.
+
+- **`run_cross_modal_consistency.py`** — the vLLM harness. Reuses `run_eval.py`'s
+  shape but takes `enable_thinking` as a **parameter** (that script hardcodes it to
+  `False`, so the reasoning factor would not exist), sets `max_model_len` explicitly,
+  and probes guided-decoding availability on the machine that will actually run.
+  `TOGGLEABLE` / `ALWAYS_THINKING` are the roster: membership is set by **reading the
+  model's chat template**, never inferred from its name, because Jinja silently
+  ignores unknown kwargs — passing `enable_thinking=False` to a model whose template
+  lacks it produces a factor level that does not exist. `MAX_MODEL_LEN = 69632` is
+  measured, not guessed: see the comment block above it for the per-model prompt
+  distribution.
+
+- **`model_registry.csv`** (in `data/`) — release date, total/active parameters,
+  family, context length and reasoning mode per model. The repo had no parameter or
+  release-date table anywhere, so the generational axis was not expressible without
+  it. `tests/test_model_registry.py` asserts it cannot drift out of agreement with
+  the runtime reasoning sets.
+
+## `viz/consistency/`
+
+- **`generational.py`** — detection d′ per model against release date, with a
+  **solver-clustered** bootstrap (1024 items, but only 32 physical systems; row-level
+  resampling would give intervals ~√32 too narrow). `trend()` returns `n_models` and
+  `span_days` beside the slope so a caption cannot report a slope without its n, and
+  returns `None` below three dated points. `degenerate` means all-one-way, **not**
+  merely extreme — a perfect detector (hit 1.0, FA 0.0) must survive into the fit.
+
+- **`build_claims.sh`** — pinned to the frozen repo
+  `bermaneh/pde-llm-eval-xmodal-consistency`. `adapter.load_real` defaults to reading
+  BOTH that and the generational repo; calling it bare here would fold the new models
+  into every pooled panel of the published `consistency_claims.html` and then copy the
+  result over the notes-folder version. Do not un-pin it.
+
+## `sbatch/`
+
+- **`run_exec_trajectories.sbatch`** — CPU, `cpu_short` / `torch_pr_427_general`.
+  Builds `T_exec` and rewrites the trajectory record. Prints a native-library banner
+  up front so a missing `mpi4py_fft` or `jax_cfd` is visible in the log rather than as
+  a mid-run traceback. Run `setup_fftw_mpi.sbatch` first if either is missing.
+- **`run_cross_modal_consistency.sbatch`** — GPU, `h200_courant` /
+  `torch_pr_427_courant`. Sweeps models × reasoning arms, resumable via the checkpoint
+  JSONL, `SKIP_EXEC=true` until `T_exec` exists.
+
+  Two things that are easy to get wrong here:
+
+  **Concurrency is fine; SHARED STATE is not.** `push_dataset_to_hub` *replaces* a
+  split rather than appending, and the uploader globs the whole `OUTPUT_DIR`. Give
+  each job its own `OUTPUT_DIR` **and** its own HF repo and any number can run at
+  once; share either and they overwrite each other's uploads.
+
+  **Qwen3.5/3.6/3.8 need `gdn_prefill_backend="triton"`.** Their Gated Delta Net
+  attention JIT-compiles a FlashInfer kernel, and FlashInfer 0.6.6 on torch is missing
+  `prefill_kernel_delta_rule_sm90.cuh` — without the flag the engine loads the model
+  and then dies. It is read from `additional_config`, bridged from the `EngineArgs`
+  field at `arg_utils.py:1964-65`.
+
+  **`export PATH="$VENV_PATH/bin:$PATH"` is load-bearing.** This venv's `activate` is
+  broken, so python is called by absolute path — which leaves the venv's *console
+  scripts* off `PATH`. vLLM shells out to `ninja` to JIT-compile kernels for newer
+  architectures; `ninja` is installed but was invisible, so a job loaded the model and
+  then died on the first `chat()` with `FileNotFoundError: 'ninja'` →
+  `EngineDeadError`, after burning the GPU allocation.
+
+## `tests/`
+
+- **`test_cross_modal_consistency.py`** — 33 tests over the corruption ladder,
+  rendering, instrumentation, parsing and scoring, all on synthetic ground truth so
+  they run before any GPU time.
+
+---
+
+## Data artifacts
+
+| File | Contents |
+|---|---|
+| `data/multimodal_items_v1.csv` | 1024 items — identifiers, ground truth, covariates |
+| `data/multimodal_trajectories_v1.csv` | every trajectory used, five columns, 107 MB |
+| `data/exec_trajectories.npz` + `_manifest.json` | `T_exec` arrays, 30/32 locally |
+
+The delivered dataset is **not modified**. `multimodality_physics_with_trajectories.csv`
+md5 is `b9f5f332176bae894a061c9f2f5e64e0`, unchanged.
+
+Both large CSVs and the NPZ should be gitignored or LFS-tracked; the stray 47 MB
+duplicate `comma-separated values.csv` at the repo root should be deleted (it is
+byte-identical to the one in `data/`).
+
+---
+
+## Running it
+
+```bash
+# 1. build the item set (no compute)
+python datagen/build_multimodal_items.py --out data/multimodal_items_v1.csv
+python datagen/audit_multimodal_items.py          # expect 12/12
+python datagen/validate_merged.py                 # standing leak audit
+
+# 2. T_exec, on the cluster (needs mpi4py_fft / jax_cfd for NavierStokes_3/4)
+sbatch sbatch/run_exec_trajectories.sbatch
+
+# 3. canary: 4 systems, all 8 conditions, both reasoning arms
+SYSTEMS=Heat_1,Wave_1,Burgers_1,NavierStokes_1 LIMIT=0 SKIP_EXEC=true \
+  sbatch sbatch/run_cross_modal_consistency.sbatch
+
+# 4. full run, one model per submission
+MODELS=Qwen/Qwen3-32B sbatch sbatch/run_cross_modal_consistency.sbatch
+```
+
+Roughly 3–5 h per model on one H200 for 2048 generations. Only `Qwen3-32B` and
+`QwQ-32B` support both reasoning arms; everything else is a between-model comparison.

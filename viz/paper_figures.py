@@ -17,7 +17,12 @@ import plotly.express as px
 from plotly.subplots import make_subplots
 
 # ── Data loading ──────────────────────────────────────────────────────────────
-df_llm = pd.read_csv("../results/pde_llm_eval.csv")
+# Free-gen results. Defaults to the v3 file these figures were published from;
+# point PDE_FREEGEN_CSV at results/pde_llm_eval_jul28.csv to rerun them on jul28.
+import os as _os
+_FREEGEN_CSV = _os.environ.get("PDE_FREEGEN_CSV", "../results/pde_llm_eval.csv")
+print(f"[viz] free-gen input: {_FREEGEN_CSV}")
+df_llm = pd.read_csv(_FREEGEN_CSV)
 df_mc  = pd.read_csv("../results/pde_mc_logprob.csv")
 
 for col in ["pde_match","method_any_match","behavior_any_match","valid_match",
@@ -185,30 +190,22 @@ print("✓ paper_fig1.png")
 #           Two separate horizontal legends: one below each panel
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def _classify_conf(raw):
-    if not isinstance(raw, str) or not raw.strip():
-        return "No response"
-    s = raw.lower().strip()
-    if s in ("yes", "true", "valid"):   return "Confident Yes"
-    if s in ("no", "false", "invalid"): return "Confident No"
-    if s.startswith("yes"):             return "Uncertain Yes"
-    if s.startswith("no"):              return "Confident No"
-    if (_re.search(r"\bnot\b.{0,20}\bvalid\b", s)
-            or "not fully valid" in s or "not physically valid" in s):
-        return "Confident No"
-    if _re.search(r"\bphysically valid\b|\bvalid simulation\b|\bvalid approach\b|\bgenerally valid\b", s):
-        return "Uncertain Yes"
-    return "Uncertain / No Answer"
+# The hedge rule is canonical in freegen/parse_score.py — it used to be copy-pasted
+# here and in two sibling viz scripts, which drifted. NOTE: the shared rule has an
+# explicit hedge lexicon the old local copy lacked ("possibly", "cannot determine",
+# "depends", ...), so bucket shares are NOT comparable to writeup.pdf Figure 1.
+import sys as _sys, os as _os
+_sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", "eval"))
+from parse_score import classify_valid_confidence as _classify_conf, VALID_CONF_CLASSES
 
-df_llm["valid_conf"] = df_llm["parsed_valid"].apply(_classify_conf)
+_CONF_ORDER  = list(VALID_CONF_CLASSES)
+_CONF_COLORS = {"Confident Yes": "#27ae60", "Uncertain Yes": "#f1c40f",
+                "Hedged": "#e67e22", "Confident No": "#c0392b"}
 
-_CONF_ORDER  = ["Confident Yes", "Uncertain Yes", "Uncertain / No Answer", "Confident No"]
-_CONF_COLORS = {
-    "Confident Yes":         "#27ae60",
-    "Uncertain Yes":         "#f1c40f",
-    "Uncertain / No Answer": "#e67e22",
-    "Confident No":          "#c0392b",
-}
+# run_eval.py now stores valid_conf per row, so the artifact and the figure carry
+# the same label. Recompute only for older results that predate that column.
+if "valid_conf" not in df_llm.columns:
+    df_llm["valid_conf"] = df_llm["parsed_valid"].apply(_classify_conf)
 
 _valid_conds   = [c for c in ALL_CONDS
                   if "InValid" not in c and "Invalid" not in c

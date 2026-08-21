@@ -2,6 +2,7 @@
 import json, math, os, sys
 import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'eval'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'freegen'))
 from mc_questions import (
     normalize_gt_list,
     make_pde_question,

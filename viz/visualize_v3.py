@@ -14,7 +14,12 @@ from plotly.subplots import make_subplots
 import json
 
 # ── Load ──────────────────────────────────────────────────────────────────────
-df_llm = pd.read_csv("../results/pde_llm_eval.csv")
+# Free-gen results. Defaults to the v3 file these figures were published from;
+# point PDE_FREEGEN_CSV at results/pde_llm_eval_jul28.csv to rerun them on jul28.
+import os as _os
+_FREEGEN_CSV = _os.environ.get("PDE_FREEGEN_CSV", "../results/pde_llm_eval.csv")
+print(f"[viz] free-gen input: {_FREEGEN_CSV}")
+df_llm = pd.read_csv(_FREEGEN_CSV)
 df_mc  = pd.read_csv("../results/pde_mc_logprob.csv")
 
 for col in ["pde_match","method_any_match","behavior_any_match","valid_match",
@@ -398,9 +403,15 @@ add("A · LLM Eval", "⑥ Invalidity detection by equation family", fig_a5b,
     "Shows which PDE families' physics models understand well enough to flag bugs.")
 
 # ── A6/A7. Code length vs accuracy ───────────────────────────────────────────
-_src = pd.read_excel("../data/pdedata_clean_v3.xlsx",
-                     usecols=["title", "num_lines"])
-df_llm = df_llm.merge(_src, on="title", how="left")
+# jul28 results carry num_char directly. Older result CSVs predate it, so fall
+# back to joining the archived v3 workbook (the file moved into data/archive/).
+if "num_char" in df_llm.columns:
+    _LEN_COL = "num_char"
+else:
+    _LEN_COL = "num_lines"
+    _src = pd.read_excel("../data/archive/pdedata_clean_v3.xlsx",
+                         usecols=["title", "num_lines"])
+    df_llm = df_llm.merge(_src, on="title", how="left")
 
 METRICS_LINELEN = [
     ("pde_match",          "PDE class accuracy"),
@@ -411,7 +422,7 @@ METRICS_LINELEN = [
 
 # Per-(title, mod_type): average accuracy across models
 _agg = (df_llm
-        .groupby(["title", "mod_type", "num_lines"])[
+        .groupby(["title", "mod_type", _LEN_COL])[
             ["pde_match","method_any_match","behavior_any_match","valid_match"]]
         .mean()
         .reset_index())
@@ -427,7 +438,7 @@ for cond in ALL_CONDS:
     color  = COND_COLOR.get(cond, "#888")
     # Raw points (faint)
     fig_a6.add_trace(go.Scatter(
-        x=sub["num_lines"], y=sub["overall_acc"] * 100,
+        x=sub[_LEN_COL], y=sub["overall_acc"] * 100,
         mode="markers",
         name=clabel,
         legendgroup=cond,
@@ -438,8 +449,8 @@ for cond in ALL_CONDS:
     ))
     # Linear trend
     if len(sub) >= 3:
-        m, b = np.polyfit(sub["num_lines"], sub["overall_acc"] * 100, 1)
-        xs = np.linspace(sub["num_lines"].min(), sub["num_lines"].max(), 50)
+        m, b = np.polyfit(sub[_LEN_COL], sub["overall_acc"] * 100, 1)
+        xs = np.linspace(sub[_LEN_COL].min(), sub[_LEN_COL].max(), 50)
         fig_a6.add_trace(go.Scatter(
             x=xs, y=m * xs + b,
             mode="lines",
@@ -468,7 +479,7 @@ add("A · LLM Eval", "⑦ Code length vs accuracy — scatter + trend", fig_a6,
     "consistent length → difficulty signal. Condition membership is the dominant predictor.")
 
 # ── A8. Binned: code length quartile vs accuracy by condition ─────────────────
-_agg["len_bin"] = pd.qcut(_agg["num_lines"], q=4,
+_agg["len_bin"] = pd.qcut(_agg[_LEN_COL], q=4,
                            labels=["Short\n(Q1)", "Med-Short\n(Q2)", "Med-Long\n(Q3)", "Long\n(Q4)"])
 _bin_acc = (_agg.groupby(["len_bin", "mod_type"])["overall_acc"]
             .mean()
@@ -502,26 +513,23 @@ add("A · LLM Eval", "⑧ Code length quartile vs accuracy", fig_a7,
 # ── A9. Validity confidence breakdown (4-way, single figure) ─────────────────
 # All 8 conditions on one x-axis; left half = valid code (correct = Yes),
 # right half = invalid code (correct = No).  Shaded region separates them.
-import re as _re
+# The hedge rule is canonical in freegen/parse_score.py — it used to be copy-pasted
+# here and in two sibling viz scripts, which drifted. NOTE: the shared rule has an
+# explicit hedge lexicon the old local copy lacked ("possibly", "cannot determine",
+# "depends", ...), so bucket shares are NOT comparable to writeup.pdf Figure 1.
+import sys as _sys, os as _os
+_sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", "eval"))
+from parse_score import classify_valid_confidence as _classify_conf, VALID_CONF_CLASSES
 
-def _classify_conf(raw):
-    if not isinstance(raw, str) or not raw.strip(): return "No response"
-    s = raw.lower().strip()
-    if s in ("yes", "true", "valid"):   return "Confident Yes"
-    if s in ("no", "false", "invalid"): return "Confident No"
-    if s.startswith("yes"):             return "Uncertain Yes"
-    if s.startswith("no"):              return "Confident No"
-    if _re.search(r"\bnot\b.{0,20}\bvalid\b", s) or "not fully valid" in s or "not physically valid" in s:
-        return "Confident No"
-    if _re.search(r"\bphysically valid\b|\bvalid simulation\b|\bvalid approach\b|\bgenerally valid\b", s):
-        return "Uncertain Yes"
-    return "Uncertain / No Answer"
-
-df_llm["valid_conf"] = df_llm["parsed_valid"].apply(_classify_conf)
-
-_CONF_ORDER  = ["Confident Yes", "Uncertain Yes", "Uncertain / No Answer", "Confident No"]
+_CONF_ORDER  = list(VALID_CONF_CLASSES)
 _CONF_COLORS = {"Confident Yes": "#27ae60", "Uncertain Yes": "#f1c40f",
-                "Uncertain / No Answer": "#e67e22", "Confident No": "#c0392b"}
+                "Hedged": "#e67e22", "Confident No": "#c0392b"}
+
+# run_eval.py now stores valid_conf per row, so the artifact and the figure carry
+# the same label. Recompute only for older results that predate that column.
+if "valid_conf" not in df_llm.columns:
+    df_llm["valid_conf"] = df_llm["parsed_valid"].apply(_classify_conf)
+
 
 # Order: valid-code conditions first, then invalid-code conditions
 _valid_conds   = [c for c in ALL_CONDS if "InValid" not in c and "Invalid" not in c

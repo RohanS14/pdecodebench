@@ -6,6 +6,7 @@ import shutil
 import sys, os
 from pathlib import Path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'eval'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'freegen'))
 
 from frontier.episode_log import render_episode_log, write_episode_log
 

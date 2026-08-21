@@ -10,7 +10,12 @@ import plotly.express as px
 from plotly.subplots import make_subplots
 
 # ── Load ──────────────────────────────────────────────────────────────────────
-df_llm = pd.read_csv("../results/pde_llm_eval.csv")
+# Free-gen results. Defaults to the v3 file these figures were published from;
+# point PDE_FREEGEN_CSV at results/pde_llm_eval_jul28.csv to rerun them on jul28.
+import os as _os
+_FREEGEN_CSV = _os.environ.get("PDE_FREEGEN_CSV", "../results/pde_llm_eval.csv")
+print(f"[viz] free-gen input: {_FREEGEN_CSV}")
+df_llm = pd.read_csv(_FREEGEN_CSV)
 df_mc  = pd.read_csv("../results/pde_mc_logprob.csv")
 
 for col in ["pde_match","method_any_match","behavior_any_match","valid_match",

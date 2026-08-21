@@ -14,7 +14,12 @@ import plotly.express as px
 from plotly.subplots import make_subplots
 
 # ── Load ──────────────────────────────────────────────────────────────────────
-df_llm = pd.read_csv("../results/pde_llm_eval.csv")
+# Free-gen results. Defaults to the v3 file these figures were published from;
+# point PDE_FREEGEN_CSV at results/pde_llm_eval_jul28.csv to rerun them on jul28.
+import os as _os
+_FREEGEN_CSV = _os.environ.get("PDE_FREEGEN_CSV", "../results/pde_llm_eval.csv")
+print(f"[viz] free-gen input: {_FREEGEN_CSV}")
+df_llm = pd.read_csv(_FREEGEN_CSV)
 df_mc  = pd.read_csv("../results/pde_mc_logprob.csv")
 
 for col in ["pde_match","method_any_match","behavior_any_match","valid_match",
@@ -412,12 +417,20 @@ add("Enhanced", "E6. Behavior alias inspection", fig_e6,
 # ── E7. Code length vs accuracy ───────────────────────────────────────────────
 import re as _re
 
-_src = pd.read_excel("../data/pdedata_clean_v3.xlsx",
-                     usecols=["title", "num_lines"])
-df_llm = df_llm.merge(_src, on="title", how="left")
+# Length covariate. jul28 results carry num_char directly (num_lines is +1 on
+# 80/256 rows, all synthetic — a trailing-newline counting difference between the
+# two parsers; num_char is correct). Older result CSVs predate that column, so
+# fall back to joining the archived v3 workbook.
+if "num_char" in df_llm.columns:
+    _LEN_COL, _LEN_LABEL = "num_char", "Number of characters of code"
+else:
+    _LEN_COL, _LEN_LABEL = "num_lines", "Number of lines of code"
+    _src = pd.read_excel("../data/archive/pdedata_clean_v3.xlsx",
+                         usecols=["title", "num_lines"])
+    df_llm = df_llm.merge(_src, on="title", how="left")
 
 _agg = (df_llm
-        .groupby(["title", "mod_type", "num_lines"])[
+        .groupby(["title", "mod_type", _LEN_COL])[
             ["pde_match","method_any_match","behavior_any_match","valid_match"]]
         .mean().reset_index())
 _agg["overall_acc"] = _agg[["pde_match","method_any_match","behavior_any_match","valid_match"]].mean(axis=1)
@@ -429,15 +442,15 @@ for cond in ALL_CONDS:
     clabel = COND_SHORT.get(cond, cond)
     color  = COND_COLOR.get(cond, "#888")
     fig_e7.add_trace(go.Scatter(
-        x=sub["num_lines"], y=sub["overall_acc"] * 100,
+        x=sub[_LEN_COL], y=sub["overall_acc"] * 100,
         mode="markers", name=clabel, legendgroup=cond, showlegend=True,
         marker=dict(color=color, size=5, opacity=0.35),
         hovertemplate="%{customdata}<br>Lines: %{x}<br>Acc: %{y:.1f}%<extra></extra>",
         customdata=sub["title"],
     ))
     if len(sub) >= 3:
-        m, b = np.polyfit(sub["num_lines"], sub["overall_acc"] * 100, 1)
-        xs = np.linspace(sub["num_lines"].min(), sub["num_lines"].max(), 50)
+        m, b = np.polyfit(sub[_LEN_COL], sub["overall_acc"] * 100, 1)
+        xs = np.linspace(sub[_LEN_COL].min(), sub[_LEN_COL].max(), 50)
         fig_e7.add_trace(go.Scatter(
             x=xs, y=m * xs + b, mode="lines",
             name=clabel + " (trend)", legendgroup=cond, showlegend=False,
@@ -445,7 +458,7 @@ for cond in ALL_CONDS:
         ))
 fig_e7.update_layout(
     title="LLM Eval: Code length vs overall accuracy (per snippet, averaged across models)",
-    xaxis_title="Number of lines of code", yaxis_title="Overall accuracy (%)",
+    xaxis_title=_LEN_LABEL, yaxis_title="Overall accuracy (%)",
     yaxis_range=[0, 105], height=500,
     legend=dict(x=1.02, y=1, xanchor="left", bgcolor="rgba(240,242,255,0.95)",
                 bordercolor="#aaa", borderwidth=1, font=dict(color="#111")),
@@ -456,7 +469,7 @@ add("Enhanced", "E7. Code length vs accuracy (scatter + trend)", fig_e7,
     "NoComm_InValid tends to be longer (mean ~131 lines) and harder. "
     "Length effect is modest relative to condition effect.")
 
-_agg["len_bin"] = pd.qcut(_agg["num_lines"], q=4,
+_agg["len_bin"] = pd.qcut(_agg[_LEN_COL], q=4,
                            labels=["Short (Q1)", "Med-Short (Q2)", "Med-Long (Q3)", "Long (Q4)"])
 _bin_acc = _agg.groupby(["len_bin","mod_type"])["overall_acc"].mean().reset_index()
 fig_e8 = go.Figure()
@@ -477,27 +490,26 @@ fig_e8.update_layout(
     margin=dict(l=70, r=220, t=80, b=80),
 )
 add("Enhanced", "E8. Code length quartile vs accuracy", fig_e8,
-    "Snippets split into quartiles by num_lines (Q1=shortest, Q4=longest). "
+    f"Snippets split into quartiles by {_LEN_COL} (Q1=shortest, Q4=longest). "
     "Accuracy averaged across all models and question types per cell.")
 
 # ── E9. Validity prediction confidence (4-way, with bootstrap CI) ─────────────
-def _classify_conf(raw):
-    if not isinstance(raw, str) or not raw.strip(): return "No response"
-    s = raw.lower().strip()
-    if s in ("yes","true","valid"):   return "Confident Yes"
-    if s in ("no","false","invalid"): return "Confident No"
-    if s.startswith("yes"):           return "Uncertain Yes"
-    if s.startswith("no"):            return "Confident No"
-    if _re.search(r"\bnot\b.{0,20}\bvalid\b", s) or "not fully valid" in s or "not physically valid" in s:
-        return "Confident No"
-    if _re.search(r"\bphysically valid\b|\bvalid simulation\b|\bvalid approach\b|\bgenerally valid\b", s):
-        return "Uncertain Yes"
-    return "Uncertain / No Answer"
+# The hedge rule is canonical in freegen/parse_score.py — it used to be copy-pasted
+# here and in two sibling viz scripts, which drifted. NOTE: the shared rule has an
+# explicit hedge lexicon the old local copy lacked ("possibly", "cannot determine",
+# "depends", ...), so bucket shares are NOT comparable to writeup.pdf Figure 1.
+import sys as _sys, os as _os
+_sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", "eval"))
+from parse_score import classify_valid_confidence as _classify_conf, VALID_CONF_CLASSES
 
-df_llm["valid_conf"] = df_llm["parsed_valid"].apply(_classify_conf)
-_CONF_ORDER  = ["Confident Yes", "Uncertain Yes", "Uncertain / No Answer", "Confident No"]
+_CONF_ORDER  = list(VALID_CONF_CLASSES)
 _CONF_COLORS = {"Confident Yes": "#27ae60", "Uncertain Yes": "#f1c40f",
-                "Uncertain / No Answer": "#e67e22", "Confident No": "#c0392b"}
+                "Hedged": "#e67e22", "Confident No": "#c0392b"}
+
+# run_eval.py now stores valid_conf per row, so the artifact and the figure carry
+# the same label. Recompute only for older results that predate that column.
+if "valid_conf" not in df_llm.columns:
+    df_llm["valid_conf"] = df_llm["parsed_valid"].apply(_classify_conf)
 _present_conds  = [c for c in ALL_CONDS if c in df_llm["mod_type"].unique()]
 _cond_labels    = [COND_SHORT.get(c, c) for c in _present_conds]
 

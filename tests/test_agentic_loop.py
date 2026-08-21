@@ -10,6 +10,7 @@ exercises the cost-guard trip.
 import shutil
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'eval'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'freegen'))
 
 from google.genai import types
 

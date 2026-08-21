@@ -61,3 +61,34 @@ notes_trajectory_saving_audit.txt
 
 # Results
 results/frontier
+# ── Large derived data ────────────────────────────────────────────────────────
+# All of these regenerate from the delivered source plus the code in datagen/.
+# NOTE: gitignore has no trailing comments -- "path # note" is a literal pattern.
+#
+# multimodal_trajectories_v1.csv is 111 MB. GitHub's per-file hard limit is 100 MB,
+# so committing it does not fail at review time, it fails at push time.
+# Regenerate: sbatch/run_exec_trajectories.sbatch with RUN_EXPORT=true
+data/multimodal_trajectories_v1.csv
+# 37 MB. Regenerate: datagen/export_rendered_items.py
+data/multimodal_items_rendered_v1.csv
+# 2.5 MB, but it cost five jobs to produce. Published to HuggingFace.
+# Regenerate: sbatch/run_exec_trajectories.sbatch
+data/exec_trajectories.npz
+
+# Delivered source data. NOT regenerable -- kept out of git for size and published
+# to HuggingFace instead. md5 b9f5f332176bae894a061c9f2f5e64e0.
+data/multimodality_physics_with_trajectories.csv
+
+# Exact duplicate of the file above, under a browser-default name. Verified
+# byte-identical (same md5). Safe to delete; ignored so it cannot be committed.
+comma-separated values.csv
+
+# Result CSVs -- rebuilt from the published HF datasets by viz/refresh_report.sh
+results/*.csv
+results/xmodal/
+results/xmodal_summary.json
+results/xmodal_summary.csv
+
+# Generated reports: multi-MB and self-contained, republished by refresh_report.sh
+viz/pde_dual_report.html
+viz/*_report.html

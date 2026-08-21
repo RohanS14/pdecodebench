@@ -5,7 +5,7 @@ Re-uses parse_response() and score_row() from ../parse_score.py unchanged so
 that scoring is identical to prior experiments.
 
 Adds:
-  classify_hedge(raw)         — hedge class label, matches E9 in visualize_v4_enhanced.py
+  classify_hedge(raw)         — re-export of parse_score.classify_valid_confidence()
   format_trajectory_block()   — formats precomputed trajectory for Stage 2 prompt
   compute_traj_signal()       — classifies trajectory signal strength for analysis
 """
@@ -16,43 +16,22 @@ from pathlib import Path
 
 # ── Re-export from parent parse_score.py (unchanged) ─────────────────────────
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from parse_score import parse_response, score_row  # noqa: F401 — intentional re-export
+from parse_score import (  # noqa: F401 — intentional re-export
+    parse_response,
+    score_row,
+    classify_valid_confidence,
+    valid_intent,
+)
 
 
 # ── Hedge classifier ──────────────────────────────────────────────────────────
-# Ported directly from _classify_conf() in visualize_v4_enhanced.py (lines 484-495)
-# so hedge labels are identical across old and new experiments.
+# Now a re-export. The rule used to live here and in three near-identical copies
+# under viz/; it is canonical in parse_score.classify_valid_confidence(), which
+# carries this exact body verbatim. Labels are therefore unchanged for every
+# result already on disk — verified against results/frontier/*.jsonl.
 
-def classify_hedge(raw: str) -> str:
-    """
-    Returns: 'Confident Yes' | 'Uncertain Yes' | 'Hedged' | 'Confident No'
-    Matches _classify_conf in visualize_v4_enhanced.py exactly.
-    """
-    if not isinstance(raw, str) or not raw.strip():
-        return "Hedged"
-    s = raw.lower().strip()
-
-    if s in ("yes", "true", "valid"):
-        return "Confident Yes"
-    if s in ("no", "false", "invalid"):
-        return "Confident No"
-    if s.startswith("yes"):
-        return "Uncertain Yes"
-    if s.startswith("no"):
-        return "Confident No"
-    if (re.search(r"\bnot\b.{0,20}\bvalid\b", s)
-            or "not fully valid" in s
-            or "not physically valid" in s):
-        return "Confident No"
-    if re.search(r"\bphysically valid\b|\bvalid simulation\b|\bvalid approach\b|\bgenerally valid\b", s):
-        return "Uncertain Yes"
-    if re.search(r"\b(unclear|cannot determine|uncertain|depends|potentially|possibly|might be|may be)\b", s):
-        return "Hedged"
-    if re.search(r"\byes\b|\bvalid\b|\bcorrect\b", s):
-        return "Uncertain Yes"
-    if re.search(r"\bno\b|\binvalid\b|\bincorrect\b", s):
-        return "Confident No"
-    return "Hedged"
+classify_hedge = classify_valid_confidence
+"""Returns: 'Confident Yes' | 'Uncertain Yes' | 'Hedged' | 'Confident No'."""
 
 
 # ── Trajectory signal classifier ──────────────────────────────────────────────

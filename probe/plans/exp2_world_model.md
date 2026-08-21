@@ -522,3 +522,46 @@ is a material change under the workspace rules. Sequence:
 3. Canary: 2 solvers × 8 conditions × 3 modalities, one model, end to end.
 4. Part I (§1–§8) can report independently of Part II — it is a complete
    description-invariance result on its own, provided it is labelled as one.
+
+---
+
+## 18. Part III — the behavioural counterpart to §15
+
+§15 asks whether *hidden states* of one physical system align across modalities that
+share no surface form. Part III asks the same question of *behaviour*: shown four
+independent representations of one system — solver code, symbolic equation, numerical
+trajectory, natural-language description — in randomized slot order with exactly one of
+them corrupted, can a model say that they disagree, say **which** one is the outlier, and
+does that judgement track physics rather than lexical cues?
+
+The two are deliberately paired. A representational alignment that no behaviour can read
+out is weak evidence; a behavioural result with no representational correlate does not
+say where the information lives. They share the same 32 systems, the same
+`gt_sample` keys, and the same equation file, so a per-system correlation between the
+§15 within-class retrieval score and the Part III localization score is computable
+directly and is the joint claim worth making.
+
+**What Part III adds that §15 cannot.** §15's trajectory modality is a single valid
+trajectory per system. Part III introduces a four-rung corruption ladder — `T_rand`
+(shape-matched noise), `T_shuf` (a permutation of the trajectory's own values, so every
+marginal statistic is preserved exactly), `T_swap` (another system's real trajectory),
+`T_exec` (the invalid solver's actual output) — which turns corruption severity from a
+confound into a measured axis. Reading the curve across the four rungs is the
+measurement, and it has no analogue in the retrieval design.
+
+**Dependencies shared with this plan.** `data/equations_jul28.csv` is the physics ground
+truth for both, and its `verified_by` column is currently empty for all 32 rows — that
+gate blocks Part III and §15 alike. Trajectory extraction on `cpu_short` likewise serves
+both (`T_exec` is at 30/32).
+
+**Constraint inherited from §15's measured confounds.** 32/32 valid descriptions name
+their PDE family in physical vocabulary while 0/32 descriptions and 0/32 equations name a
+numerical method. So `system_pde_class` sits at ceiling whenever a clean description is
+present, and the informative cell is the one where the description is the corrupted view.
+`system_num_method` is carried only by the code.
+
+Design and item construction: the Part III section of
+`notes/experiments/pde-llm-eval/EXPERIMENT_README.md`. Threats and gates: the Part III
+section of `notes/experiments/pde-llm-eval/red_team_brief.md`. Module reference:
+`README.md`. `redteam_status` is `pending`; nothing runs before
+`/raca:experiment-preflight` clears it.

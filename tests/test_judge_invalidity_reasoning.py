@@ -6,6 +6,7 @@ is to be correct against the dataset's actual (irregular) mod_type naming.
 """
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'eval'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'freegen'))
 
 import pandas as pd
 
