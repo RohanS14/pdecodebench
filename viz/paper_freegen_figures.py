@@ -1,5 +1,9 @@
 """
-paper_hedge_figures.py — the validity-confidence breakdown, as light PNGs.
+paper_freegen_figures.py — free-generation paper figures, as light PNGs.
+
+Renamed from paper_hedge_figures.py: it outgrew the name once the confident/hedged
+split was dropped from the breakdowns and the file picked up the resampling and
+PDE-identification figures.
 
 Separate from paper_figures.py because that script loads the MC logprob data and
 resolves its inputs relative to viz/; these two figures need only the free-generation
@@ -11,6 +15,8 @@ Two figures, and the second is the one that carries the argument:
     paper_hedge_pooled.png     eight perturbations, every model pooled
     paper_hedge_by_model.png   the same, one small multiple per model
     paper_overclaim.png        stated confidence against resampling stability
+    paper_pde_naming.png       does the model name the PDE, by class and by
+                               annotation-only perturbation
 
 The pooled figure alone is misleading on this roster. The newer checkpoints answer
 the invalid half almost perfectly and the valid half barely better than chance; the
@@ -18,8 +24,8 @@ older ones do the reverse. Averaging two opposite biases produces a bar that rea
 moderate competence at both, which is the one thing these figures must not say.
 
 Usage:
-    python viz/paper_hedge_figures.py
-    PDE_FREEGEN_CSV=results/freegen_xmodal.csv OUT_DIR=figures python viz/paper_hedge_figures.py
+    python viz/paper_freegen_figures.py
+    PDE_FREEGEN_CSV=results/freegen_xmodal.csv OUT_DIR=figures python viz/paper_freegen_figures.py
 """
 import os
 import sys
@@ -61,12 +67,19 @@ COND_ORDER = [
 # "yes" or "no" and the hedged bands were slivers that invited reading a real
 # confidence signal off a format artefact. Confidence is measured properly in
 # fig_overclaim() below, by resampling, and that is where the split belongs.
-ORDER = ["says invalid", "no lean", "says valid"]
-COLOR = {"says invalid": "#c0392b", "no lean": "#95a5a6", "says valid": "#27ae60"}
-# Verdict bucket -> the direction it states. "no lean" has no direction and stays.
-DIRECTION = {"Confident No": "says invalid", "Hedged No": "says invalid",
-             "Confident Yes": "says valid", "Hedged Yes": "says valid",
-             "no lean": "no lean"}
+ORDER = ["predicts invalid", "predicts valid"]
+COLOR = {"predicts invalid": "#c0392b", "predicts valid": "#27ae60"}
+# Verdict bucket -> the direction it states. An answer with NO direction ("depends on
+# the time step and grid resolution") is dropped rather than drawn, so the bars are a
+# share of answers that stated a direction and still sum to 100.
+#
+# Worth knowing what that excludes: 92 of 5,426 draws, and 88 of those 92 are
+# Nemotron -- 11.5% of its answers, against 0-2 draws for every other model. So this
+# is not an even 1.7% trim off every bar; Nemotron's bars rest on a base 11.5%
+# smaller than the rest of the roster's, and its declining to answer is a real
+# behaviour that these figures no longer show.
+DIRECTION = {"Confident No": "predicts invalid", "Hedged No": "predicts invalid",
+             "Confident Yes": "predicts valid", "Hedged Yes": "predicts valid"}
 INVALID_BAND = "rgba(125,60,152,0.10)"
 DIVIDER = "rgba(125,60,152,0.75)"
 
@@ -81,7 +94,14 @@ def load():
                     .fillna("").replace("", "no lean"))
     # Kept alongside `bucket`, not instead of it: fig_overclaim() needs the
     # confident/hedged split that `direction` throws away.
-    df["direction"] = df["bucket"].map(DIRECTION).fillna("no lean")
+    df["direction"] = df["bucket"].map(DIRECTION)
+    n_nolean = int(df["direction"].isna().sum())
+    if n_nolean:
+        worst = (df[df["direction"].isna()]["model"].value_counts().head(1))
+        print(f"[paper] dropping {n_nolean} draw(s) with no stated direction "
+              f"({100 * n_nolean / len(df):.2f}%); {worst.iloc[0]} of them are "
+              f"{worst.index[0].split('/')[-1]}")
+        df = df[df["direction"].notna()]
     return df
 
 
@@ -154,10 +174,9 @@ def fig_pooled(df):
                        showarrow=False, xanchor="right", font=dict(size=11, color="#7d3c98"))
     fig.update_layout(
         template="plotly_white", barmode="stack",
-        title="What the models say — all perturbations, all models pooled<br><sup>95% bootstrap CI over the 32 base systems, on each cumulative boundary</sup>",
         yaxis=dict(title="% of answers", range=[0, 105], dtick=20),
         xaxis=dict(tickangle=-25),
-        width=1100, height=560, margin=dict(l=70, r=40, t=70, b=150),
+        width=1100, height=520, margin=dict(l=70, r=40, t=42, b=150),
         legend=dict(orientation="h", y=-0.38, x=0.5, xanchor="center", title=""),
         font=dict(size=13))
     return fig
@@ -194,17 +213,22 @@ def fig_by_model(df):
                       row=r, col=c)
 
     fig.update_layout(template="plotly_white", barmode="stack",
-                      title="What each model says — the same eight perturbations",
-                      width=1500, height=380 * nrows + 240,
-                      margin=dict(l=60, r=40, t=125, b=250),
-                      # Legend ABOVE the panels. At the bottom it sat in the same
-                      # strip as the vertical tick labels and clipped the middle two
-                      # columns -- "Corrupt Comment" rendered as "upt Comment". The
-                      # top strip is empty apart from the title.
-                      legend=dict(orientation="h", y=1.045, x=0.5, xanchor="center",
-                                  yanchor="bottom", title=""),
+                      width=1500, height=380 * nrows + 150,
+                      margin=dict(l=75, r=40, t=42, b=215),
+                      # Legend BELOW the panels, just clear of the vertical tick
+                      # labels and no further. At y=-0.12 it sat in the same strip as
+                      # them and clipped the middle two columns ("Corrupt Comment"
+                      # rendered as "upt Comment"); at -0.30 it cleared them and left
+                      # a band of dead space. The labels need ~150px, so the legend
+                      # sits just past that and the bottom margin holds exactly both.
+                      legend=dict(orientation="h", y=-0.235, x=0.5, xanchor="center",
+                                  yanchor="top", title=""),
                       font=dict(size=12))
     fig.update_yaxes(range=[0, 100], title_text="")
+    # Axis title on the LEFT COLUMN only -- shared_yaxes hides the ticks on the
+    # inner panels, so repeating the title there would label an axis with no scale.
+    for r in range(1, nrows + 1):
+        fig.update_yaxes(title_text="% of answers", row=r, col=1)
     # Tick labels on the BOTTOM row of each column only. Eight labels at -55 degrees
     # are taller than the gap between rows, so each one collided with the subplot
     # title beneath it. The columns share one category axis, so the surviving label
@@ -258,6 +282,10 @@ def item_frame(df):
                no=("lean", lambda s: (s == False).sum()),
                all_conf=("conf", "all")).reset_index()
     it = it[it["n"] == 3].copy()
+    # Items whose draws all stated a direction. load() already removed the no-lean
+    # DRAWS, so an item that lost one is short of three and is dropped here -- which
+    # is what we want: "the draws disagree" must not be able to mean "one of them
+    # declined to answer".
     it["stable"] = (it["yes"] == 3) | (it["no"] == 3)
     it["state"] = [("confident, " if c else "hedged, ") + ("stable" if s else "flips")
                    for c, s in zip(it["all_conf"], it["stable"])]
@@ -312,15 +340,209 @@ def fig_overclaim(df):
 
     fig.update_layout(
         template="plotly_white", barmode="stack",
-        title="Stated confidence is not confidence<br><sup>Three samples of one prompt "
-              "at temperature 0.6. Pooled: 90.1% of items have every draw stating an "
-              "unqualified verdict; only 67.4% have all three draws agreeing.</sup>",
-        width=1500, height=560, margin=dict(l=210, r=60, t=170, b=110),
+        width=1500, height=520, margin=dict(l=210, r=60, t=95, b=110),
         legend=dict(orientation="h", y=-0.16, x=0.5, xanchor="center", title=""),
         font=dict(size=13))
     fig.update_xaxes(title_text="% of confident items that flip", range=[0, 92],
                      row=1, col=1)
     fig.update_xaxes(title_text="% of items", range=[0, 100], row=1, col=2)
+    return fig
+
+
+# ── Does the model name the PDE? ──────────────────────────────────────────────
+# A different question from validity, on the same 256 items. `pde_match` is an
+# alias-aware keyword match of the model's `pde:` field against ground truth, so it
+# credits "inviscid Burgers" for "burgers" and does not credit a near miss.
+#
+# Two things worth separating, hence two panels. Some PDEs are simply harder --
+# Navier-Stokes sits ~20 points below the other three for every model on the roster.
+# And naming degrades when only the ANNOTATION is perturbed: a corrupted comment or
+# obfuscated identifiers leave the physics byte-identical, so a model reading the
+# code should be unaffected. It is not, which is the same label-reading effect the
+# validity figures show, measured on a task where the right answer does not move.
+PDE_CLASSES = ["burgers", "heat", "wave", "navier-stokes"]
+PDE_CLASS_COLOR = {"burgers": "#2980b9", "heat": "#e67e22",
+                   "wave": "#27ae60", "navier-stokes": "#8e44ad"}
+CLEAN_CONDS = ["Comm_Valid", "NoComm_Valid"]
+ANNOT_CONDS = ["CorrComm", "NoComm_CorrVar"]
+
+
+def _pde_label(d, model, full=256):
+    """Model name, marked with its item count while it is still short.
+
+    GLM's first batch walks gt_samples in order, so its 32 items are ALL Burgers --
+    three of the four class bars are missing rather than low, and an unmarked row
+    invites reading its single bar as a roster-topping score.
+    """
+    n = d[d["model"].eq(model)].groupby(["title", "mod_type"]).ngroups
+    short = model.split("/")[-1]
+    return short if n >= full else f"{short} (partial, {n}/{full})"
+
+
+def fig_pde_naming(df):
+    # The run-on rows are EXCLUDED here, not just noted. On those, parsed_pde holds
+    # the entire single-line answer, so the alias match fires on a string that also
+    # contains the method and behaviour text -- it scores 0.818 against Nemotron's
+    # own 0.680 on normally parsed rows. That is the mis-parse flattering the metric,
+    # not the model doing better, and it would put Nemotron's bar in the wrong place.
+    d = df[df["parsed_valid"].notna()].copy()
+    n_drop = len(df) - len(d)
+    if n_drop:
+        print(f"[paper] pde figure: excluding {n_drop} run-on row(s) whose parsed_pde "
+              f"holds the whole answer")
+
+    models = sorted(d["model"].unique(),
+                    key=lambda m: d[d["model"].eq(m)]["pde_match"].mean())
+
+    # A model still generating is marked, with its item count. GLM's first batch
+    # walks gt_samples in order, so its 32 items are ALL Burgers -- three of the
+    # four class bars are missing rather than low, and an unmarked row invites
+    # reading its single bar as a roster-topping score.
+    names = [_pde_label(d, m) for m in models]
+
+    fig = make_subplots(
+        rows=1, cols=2, horizontal_spacing=0.13, shared_yaxes=True,
+        subplot_titles=("Naming accuracy by PDE class",
+                        "Cost of perturbing the annotation alone<br>"
+                        "<sup>clean → corrupted comment or obfuscated identifiers;"
+                        " the physics is unchanged</sup>"))
+
+    for cls in PDE_CLASSES:
+        xs = []
+        for m in models:
+            sub = d[d["model"].eq(m) & d["pde_class"].eq(cls)]
+            xs.append(100 * sub["pde_match"].mean() if len(sub) else float("nan"))
+        fig.add_bar(y=names, x=xs, orientation="h", name=cls,
+                    marker_color=PDE_CLASS_COLOR[cls],
+                    marker_line=dict(color="white", width=0.4), row=1, col=1)
+
+    # Right panel: one row per model, clean and annotation-perturbed joined.
+    for i, m in enumerate(models):
+        g = d[d["model"].eq(m)]
+        a = g[g["mod_type"].isin(CLEAN_CONDS)]["pde_match"].mean() * 100
+        b = g[g["mod_type"].isin(ANNOT_CONDS)]["pde_match"].mean() * 100
+        fig.add_scatter(x=[a, b], y=[names[i], names[i]], mode="lines",
+                        line=dict(color="#95a5a6", width=2), showlegend=False,
+                        hoverinfo="skip", row=1, col=2)
+        fig.add_scatter(x=[a], y=[names[i]], mode="markers", name="clean",
+                        marker=dict(color="#27ae60", size=11),
+                        showlegend=(i == 0), legendgroup="clean",
+                        hovertemplate="clean: %{x:.1f}%<extra></extra>", row=1, col=2)
+        fig.add_scatter(x=[b], y=[names[i]], mode="markers",
+                        name="annotation corrupted",
+                        marker=dict(color="#c0392b", size=11, symbol="circle-open",
+                                    line=dict(width=2.5, color="#c0392b")),
+                        showlegend=(i == 0), legendgroup="annot",
+                        hovertemplate="annotation corrupted: %{x:.1f}%<extra></extra>",
+                        row=1, col=2)
+
+    fig.update_layout(
+        template="plotly_white", barmode="group", bargap=0.25,
+        width=1500, height=520, margin=dict(l=215, r=50, t=95, b=105),
+        legend=dict(orientation="h", y=-0.14, x=0.5, xanchor="center",
+                    yanchor="top", title=""),
+        font=dict(size=13))
+    fig.update_xaxes(title_text="% of items where the PDE was named correctly",
+                     range=[0, 105], row=1, col=1)
+    fig.update_xaxes(title_text="% named correctly", range=[0, 105], row=1, col=2)
+    return fig
+
+
+# ── Every perturbation, per model, on PDE naming ──────────────────────────────
+# The cleanest test in the dataset. Unlike validity, the correct answer here does
+# NOT move across the eight conditions: the same solver is the same PDE whether its
+# comment lies, its identifiers are foobar_N, or its physics is broken. So every
+# bar in a panel should be the same height, and any deviation is the model reading
+# something other than the code.
+#
+# What comes out is specific rather than general. It is not perturbation that hurts,
+# it is IDENTIFIER OBFUSCATION: the two conditions with foobar_N names are the low
+# bars for every model that moves at all, and the invalid-physics conditions barely
+# register. Qwen3.5/3.6/3.8 are flat across all eight (spread 3.1-5.1 points) while
+# Qwen3-32B, R1-Distill and Nemotron swing 21-24.
+# What was done to the ANNOTATION, which is the axis this figure is about. A two-way
+# obfuscated/intact split was wrong: CorrComm and CorrComm_Invalid carry a corrupted
+# COMMENT, so grouping them with the untouched conditions as "identifiers intact"
+# implied their annotation was clean when a different part of it had been attacked.
+# Three states, and the physics-invalid conditions are annotation-intact -- broken
+# physics is not an annotation change.
+ANNOTATION_STATE = {
+    "Comm_Valid":             "annotation intact",
+    "NoComm_Valid":           "annotation intact",
+    "Comm_InValid":           "annotation intact",
+    "NoComm_InValid":         "annotation intact",
+    "CorrComm":               "comment corrupted",
+    "CorrComm_Invalid":       "comment corrupted",
+    "NoComm_CorrVar":         "identifiers obfuscated",
+    "NoComm_CorrVar_InValid": "identifiers obfuscated",
+}
+ANNOTATION_COLOR = {"annotation intact": "#5b7c99",
+                    "comment corrupted": "#e67e22",
+                    "identifiers obfuscated": "#8e44ad"}
+
+
+def fig_pde_by_perturbation(df):
+    d = df[df["parsed_valid"].notna()].copy()      # run-on rows: see fig_pde_naming
+    present = present_conds(d)
+    labels = labels_for(present)
+    split = sum(1 for _, _, gt in present if gt)
+
+    # Ordered by SPREAD, so the flat models group together and the sensitive ones
+    # read as a block rather than being scattered by overall accuracy.
+    def spread(m):
+        g = d[d["model"].eq(m)]
+        v = [g[g["mod_type"].eq(c)]["pde_match"].mean() for c, _, _ in present]
+        v = [x for x in v if x == x]
+        return (max(v) - min(v)) if v else 0.0
+    models = sorted(d["model"].unique(), key=spread)
+
+    ncols = 4
+    nrows = (len(models) + ncols - 1) // ncols
+    fig = make_subplots(rows=nrows, cols=ncols, shared_yaxes=True,
+                        subplot_titles=[_pde_label(d, m) for m in models],
+                        vertical_spacing=0.09, horizontal_spacing=0.045)
+
+    for i, m in enumerate(models):
+        r, c = i // ncols + 1, i % ncols + 1
+        g = d[d["model"].eq(m)]
+        ys, cols = [], []
+        for code, _, _ in present:
+            sub = g[g["mod_type"].eq(code)]
+            ys.append(100 * sub["pde_match"].mean() if len(sub) else 0.0)
+            cols.append(ANNOTATION_COLOR[ANNOTATION_STATE[code]])
+        fig.add_bar(x=labels, y=ys, marker_color=cols, showlegend=False,
+                    marker_line=dict(color="white", width=0.4),
+                    hovertemplate="%{x}: %{y:.1f}%<extra></extra>", row=r, col=c)
+        # No baseline rule. The two Clean bars ARE the reference and they are right
+        # there at the left of every panel, so a line drawn through their mean added
+        # a third thing to decode without adding a number the reader cannot already
+        # see.
+        fig.add_vline(x=split - 0.5, line=dict(color="#b0b7c3", width=1, dash="dash"),
+                      row=r, col=c)
+
+    # Legend faked with invisible traces: the bars carry two meanings through one
+    # colour array, which plotly cannot legend on its own.
+    for name in ("annotation intact", "comment corrupted", "identifiers obfuscated"):
+        fig.add_bar(x=[None], y=[None], name=name,
+                    marker_color=ANNOTATION_COLOR[name])
+
+    fig.update_layout(
+        template="plotly_white", barmode="group", bargap=0.25,
+        width=1500, height=380 * nrows + 150,
+        margin=dict(l=75, r=40, t=42, b=215),
+        legend=dict(orientation="h", y=-0.235, x=0.5, xanchor="center",
+                    yanchor="top", title=""),
+        font=dict(size=12))
+    fig.update_yaxes(range=[0, 105], title_text="")
+    for r in range(1, nrows + 1):
+        fig.update_yaxes(title_text="% PDE named correctly", row=r, col=1)
+    fig.update_xaxes(tickangle=-90, tickfont=dict(size=9), showticklabels=False)
+    for col in range(ncols):
+        rows = [i // ncols + 1 for i in range(len(models)) if i % ncols == col]
+        if rows:
+            fig.update_xaxes(showticklabels=True, row=max(rows), col=col + 1)
+    for ann in fig.layout.annotations[:len(models)]:
+        ann.font = dict(size=13)
     return fig
 
 
@@ -331,10 +553,14 @@ def main():
     print(f"[paper] {len(df)} rows, {n_models} models from {CSV}")
     for name, fig in (("paper_hedge_pooled", fig_pooled(df)),
                       ("paper_hedge_by_model", fig_by_model(df)),
-                      ("paper_overclaim", fig_overclaim(df))):
+                      ("paper_overclaim", fig_overclaim(df)),
+                      ("paper_pde_naming", fig_pde_naming(df)),
+                      ("paper_pde_by_perturbation", fig_pde_by_perturbation(df))):
+        # PNG only. The HTML twins were never opened -- these go into a paper, and
+        # an interactive copy beside every figure is just another file to keep in
+        # sync with the PNG that is actually used.
         png = os.path.join(OUT_DIR, f"{name}.png")
         fig.write_image(png, scale=SCALE)
-        fig.write_html(os.path.join(OUT_DIR, f"{name}.html"), include_plotlyjs="cdn")
         print(f"[paper] wrote {png}")
 
 

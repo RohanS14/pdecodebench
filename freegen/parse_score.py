@@ -120,6 +120,16 @@ def parse_response(text: str) -> dict:
                           2026-08-19 all four fields came back None for it, which read
                           as a refusal rather than the complete, correct answer it is).
     - Numbered lists:     "1. pde: value"
+    - RUN-ON single line: "pde: Burgers method: upwind behavior: advection valid: no"
+                          Nemotron-3-Nano writes all four fields on ONE line with no
+                          separators. The value pattern used to run to end-of-line and
+                          the label had to sit at the START of one, so `pde` swallowed
+                          the whole answer and the other three came back None. That is
+                          88 of its 3 draws x 256 items (11.5%), and those rows scored
+                          0.000 on method recall, behaviour AND validity -- not because
+                          the model was wrong but because nothing was read. Its
+                          published validity accuracy carried that. Values now stop at
+                          the next field label, and labels are recognised mid-line.
     """
     text = strip_think(text or "")
 
@@ -129,9 +139,24 @@ def parse_response(text: str) -> dict:
         # Bullet or numbered marker, then the field name optionally wrapped in
         # markdown emphasis. The colon may sit inside the emphasis ("**pde:**") or
         # outside it ("**pde**:"), so allow marks on both sides and after.
+        # A label may open a line OR follow whitespace mid-line (the run-on case).
+        # The value stops at the next field label on the same line, so one run-on
+        # line yields four values instead of one that contains the other three.
+        _LABELS = "pde|method|behavior|valid"
+        _MARK = r"(?:[-*+\u2022]|\d+[.)])?\s*[*_`]{0,3}\s*"
+        # SAME-LINE whitespace only in the terminator. \s matches newlines, so a
+        # terminator built from \s reached across the line break to find the NEXT
+        # line's label and cut the value short: "pde: Burgers (u_t + (u^2/2)_x = 0)"
+        # ended at the "=" because " 0)\nmethod:" satisfied the lookahead. That
+        # silently truncated 60 Qwen3.8 rows -- every one whose answer ended in an
+        # equation. A value never spans lines, so the terminator must not either.
+        _H = r"[^\S\n]"
+        _MARK_H = rf"(?:[-*+\u2022]|\d+[.)])?{_H}*[*_`]{{0,3}}{_H}*"
         matches = re.findall(
-            rf"(?im)^\s*(?:[-*+\u2022]|\d+[.)])?\s*[*_`]{{0,3}}\s*{field}\s*[*_`]{{0,3}}"
-            rf"\s*:\s*[*_`]{{0,3}}\s*(.+?)(?:\n|$)",
+            rf"(?im)(?:^|(?<=\s)){_MARK}{field}\s*[*_`]{{0,3}}"
+            rf"\s*:\s*[*_`]{{0,3}}\s*"
+            rf"(.+?)"
+            rf"(?={_H}+{_MARK_H}(?:{_LABELS}){_H}*[*_`]{{0,3}}{_H}*:|\n|$)",
             text,
         )
         val = None

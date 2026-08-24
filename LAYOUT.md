@@ -214,6 +214,53 @@ the first is the notes-folder name the dashboard joins on (`pde-freegen-xmodal`)
 second is the HF naming slug that prefixes the dataset names (`pde-llm-eval`). They are
 different strings and collapsing them breaks the naming check.
 
+## `enforce_eager` is why jobs get killed here
+
+Both runners default `enforce_eager=True`, which disables CUDA graphs and
+torch.compile. Every decode step then launches its kernels one at a time from Python
+and the GPU idles in the gaps — and NYU HPC reads `utilization.gpu` as the fraction
+of TIME a kernel is resident, so those gaps read as idleness and the sweep cancels
+the job. Measured on GLM-4.7-Flash: **25–34% utilization**, killed by root three
+times at roughly two hours each.
+
+Raising the batch size does NOT fix it. That was tried first (32 → 64) on the theory
+that more concurrent sequences would keep utilization up; the job was killed anyway,
+because batch size is not what creates the launch gaps.
+
+There is no reproducibility argument for keeping eager on — continuous batching
+already makes any sequence depend on its batch-mates, so reduction order was never
+fixed, and the design samples k=3 at temperature 0.6 precisely because outputs vary.
+The real risk is **compatibility**: Qwen3.5/3.6/3.8 run Gated Delta Net linear
+attention on the forced Triton path, and graph capture can interact badly with custom
+attention kernels; capture also reserves memory, shrinking the KV cache. So it is an
+env switch (`VLLM_ENFORCE_EAGER=0`, `ENFORCE_EAGER=0`) and should be measured per
+model before it is trusted. GLM is not a GDN model.
+
+## Compute belongs on compute nodes
+
+`rescore_jsonl.py` loads a sentence transformer and embeds two strings per row. Run
+on the torch login node over 5,376 rows it took **~50 minutes** and made every other
+ssh to the cluster slow; as `sbatch/rescore_freegen.sbatch` on `cpu_short` with 8
+CPUs it takes **under three**. The rule is not subtle, but it is easy to break when a
+thing feels like a quick command rather than a job.
+
+One trap while cleaning up after that: `pkill -f rescore_jsonl` matches its OWN
+command string and kills itself, exiting 255 while the target keeps running. Use the
+bracket form, `pkill -f '[r]escore_jsonl'`.
+
+## Rescoring is safe because it is staged and backed up
+
+`rescore_jsonl.py` writes a `.prerescore` copy beside every file before overwriting,
+and it is pointed at a STAGED copy of the results, never at `outputs/` directly. Both
+mattered on 2026-08-24: the first rescore ran with a regex that silently truncated any
+value ending in an equation, and because the live results were untouched the bad pass
+was simply discarded.
+
+**Diff the rescore against its backups before copying anything back**, per model, and
+ask why anything you did not predict has moved. The truncation was invisible to the
+test suite — every test passed on the bad regex — and was caught only because
+Qwen3.8 showed 60 changed rows when it should have shown none.
+
 ## `$HOME` hygiene
 
 Operational scripts go in `pde-llm-eval/tools/`, never loose in `$HOME`. See

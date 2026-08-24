@@ -668,10 +668,10 @@ def consistency_figure_panels(xmodal_rows=None):
 # answers are a bare yes or no and the hedged bands were slivers that invited reading
 # a confidence signal off a format artefact. Real confidence needs resampling, not a
 # lexicon -- see the k=3 flip rate.
-HEDGE_ORDER = ["says invalid", "no lean", "says valid"]
-HEDGE_COLOR = {"says invalid": "#c1546a", "no lean": "#5a6274", "says valid": "#4fa96a"}
-_DIRECTION = {"Confident No": "says invalid", "Hedged No": "says invalid",
-              "Confident Yes": "says valid", "Hedged Yes": "says valid"}
+HEDGE_ORDER = ["predicts invalid", "predicts valid"]
+HEDGE_COLOR = {"predicts invalid": "#c1546a", "predicts valid": "#4fa96a"}
+_DIRECTION = {"Confident No": "predicts invalid", "Hedged No": "predicts invalid",
+              "Confident Yes": "predicts valid", "Hedged Yes": "predicts valid"}
 
 
 def _hedge_frame(df):
@@ -680,8 +680,12 @@ def _hedge_frame(df):
         return None, None
     d = df.copy()
     d["bucket"] = d["parsed_valid"].map(classify_valid_confidence_2x2)
-    d["bucket"] = (d["bucket"].map(_DIRECTION)
-                   .fillna("no lean").replace("", "no lean"))
+    # An answer with no direction at all is dropped, not drawn: after the run-on
+    # parser fix that is 4 draws in 5,426, and a legend entry for it implied a
+    # behaviour the models do not have. The bars remain a share of answers that
+    # stated a direction, so they still sum to 100.
+    d["bucket"] = d["bucket"].map(_DIRECTION)
+    d = d[d["bucket"].notna()]
     present = [(k, lab, gt) for k, lab, gt in COND_ORDER if (d["mod_type"] == k).any()]
     return (present, d) if present else (None, None)
 
@@ -754,7 +758,7 @@ def hedge_breakdown_panel(df):
         legend=dict(orientation="h", y=-0.42, x=0.5, xanchor="center"))
 
     return [(
-        "What the models say, all models pooled",
+        "What the models predict, all models pooled",
         "Every answer to the validity question, bucketed by which way the model "
         "leaned and whether it committed. Each bar is one perturbation; the shaded "
         "half is the four where the code really is broken.<br><br>"
@@ -769,9 +773,9 @@ def hedge_breakdown_panel(df):
         "Intervals are 95% bootstrap over the <b>32 base systems</b>, not over rows: "
         "eight conditions and eight models share each solver, so a row bootstrap "
         "would narrow every one of them. Each interval is for that bucket's own "
-        "share, not for the cumulative height it is drawn at. Grey is <b>no lean</b> "
-        "&mdash; an answer with no direction at all, 1.7% of the roster, kept in the "
-        "stack so every bar reaches 100%.<br><br>"
+        "share, not for the cumulative height it is drawn at. Answers that stated no "
+        "direction at all are excluded from the denominator, so the bars still sum "
+        "to 100 &mdash; after the run-on parser fix that is 4 draws in 5,426.<br><br>"
         "<b>This is direction, not confidence.</b> The confident/hedged split used to "
         "be four bands here and it has been dropped: the prompt asks for a terse "
         "fill-in-the-blank verdict, so 85% of answers are a bare <code>yes</code> or "
@@ -834,6 +838,10 @@ def hedge_breakdown_by_model_panel(df):
                       legend=dict(orientation="h", y=1.04, x=0.5, xanchor="center",
                                   yanchor="bottom"))
     fig.update_yaxes(range=[0, 100], gridcolor=GRID, title_text="")
+    # Axis title on the LEFT COLUMN only -- shared_yaxes hides the ticks on the
+    # inner panels, so repeating the title there would label an axis with no scale.
+    for r in range(1, nrows + 1):
+        fig.update_yaxes(title_text="% of answers", row=r, col=1)
     fig.update_xaxes(tickangle=-90, tickfont=dict(size=8), showticklabels=False)
     # Tick labels on the BOTTOM row only. Eight labels at -55 degrees are taller than
     # the gap between rows, so every one of them ran into the subplot title beneath
@@ -848,7 +856,7 @@ def hedge_breakdown_by_model_panel(df):
         ann.font = dict(size=11, color=FG)
 
     return [(
-        "What each model says",
+        "What each model predicts",
         "Ordered by how often the model says the code is valid, least to most. The "
         "shaded half of each panel is the four perturbations where the code really "
         "is broken.<br><br>"

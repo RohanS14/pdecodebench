@@ -1,0 +1,82 @@
+import numpy as np
+
+from scipy.integrate import odeint
+
+from scipy.linalg import toeplitz
+
+
+
+# Constant kappa
+
+
+k = 1.0
+
+
+
+# Spacial domain
+
+
+n = 100
+
+L = 1
+
+dx = L / n
+
+x = np.linspace(0, L, n)
+
+
+
+# Time steps
+
+
+T0 = 0.0
+
+Tn = 0.1
+
+t_steps = 100
+
+t = np.linspace(T0, Tn, t_steps)
+
+
+
+# Boundary conditions
+
+
+B0 = 1.0
+
+Bn = -1.0
+
+
+
+# Initial condition, u(x,0)=0
+
+
+Uinit = np.zeros(shape=(n,))
+
+
+
+# Discretization matrix A
+
+
+A = toeplitz([-2.0, -1.0] + [0.0]*(n-2))
+
+
+
+# Vector with boundary conditions b
+
+
+b = np.zeros(shape=(n))
+
+b[0] = B0
+
+b[n-1] = Bn
+
+
+
+def fn(u, t, A, b, k, dx):
+
+    return ((k/dx**2)*np.matmul(A, u) + (k/dx**2)*b)
+
+
+
+u = odeint(fn, Uinit, t, args=(A, b, k, dx))

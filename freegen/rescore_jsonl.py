@@ -47,7 +47,10 @@ def main():
         embed_model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
         print("[rescore] embedding model loaded")
 
-    paths = sorted(glob.glob(os.path.join(args.results_dir, "*.jsonl")))
+    # RECURSIVE, same as aggregate_freegen.py: the one-job-per-model launcher gives
+    # each model its own subdirectory, and a flat glob finds nothing under it.
+    paths = sorted(glob.glob(os.path.join(args.results_dir, "**", "*.jsonl"),
+                             recursive=True))
     if not paths:
         sys.exit(f"[rescore] No *.jsonl in {args.results_dir}")
 

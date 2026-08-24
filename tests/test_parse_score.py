@@ -259,3 +259,74 @@ if failures:
     sys.exit(1)
 else:
     print(f"All tests passed.")
+
+
+# ── Run-on single-line output ─────────────────────────────────────────────────
+# Nemotron-3-Nano writes all four fields on ONE line with no separators. The old
+# pattern anchored labels to the start of a line and ran values to end-of-line, so
+# `pde` swallowed the entire answer and method/behavior/valid came back None. That
+# was 88 draws (11.5% of its arm) scoring 0.000 on method recall, behaviour AND
+# validity -- not because the model was wrong, but because nothing was read.
+
+RUNON = ("pde: inviscid Burgers' equation method: finite volume upwind (MUSCL with "
+         "minmod), explicit Euler behavior: advection, shock formation valid: no")
+
+
+def test_runon_line_yields_all_four_fields():
+    got = parse_response(RUNON)
+    assert got["pde"] == "inviscid Burgers' equation"
+    assert got["method"] == "finite volume upwind (MUSCL with minmod), explicit Euler"
+    assert got["behavior"] == "advection, shock formation"
+    assert got["valid"] == "no"
+
+
+def test_runon_pde_does_not_swallow_the_rest():
+    """The specific regression: pde must not contain a later field's label."""
+    pde = parse_response(RUNON)["pde"]
+    for label in ("method:", "behavior:", "valid:"):
+        assert label not in pde, f"pde still swallowed {label!r}: {pde!r}"
+
+
+def test_multiline_still_parses_after_the_runon_fix():
+    got = parse_response("pde: heat equation\nmethod: FTCS\n"
+                         "behavior: diffusion\nvalid: yes")
+    assert got == {"pde": "heat equation", "method": "FTCS",
+                   "behavior": "diffusion", "valid": "yes"}
+
+
+def test_markdown_bullets_still_parse_after_the_runon_fix():
+    got = parse_response("- **pde:** Burgers' equation\n- **method:** upwind\n"
+                         "- **behavior:** advection\n- **valid:** no")
+    assert got == {"pde": "Burgers' equation", "method": "upwind",
+                   "behavior": "advection", "valid": "no"}
+
+
+def test_a_value_may_legitimately_end_the_text():
+    """`valid` is last, so its value has no following label to stop at."""
+    assert parse_response(RUNON)["valid"] == "no"
+    assert parse_response("pde: wave equation valid: yes")["valid"] == "yes"
+
+
+def test_a_value_ending_in_an_equation_is_not_truncated():
+    """Regression: the run-on terminator must not cross a line break.
+
+    `\\s` matches newlines, so a terminator built from it reached past the end of
+    the line to find the NEXT line's label and cut the value short --
+    "pde: Burgers (u_t + (u^2/2)_x = 0)" ended at the "=", because " 0)\\nmethod:"
+    satisfied the lookahead. It silently truncated 60 Qwen3.8 rows, every one whose
+    answer ended in an equation, and was caught only by diffing a rescore against
+    its backup. A value never spans lines, so the terminator must not either.
+    """
+    got = parse_response("pde: inviscid Burgers equation (u_t + (u^2/2)_x = 0)\n"
+                         "method: upwind\nbehavior: advection\nvalid: yes")
+    assert got["pde"] == "inviscid Burgers equation (u_t + (u^2/2)_x = 0)"
+    assert got["method"] == "upwind"
+
+
+def test_values_containing_equations_and_punctuation_survive():
+    for pde in ("heat equation u_t = alpha u_xx",
+                "wave equation (1. order system)",
+                "advection-diffusion: u_t + a u_x = nu u_xx",
+                "Burgers (u_t + u u_x = 0), viscous"):
+        got = parse_response(f"pde: {pde}\nmethod: FTCS\nvalid: yes")["pde"]
+        assert got == pde, f"{pde!r} came back as {got!r}"

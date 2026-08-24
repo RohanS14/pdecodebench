@@ -1,0 +1,590 @@
+data/extracted_codes/Burgers_CorrComm_InValid_1.py:28: RuntimeWarning: overflow encountered in multiply
+  return np.where(a*b > 0, np.sign(a) * np.minimum(np.abs(a), np.abs(b)), 0.0)
+data/extracted_codes/Burgers_CorrComm_InValid_1.py:50: RuntimeWarning: overflow encountered in square
+  f_right = u_right**2 / 2
+data/extracted_codes/Burgers_CorrComm_InValid_1.py:51: RuntimeWarning: overflow encountered in square
+  f_left = u_left**2 / 2
+data/extracted_codes/Burgers_CorrComm_InValid_1.py:55: RuntimeWarning: invalid value encountered in add
+  s[1:n] = (u_right[0:n-1] + u_left[1:n]) / 2
+data/extracted_codes/Burgers_CorrComm_InValid_1.py:71: RuntimeWarning: invalid value encountered in subtract
+  du_dt = (f_interface[1:n+1] - f_interface[0:n])/dx
+data/extracted_codes/Burgers_CorrComm_InValid_1.py:35: RuntimeWarning: invalid value encountered in subtract
+  dudx[1:n-1] = (u[2:n] - u[0:n-2])/(2*dx)
+data/extracted_codes/Burgers_CorrComm_InValid_1.py:47: RuntimeWarning: invalid value encountered in subtract
+  u_left = u - dudx*dx/2
+data/extracted_codes/Burgers_CorrComm_InValid_2.py:53: RuntimeWarning: divide by zero encountered in divide
+  r = (u_ip1 - u)/(u - u_im1)
+data/extracted_codes/Burgers_CorrComm_InValid_2.py:23: RuntimeWarning: invalid value encountered in divide
+  phi = 2*_r/(1 + _r)
+data/extracted_codes/Burgers_CorrComm_InValid_2.py:58: RuntimeWarning: divide by zero encountered in divide
+  r = (u - u_ip1)/(u_ip1 - u_ip2)
+data/extracted_codes/Burgers_CorrComm_InValid_2.py:53: RuntimeWarning: invalid value encountered in divide
+  r = (u_ip1 - u)/(u - u_im1)
+data/extracted_codes/Burgers_CorrComm_InValid_2.py:58: RuntimeWarning: invalid value encountered in divide
+  r = (u - u_ip1)/(u_ip1 - u_ip2)
+data/extracted_codes/Burgers_CorrComm_InValid_3.py:27: RuntimeWarning: overflow encountered in square
+  f_bar = u_bar**2 / 2
+data/extracted_codes/Burgers_CorrComm_InValid_3.py:47: RuntimeWarning: invalid value encountered in subtract
+  dudt = (f_interface[0:n] - f_interface[1:n+1])/dx
+data/extracted_codes/Burgers_CorrComm_InValid_3.py:34: RuntimeWarning: invalid value encountered in add
+  s[1:n] = (u_bar[0:n-1] + u_bar[1:n]) / 2
+data/extracted_codes/Burgers_CorrComm_Valid_2.py:60: RuntimeWarning: divide by zero encountered in divide
+  r = (u_ip1 - u)/(u - u_im1)
+data/extracted_codes/Burgers_CorrComm_Valid_2.py:23: RuntimeWarning: invalid value encountered in divide
+  phi = 2*_r/(1 + _r)
+data/extracted_codes/Burgers_CorrComm_Valid_2.py:65: RuntimeWarning: divide by zero encountered in divide
+  r = (u - u_ip1)/(u_ip1 - u_ip2)
+data/extracted_codes/Burgers_Invalid1.py:28: RuntimeWarning: overflow encountered in multiply
+  return np.where(a*b > 0, np.sign(a) * np.minimum(np.abs(a), np.abs(b)), 0.0)
+data/extracted_codes/Burgers_Invalid1.py:50: RuntimeWarning: overflow encountered in square
+  f_right = u_right**2 / 2
+data/extracted_codes/Burgers_Invalid1.py:51: RuntimeWarning: overflow encountered in square
+  f_left = u_left**2 / 2
+data/extracted_codes/Burgers_Invalid1.py:55: RuntimeWarning: invalid value encountered in add
+  s[1:n] = (u_right[0:n-1] + u_left[1:n]) / 2
+data/extracted_codes/Burgers_Invalid1.py:71: RuntimeWarning: invalid value encountered in subtract
+  du_dt = (f_interface[1:n+1] - f_interface[0:n])/dx
+data/extracted_codes/Burgers_Invalid1.py:35: RuntimeWarning: invalid value encountered in subtract
+  dudx[1:n-1] = (u[2:n] - u[0:n-2])/(2*dx)
+data/extracted_codes/Burgers_Invalid1.py:47: RuntimeWarning: invalid value encountered in subtract
+  u_left = u - dudx*dx/2
+data/extracted_codes/Burgers_Invalid2.py:53: RuntimeWarning: divide by zero encountered in divide
+  r = (u_ip1 - u)/(u - u_im1)
+data/extracted_codes/Burgers_Invalid2.py:23: RuntimeWarning: invalid value encountered in divide
+  phi = 2*_r/(1 + _r)
+data/extracted_codes/Burgers_Invalid2.py:58: RuntimeWarning: divide by zero encountered in divide
+  r = (u - u_ip1)/(u_ip1 - u_ip2)
+data/extracted_codes/Burgers_Invalid2.py:53: RuntimeWarning: invalid value encountered in divide
+  r = (u_ip1 - u)/(u - u_im1)
+data/extracted_codes/Burgers_Invalid2.py:58: RuntimeWarning: invalid value encountered in divide
+  r = (u - u_ip1)/(u_ip1 - u_ip2)
+data/extracted_codes/Burgers_Invalid3.py:27: RuntimeWarning: overflow encountered in square
+  f_bar = u_bar**2 / 2
+data/extracted_codes/Burgers_Invalid3.py:47: RuntimeWarning: invalid value encountered in subtract
+  dudt = (f_interface[0:n] - f_interface[1:n+1])/dx
+data/extracted_codes/Burgers_Invalid3.py:34: RuntimeWarning: invalid value encountered in add
+  s[1:n] = (u_bar[0:n-1] + u_bar[1:n]) / 2
+data/extracted_codes/Burgers_NoComm_CorrVar_2.py:46: RuntimeWarning: divide by zero encountered in divide
+  foobar_13 = (foobar_22 - foobar_18) / (foobar_18 - foobar_20)
+data/extracted_codes/Burgers_NoComm_CorrVar_2.py:20: RuntimeWarning: invalid value encountered in divide
+  foobar_12 = 2 * foobar_1 / (1 + foobar_1)
+data/extracted_codes/Burgers_NoComm_CorrVar_2.py:49: RuntimeWarning: divide by zero encountered in divide
+  foobar_13 = (foobar_18 - foobar_22) / (foobar_22 - foobar_23)
+data/extracted_codes/Burgers_NoComm_CorrVar_InValid_1.py:18: RuntimeWarning: overflow encountered in multiply
+  return np.where(foobar_1 * foobar_2 > 0, np.sign(foobar_1) * np.minimum(np.abs(foobar_1), np.abs(foobar_2)), 0.0)
+data/extracted_codes/Burgers_NoComm_CorrVar_InValid_1.py:33: RuntimeWarning: overflow encountered in square
+  foobar_9 = foobar_24 ** 2 / 2
+data/extracted_codes/Burgers_NoComm_CorrVar_InValid_1.py:34: RuntimeWarning: overflow encountered in square
+  foobar_8 = foobar_23 ** 2 / 2
+data/extracted_codes/Burgers_NoComm_CorrVar_InValid_1.py:36: RuntimeWarning: invalid value encountered in add
+  foobar_13[1:foobar_12] = (foobar_24[0:foobar_12 - 1] + foobar_23[1:foobar_12]) / 2
+data/extracted_codes/Burgers_NoComm_CorrVar_InValid_1.py:45: RuntimeWarning: invalid value encountered in subtract
+  foobar_4 = (foobar_7[1:foobar_12 + 1] - foobar_7[0:foobar_12]) / foobar_6
+data/extracted_codes/Burgers_NoComm_CorrVar_InValid_1.py:23: RuntimeWarning: invalid value encountered in subtract
+  foobar_5[1:foobar_12 - 1] = (foobar_20[2:foobar_12] - foobar_20[0:foobar_12 - 2]) / (2 * foobar_6)
+data/extracted_codes/Burgers_NoComm_CorrVar_InValid_1.py:32: RuntimeWarning: invalid value encountered in subtract
+  foobar_23 = foobar_20 - foobar_5 * foobar_6 / 2
+data/extracted_codes/Burgers_NoComm_CorrVar_InValid_2.py:39: RuntimeWarning: divide by zero encountered in divide
+  foobar_13 = (foobar_22 - foobar_18) / (foobar_18 - foobar_20)
+data/extracted_codes/Burgers_NoComm_CorrVar_InValid_2.py:20: RuntimeWarning: invalid value encountered in divide
+  foobar_12 = 2 * foobar_1 / (1 + foobar_1)
+data/extracted_codes/Burgers_NoComm_CorrVar_InValid_2.py:42: RuntimeWarning: divide by zero encountered in divide
+  foobar_13 = (foobar_18 - foobar_22) / (foobar_22 - foobar_23)
+data/extracted_codes/Burgers_NoComm_CorrVar_InValid_2.py:39: RuntimeWarning: invalid value encountered in divide
+  foobar_13 = (foobar_22 - foobar_18) / (foobar_18 - foobar_20)
+data/extracted_codes/Burgers_NoComm_CorrVar_InValid_2.py:42: RuntimeWarning: invalid value encountered in divide
+  foobar_13 = (foobar_18 - foobar_22) / (foobar_22 - foobar_23)
+data/extracted_codes/Burgers_NoComm_CorrVar_InValid_3.py:18: RuntimeWarning: overflow encountered in square
+  foobar_4 = foobar_15 ** 2 / 2
+data/extracted_codes/Burgers_NoComm_CorrVar_InValid_3.py:29: RuntimeWarning: invalid value encountered in subtract
+  foobar_2 = (foobar_5[0:foobar_8] - foobar_5[1:foobar_8 + 1]) / foobar_3
+data/extracted_codes/Burgers_NoComm_CorrVar_InValid_3.py:21: RuntimeWarning: invalid value encountered in add
+  foobar_9[1:foobar_8] = (foobar_15[0:foobar_8 - 1] + foobar_15[1:foobar_8]) / 2
+data/extracted_codes/Burgers_NoComm_InValid_1.py:23: RuntimeWarning: overflow encountered in multiply
+  return np.where(a*b > 0, np.sign(a) * np.minimum(np.abs(a), np.abs(b)), 0.0)
+data/extracted_codes/Burgers_NoComm_InValid_1.py:43: RuntimeWarning: overflow encountered in square
+  f_right = u_right**2 / 2
+data/extracted_codes/Burgers_NoComm_InValid_1.py:44: RuntimeWarning: overflow encountered in square
+  f_left = u_left**2 / 2
+data/extracted_codes/Burgers_NoComm_InValid_1.py:47: RuntimeWarning: invalid value encountered in add
+  s[1:n] = (u_right[0:n-1] + u_left[1:n]) / 2
+data/extracted_codes/Burgers_NoComm_InValid_1.py:61: RuntimeWarning: invalid value encountered in subtract
+  du_dt = (f_interface[1:n+1] - f_interface[0:n])/dx
+data/extracted_codes/Burgers_NoComm_InValid_1.py:29: RuntimeWarning: invalid value encountered in subtract
+  dudx[1:n-1] = (u[2:n] - u[0:n-2])/(2*dx)
+data/extracted_codes/Burgers_NoComm_InValid_1.py:41: RuntimeWarning: invalid value encountered in subtract
+  u_left = u - dudx*dx/2
+data/extracted_codes/Burgers_NoComm_InValid_2.py:48: RuntimeWarning: divide by zero encountered in divide
+  r = (u_ip1 - u)/(u - u_im1)
+data/extracted_codes/Burgers_NoComm_InValid_2.py:23: RuntimeWarning: invalid value encountered in divide
+  phi = 2*_r/(1 + _r)
+data/extracted_codes/Burgers_NoComm_InValid_2.py:52: RuntimeWarning: divide by zero encountered in divide
+  r = (u - u_ip1)/(u_ip1 - u_ip2)
+data/extracted_codes/Burgers_NoComm_InValid_2.py:48: RuntimeWarning: invalid value encountered in divide
+  r = (u_ip1 - u)/(u - u_im1)
+data/extracted_codes/Burgers_NoComm_InValid_2.py:52: RuntimeWarning: invalid value encountered in divide
+  r = (u - u_ip1)/(u_ip1 - u_ip2)
+data/extracted_codes/Burgers_NoComm_InValid_3.py:25: RuntimeWarning: overflow encountered in square
+  f_bar = u_bar**2 / 2
+data/extracted_codes/Burgers_NoComm_InValid_3.py:42: RuntimeWarning: invalid value encountered in subtract
+  dudt = (f_interface[0:n] - f_interface[1:n+1])/dx
+data/extracted_codes/Burgers_NoComm_InValid_3.py:30: RuntimeWarning: invalid value encountered in add
+  s[1:n] = (u_bar[0:n-1] + u_bar[1:n]) / 2
+data/extracted_codes/Burgers_NoComm_Valid_2.py:55: RuntimeWarning: divide by zero encountered in divide
+  r = (u_ip1 - u)/(u - u_im1)
+data/extracted_codes/Burgers_NoComm_Valid_2.py:23: RuntimeWarning: invalid value encountered in divide
+  phi = 2*_r/(1 + _r)
+data/extracted_codes/Burgers_NoComm_Valid_2.py:59: RuntimeWarning: divide by zero encountered in divide
+  r = (u - u_ip1)/(u_ip1 - u_ip2)
+data/extracted_codes/Burgers_Valid2.py:60: RuntimeWarning: divide by zero encountered in divide
+  r = (u_ip1 - u)/(u - u_im1)
+data/extracted_codes/Burgers_Valid2.py:23: RuntimeWarning: invalid value encountered in divide
+  phi = 2*_r/(1 + _r)
+data/extracted_codes/Burgers_Valid2.py:65: RuntimeWarning: divide by zero encountered in divide
+  r = (u - u_ip1)/(u_ip1 - u_ip2)
+data/extracted_codes/Heat_Comm_InValid_1.py:69: RuntimeWarning: overflow encountered in multiply
+  return ((k/dx**2)*np.matmul(-A, u) + (k/dx**3)*b)
+data/extracted_codes/Heat_Comm_InValid_1.py:69: RuntimeWarning: invalid value encountered in matmul
+  return ((k/dx**2)*np.matmul(-A, u) + (k/dx**3)*b)
+data/extracted_codes/Heat_Comm_InValid_2.py:88: ODEintWarning: Excess work done on this call (perhaps wrong Dfun type). Run with full_output = 1 to get quantitative information.
+  u = odeint(fn, Uinit, t, args=(A, b))
+data/extracted_codes/Heat_Comm_InValid_4.py:87: RuntimeWarning: overflow encountered in divide
+  dudt = k * np.matmul(D, -u[t])/dx**2
+data/extracted_codes/Heat_Comm_InValid_4.py:87: RuntimeWarning: invalid value encountered in matmul
+  dudt = k * np.matmul(D, -u[t])/dx**2
+data/extracted_codes/Heat_CorrComm_InValid_1.py:69: RuntimeWarning: overflow encountered in multiply
+  return ((k/dx**2)*np.matmul(-A, u) + (k/dx**3)*b)
+data/extracted_codes/Heat_CorrComm_InValid_1.py:69: RuntimeWarning: invalid value encountered in matmul
+  return ((k/dx**2)*np.matmul(-A, u) + (k/dx**3)*b)
+data/extracted_codes/Heat_CorrComm_InValid_2.py:88: ODEintWarning: Excess work done on this call (perhaps wrong Dfun type). Run with full_output = 1 to get quantitative information.
+  u = odeint(fn, Uinit, t, args=(A, b))
+data/extracted_codes/Heat_CorrComm_InValid_4.py:87: RuntimeWarning: overflow encountered in divide
+  dudt = k * np.matmul(D, -u[t])/dx**2
+data/extracted_codes/Heat_CorrComm_InValid_4.py:87: RuntimeWarning: invalid value encountered in matmul
+  dudt = k * np.matmul(D, -u[t])/dx**2
+data/extracted_codes/Heat_NoComm_CorrVar_InValid_1.py:22: RuntimeWarning: overflow encountered in multiply
+  return foobar_10 / foobar_9 ** 2 * np.matmul(-foobar_1, foobar_14) + foobar_10 / foobar_9 ** 3 * foobar_8
+data/extracted_codes/Heat_NoComm_CorrVar_InValid_1.py:22: RuntimeWarning: invalid value encountered in matmul
+  return foobar_10 / foobar_9 ** 2 * np.matmul(-foobar_1, foobar_14) + foobar_10 / foobar_9 ** 3 * foobar_8
+data/extracted_codes/Heat_NoComm_CorrVar_InValid_2.py:28: ODEintWarning: Excess work done on this call (perhaps wrong Dfun type). Run with full_output = 1 to get quantitative information.
+  foobar_16 = odeint(fn1, foobar_5, foobar_12, args=(foobar_1, foobar_7))
+data/extracted_codes/Heat_NoComm_CorrVar_InValid_4.py:26: RuntimeWarning: overflow encountered in divide
+  foobar_10 = foobar_13 * np.matmul(foobar_2, -foobar_17[foobar_15]) / foobar_11 ** 2
+data/extracted_codes/Heat_NoComm_CorrVar_InValid_4.py:26: RuntimeWarning: invalid value encountered in matmul
+  foobar_10 = foobar_13 * np.matmul(foobar_2, -foobar_17[foobar_15]) / foobar_11 ** 2
+data/extracted_codes/Heat_NoComm_InValid_1.py:65: RuntimeWarning: overflow encountered in multiply
+  return ((k/dx**2)*np.matmul(-A, u) + (k/dx**3)*b)
+data/extracted_codes/Heat_NoComm_InValid_1.py:65: RuntimeWarning: invalid value encountered in matmul
+  return ((k/dx**2)*np.matmul(-A, u) + (k/dx**3)*b)
+data/extracted_codes/Heat_NoComm_InValid_2.py:83: ODEintWarning: Excess work done on this call (perhaps wrong Dfun type). Run with full_output = 1 to get quantitative information.
+  u = odeint(fn, Uinit, t, args=(A, b))
+data/extracted_codes/Heat_NoComm_InValid_4.py:82: RuntimeWarning: overflow encountered in divide
+  dudt = k * np.matmul(D, -u[t])/dx**2
+data/extracted_codes/Heat_NoComm_InValid_4.py:82: RuntimeWarning: invalid value encountered in matmul
+  dudt = k * np.matmul(D, -u[t])/dx**2
+data/extracted_codes/NavierStokes_CorrComm_InValid_1.py:28: RuntimeWarning: overflow encountered in square
+  ((u[1:-1, 2:] - u[1:-1, 0:-2]) / (2 * dx))**2 -
+data/extracted_codes/NavierStokes_CorrComm_InValid_1.py:29: RuntimeWarning: overflow encountered in multiply
+  2 * ((u[2:, 1:-1] - u[0:-2, 1:-1]) / (2 * dy) *
+data/extracted_codes/NavierStokes_CorrComm_InValid_1.py:25: RuntimeWarning: invalid value encountered in subtract
+  b[1:-1, 1:-1] = (rho * (1 / dt *
+data/extracted_codes/NavierStokes_CorrComm_InValid_1.py:31: RuntimeWarning: overflow encountered in square
+  ((v[2:, 1:-1] - v[0:-2, 1:-1]) / (2 * dy))**2))
+data/extracted_codes/NavierStokes_CorrComm_InValid_1.py:62: RuntimeWarning: overflow encountered in multiply
+  un[1:-1, 1:-1] * dt / dx *
+data/extracted_codes/NavierStokes_CorrComm_InValid_1.py:64: RuntimeWarning: overflow encountered in multiply
+  vn[1:-1, 1:-1] * dt / dy *
+data/extracted_codes/NavierStokes_CorrComm_InValid_1.py:61: RuntimeWarning: invalid value encountered in subtract
+  u[1:-1, 1:-1] = (un[1:-1, 1:-1]-
+data/extracted_codes/NavierStokes_CorrComm_InValid_1.py:72: RuntimeWarning: overflow encountered in multiply
+  un[1:-1, 1:-1] * dt / dx *
+data/extracted_codes/NavierStokes_CorrComm_InValid_1.py:74: RuntimeWarning: overflow encountered in multiply
+  vn[1:-1, 1:-1] * dt / dy *
+data/extracted_codes/NavierStokes_CorrComm_InValid_1.py:71: RuntimeWarning: invalid value encountered in subtract
+  v[1:-1,1:-1] = (vn[1:-1, 1:-1] -
+/scratch/ehb7466/envs/pdecodebench/lib64/python3.12/site-packages/numpy/_core/fromnumeric.py:83: RuntimeWarning: overflow encountered in reduce
+  return ufunc.reduce(obj, axis, dtype, out, **passkwargs)
+/scratch/ehb7466/envs/pdecodebench/lib64/python3.12/site-packages/numpy/_core/fromnumeric.py:83: RuntimeWarning: invalid value encountered in reduce
+  return ufunc.reduce(obj, axis, dtype, out, **passkwargs)
+data/extracted_codes/NavierStokes_Invalid1.py:28: RuntimeWarning: overflow encountered in square
+  ((u[1:-1, 2:] - u[1:-1, 0:-2]) / (2 * dx))**2 -
+data/extracted_codes/NavierStokes_Invalid1.py:29: RuntimeWarning: overflow encountered in multiply
+  2 * ((u[2:, 1:-1] - u[0:-2, 1:-1]) / (2 * dy) *
+data/extracted_codes/NavierStokes_Invalid1.py:25: RuntimeWarning: invalid value encountered in subtract
+  b[1:-1, 1:-1] = (rho * (1 / dt *
+data/extracted_codes/NavierStokes_Invalid1.py:31: RuntimeWarning: overflow encountered in square
+  ((v[2:, 1:-1] - v[0:-2, 1:-1]) / (2 * dy))**2))
+data/extracted_codes/NavierStokes_Invalid1.py:62: RuntimeWarning: overflow encountered in multiply
+  un[1:-1, 1:-1] * dt / dx *
+data/extracted_codes/NavierStokes_Invalid1.py:64: RuntimeWarning: overflow encountered in multiply
+  vn[1:-1, 1:-1] * dt / dy *
+data/extracted_codes/NavierStokes_Invalid1.py:61: RuntimeWarning: invalid value encountered in subtract
+  u[1:-1, 1:-1] = (un[1:-1, 1:-1]-
+data/extracted_codes/NavierStokes_Invalid1.py:72: RuntimeWarning: overflow encountered in multiply
+  un[1:-1, 1:-1] * dt / dx *
+data/extracted_codes/NavierStokes_Invalid1.py:74: RuntimeWarning: overflow encountered in multiply
+  vn[1:-1, 1:-1] * dt / dy *
+data/extracted_codes/NavierStokes_Invalid1.py:71: RuntimeWarning: invalid value encountered in subtract
+  v[1:-1,1:-1] = (vn[1:-1, 1:-1] -
+data/extracted_codes/NavierStokes_NoComm_CorrVar_InValid_1.py:23: RuntimeWarning: overflow encountered in square
+  foobar_3[1:-1, 1:-1] = foobar_17 * (1 / foobar_5 * ((foobar_18[1:-1, 2:] - foobar_18[1:-1, 0:-2]) / (2 * foobar_6) + (foobar_20[2:, 1:-1] - foobar_20[0:-2, 1:-1]) / (2 * foobar_7)) - ((foobar_18[1:-1, 2:] - foobar_18[1:-1, 0:-2]) / (2 * foobar_6)) ** 2 - 2 * ((foobar_18[2:, 1:-1] - foobar_18[0:-2, 1:-1]) / (2 * foobar_7) * (foobar_20[1:-1, 2:] - foobar_20[1:-1, 0:-2]) / (2 * foobar_6)) - ((foobar_20[2:, 1:-1] - foobar_20[0:-2, 1:-1]) / (2 * foobar_7)) ** 2)
+data/extracted_codes/NavierStokes_NoComm_CorrVar_InValid_1.py:23: RuntimeWarning: overflow encountered in multiply
+  foobar_3[1:-1, 1:-1] = foobar_17 * (1 / foobar_5 * ((foobar_18[1:-1, 2:] - foobar_18[1:-1, 0:-2]) / (2 * foobar_6) + (foobar_20[2:, 1:-1] - foobar_20[0:-2, 1:-1]) / (2 * foobar_7)) - ((foobar_18[1:-1, 2:] - foobar_18[1:-1, 0:-2]) / (2 * foobar_6)) ** 2 - 2 * ((foobar_18[2:, 1:-1] - foobar_18[0:-2, 1:-1]) / (2 * foobar_7) * (foobar_20[1:-1, 2:] - foobar_20[1:-1, 0:-2]) / (2 * foobar_6)) - ((foobar_20[2:, 1:-1] - foobar_20[0:-2, 1:-1]) / (2 * foobar_7)) ** 2)
+data/extracted_codes/NavierStokes_NoComm_CorrVar_InValid_1.py:23: RuntimeWarning: invalid value encountered in subtract
+  foobar_3[1:-1, 1:-1] = foobar_17 * (1 / foobar_5 * ((foobar_18[1:-1, 2:] - foobar_18[1:-1, 0:-2]) / (2 * foobar_6) + (foobar_20[2:, 1:-1] - foobar_20[0:-2, 1:-1]) / (2 * foobar_7)) - ((foobar_18[1:-1, 2:] - foobar_18[1:-1, 0:-2]) / (2 * foobar_6)) ** 2 - 2 * ((foobar_18[2:, 1:-1] - foobar_18[0:-2, 1:-1]) / (2 * foobar_7) * (foobar_20[1:-1, 2:] - foobar_20[1:-1, 0:-2]) / (2 * foobar_6)) - ((foobar_20[2:, 1:-1] - foobar_20[0:-2, 1:-1]) / (2 * foobar_7)) ** 2)
+data/extracted_codes/NavierStokes_NoComm_CorrVar_InValid_1.py:47: RuntimeWarning: overflow encountered in multiply
+  foobar_18[1:-1, 1:-1] = foobar_19[1:-1, 1:-1] - foobar_19[1:-1, 1:-1] * foobar_5 / foobar_6 * (foobar_19[1:-1, 1:-1] - foobar_19[1:-1, 0:-2]) - foobar_21[1:-1, 1:-1] * foobar_5 / foobar_7 * (foobar_19[1:-1, 1:-1] - foobar_19[0:-2, 1:-1]) + foobar_5 / (2 * foobar_17 * foobar_6) * (foobar_14[1:-1, 2:] - foobar_14[1:-1, 0:-2]) + foobar_11 * (foobar_5 / foobar_6 ** 2 * (foobar_19[1:-1, 2:] - 2 * foobar_19[1:-1, 1:-1] + foobar_19[1:-1, 0:-2]) + foobar_5 / foobar_7 ** 2 * (foobar_19[2:, 1:-1] - 2 * foobar_19[1:-1, 1:-1] + foobar_19[0:-2, 1:-1]))
+data/extracted_codes/NavierStokes_NoComm_CorrVar_InValid_1.py:47: RuntimeWarning: invalid value encountered in subtract
+  foobar_18[1:-1, 1:-1] = foobar_19[1:-1, 1:-1] - foobar_19[1:-1, 1:-1] * foobar_5 / foobar_6 * (foobar_19[1:-1, 1:-1] - foobar_19[1:-1, 0:-2]) - foobar_21[1:-1, 1:-1] * foobar_5 / foobar_7 * (foobar_19[1:-1, 1:-1] - foobar_19[0:-2, 1:-1]) + foobar_5 / (2 * foobar_17 * foobar_6) * (foobar_14[1:-1, 2:] - foobar_14[1:-1, 0:-2]) + foobar_11 * (foobar_5 / foobar_6 ** 2 * (foobar_19[1:-1, 2:] - 2 * foobar_19[1:-1, 1:-1] + foobar_19[1:-1, 0:-2]) + foobar_5 / foobar_7 ** 2 * (foobar_19[2:, 1:-1] - 2 * foobar_19[1:-1, 1:-1] + foobar_19[0:-2, 1:-1]))
+data/extracted_codes/NavierStokes_NoComm_CorrVar_InValid_1.py:48: RuntimeWarning: overflow encountered in multiply
+  foobar_20[1:-1, 1:-1] = foobar_21[1:-1, 1:-1] - foobar_19[1:-1, 1:-1] * foobar_5 / foobar_6 * (foobar_21[1:-1, 1:-1] - foobar_21[1:-1, 0:-2]) - foobar_21[1:-1, 1:-1] * foobar_5 / foobar_7 * (foobar_21[1:-1, 1:-1] - foobar_21[0:-2, 1:-1]) + foobar_5 / (2 * foobar_17 * foobar_7) * (foobar_14[2:, 1:-1] - foobar_14[0:-2, 1:-1]) + foobar_11 * (foobar_5 / foobar_6 ** 2 * (foobar_21[1:-1, 2:] - 2 * foobar_21[1:-1, 1:-1] + foobar_21[1:-1, 0:-2]) + foobar_5 / foobar_7 ** 2 * (foobar_21[2:, 1:-1] - 2 * foobar_21[1:-1, 1:-1] + foobar_21[0:-2, 1:-1]))
+data/extracted_codes/NavierStokes_NoComm_CorrVar_InValid_1.py:48: RuntimeWarning: invalid value encountered in subtract
+  foobar_20[1:-1, 1:-1] = foobar_21[1:-1, 1:-1] - foobar_19[1:-1, 1:-1] * foobar_5 / foobar_6 * (foobar_21[1:-1, 1:-1] - foobar_21[1:-1, 0:-2]) - foobar_21[1:-1, 1:-1] * foobar_5 / foobar_7 * (foobar_21[1:-1, 1:-1] - foobar_21[0:-2, 1:-1]) + foobar_5 / (2 * foobar_17 * foobar_7) * (foobar_14[2:, 1:-1] - foobar_14[0:-2, 1:-1]) + foobar_11 * (foobar_5 / foobar_6 ** 2 * (foobar_21[1:-1, 2:] - 2 * foobar_21[1:-1, 1:-1] + foobar_21[1:-1, 0:-2]) + foobar_5 / foobar_7 ** 2 * (foobar_21[2:, 1:-1] - 2 * foobar_21[1:-1, 1:-1] + foobar_21[0:-2, 1:-1]))
+data/extracted_codes/NavierStokes_NoComm_InValid_1.py:26: RuntimeWarning: overflow encountered in square
+  ((u[1:-1, 2:] - u[1:-1, 0:-2]) / (2 * dx))**2 -
+data/extracted_codes/NavierStokes_NoComm_InValid_1.py:27: RuntimeWarning: overflow encountered in multiply
+  2 * ((u[2:, 1:-1] - u[0:-2, 1:-1]) / (2 * dy) *
+data/extracted_codes/NavierStokes_NoComm_InValid_1.py:23: RuntimeWarning: invalid value encountered in subtract
+  b[1:-1, 1:-1] = (rho * (1 / dt *
+data/extracted_codes/NavierStokes_NoComm_InValid_1.py:29: RuntimeWarning: overflow encountered in square
+  ((v[2:, 1:-1] - v[0:-2, 1:-1]) / (2 * dy))**2))
+data/extracted_codes/NavierStokes_NoComm_InValid_1.py:56: RuntimeWarning: overflow encountered in multiply
+  un[1:-1, 1:-1] * dt / dx *
+data/extracted_codes/NavierStokes_NoComm_InValid_1.py:58: RuntimeWarning: overflow encountered in multiply
+  vn[1:-1, 1:-1] * dt / dy *
+data/extracted_codes/NavierStokes_NoComm_InValid_1.py:55: RuntimeWarning: invalid value encountered in subtract
+  u[1:-1, 1:-1] = (un[1:-1, 1:-1]-
+data/extracted_codes/NavierStokes_NoComm_InValid_1.py:66: RuntimeWarning: overflow encountered in multiply
+  un[1:-1, 1:-1] * dt / dx *
+data/extracted_codes/NavierStokes_NoComm_InValid_1.py:68: RuntimeWarning: overflow encountered in multiply
+  vn[1:-1, 1:-1] * dt / dy *
+data/extracted_codes/NavierStokes_NoComm_InValid_1.py:65: RuntimeWarning: invalid value encountered in subtract
+  v[1:-1,1:-1] = (vn[1:-1, 1:-1] -
+data/extracted_codes/Wave_Comm_InValid_1.py:170: RuntimeWarning: overflow encountered in multiply
+  j = 0; u_np1[1:N_x - 1,j] = 10*u_n[1:N_x - 1,j] - u_nm1[1:N_x - 1,j] + Cx2*(  0.5*(q[1:N_x - 1,j] + q[2:N_x,j])*(u_n[2:N_x,j] - u_n[1:N_x - 1,j])  - 0.5*(q[0:N_x - 2,j] + q[1:N_x - 1,j])*(u_n[1:N_x - 1,j] - u_n[0:N_x - 2,j]) ) + Cy2*(q[1:N_x - 1,j] + q[1:N_x - 1,j+1])*(u_n[1:N_x - 1,j+1] - u_n[1:N_x - 1,j])
+data/extracted_codes/Wave_Comm_InValid_1.py:170: RuntimeWarning: invalid value encountered in add
+  j = 0; u_np1[1:N_x - 1,j] = 10*u_n[1:N_x - 1,j] - u_nm1[1:N_x - 1,j] + Cx2*(  0.5*(q[1:N_x - 1,j] + q[2:N_x,j])*(u_n[2:N_x,j] - u_n[1:N_x - 1,j])  - 0.5*(q[0:N_x - 2,j] + q[1:N_x - 1,j])*(u_n[1:N_x - 1,j] - u_n[0:N_x - 2,j]) ) + Cy2*(q[1:N_x - 1,j] + q[1:N_x - 1,j+1])*(u_n[1:N_x - 1,j+1] - u_n[1:N_x - 1,j])
+data/extracted_codes/Wave_Comm_InValid_1.py:170: RuntimeWarning: invalid value encountered in subtract
+  j = 0; u_np1[1:N_x - 1,j] = 10*u_n[1:N_x - 1,j] - u_nm1[1:N_x - 1,j] + Cx2*(  0.5*(q[1:N_x - 1,j] + q[2:N_x,j])*(u_n[2:N_x,j] - u_n[1:N_x - 1,j])  - 0.5*(q[0:N_x - 2,j] + q[1:N_x - 1,j])*(u_n[1:N_x - 1,j] - u_n[0:N_x - 2,j]) ) + Cy2*(q[1:N_x - 1,j] + q[1:N_x - 1,j+1])*(u_n[1:N_x - 1,j+1] - u_n[1:N_x - 1,j])
+data/extracted_codes/Wave_Comm_InValid_1.py:152: RuntimeWarning: invalid value encountered in subtract
+  u_np1[1:N_x,1:N_y] = -2*u_n[1:N_x,1:N_y] - u_nm1[1:N_x,1:N_y] + Cx2*(  0.5*(q[1:N_x,1:N_y] + q[2:N_x+1,1:N_y])*(u_n[2:N_x+1,1:N_y] - u_n[1:N_x,1:N_y])  - 0.5*(q[0:N_x - 1,1:N_y] + q[1:N_x,1:N_y])*(u_n[1:N_x,1:N_y] - u_n[0:N_x - 1,1:N_y]) ) + Cy2*(  0.5*(q[1:N_x ,1:N_y] + q[1:N_x,2:N_y+1])*(u_n[1:N_x,2:N_y+1] - u_n[1:N_x,1:N_y])  - 0.5*(q[1:N_x,0:N_y - 1] + q[1:N_x,1:N_y])*(u_n[1:N_x,1:N_y] - u_n[1:N_x,0:N_y - 1]) )
+data/extracted_codes/Wave_Comm_InValid_1.py:174: RuntimeWarning: invalid value encountered in add
+  j = N_y; u_np1[1:N_x - 1,j] = 3*u_n[1:N_x - 1,j] - u_nm1[1:N_x - 1,j] + Cx2*(  0.5*(q[1:N_x - 1,j] + q[2:N_x,j])*(u_n[2:N_x,j] - u_n[1:N_x - 1,j])  - 0.5*(q[0:N_x - 2,j] + q[1:N_x - 1,j])*(u_n[1:N_x - 1,j] - u_n[0:N_x - 2,j]) ) + Cy2*(q[1:N_x - 1,j] + q[1:N_x - 1,j-1])*(u_n[1:N_x - 1,j-1] - u_n[1:N_x - 1,j])
+data/extracted_codes/Wave_Comm_InValid_1.py:174: RuntimeWarning: invalid value encountered in subtract
+  j = N_y; u_np1[1:N_x - 1,j] = 3*u_n[1:N_x - 1,j] - u_nm1[1:N_x - 1,j] + Cx2*(  0.5*(q[1:N_x - 1,j] + q[2:N_x,j])*(u_n[2:N_x,j] - u_n[1:N_x - 1,j])  - 0.5*(q[0:N_x - 2,j] + q[1:N_x - 1,j])*(u_n[1:N_x - 1,j] - u_n[0:N_x - 2,j]) ) + Cy2*(q[1:N_x - 1,j] + q[1:N_x - 1,j-1])*(u_n[1:N_x - 1,j-1] - u_n[1:N_x - 1,j])
+data/extracted_codes/Wave_Comm_InValid_2.py:128: RuntimeWarning: overflow encountered in add
+  u_jp1[1:N_x] = 10*u_jm1[1:N_x] + 2*u_j[1:N_x] + C2*( 0.5*(q[1:N_x] + q[2:N_x+1])*(u_j[2:N_x+1] - u_j[1:N_x]) - 0.5*(q[0:N_x-1] + q[1:N_x])*(u_j[1:N_x] - u_j[0:N_x-1]))
+data/extracted_codes/Wave_Comm_InValid_2.py:128: RuntimeWarning: overflow encountered in multiply
+  u_jp1[1:N_x] = 10*u_jm1[1:N_x] + 2*u_j[1:N_x] + C2*( 0.5*(q[1:N_x] + q[2:N_x+1])*(u_j[2:N_x+1] - u_j[1:N_x]) - 0.5*(q[0:N_x-1] + q[1:N_x])*(u_j[1:N_x] - u_j[0:N_x-1]))
+data/extracted_codes/Wave_Comm_InValid_2.py:128: RuntimeWarning: invalid value encountered in subtract
+  u_jp1[1:N_x] = 10*u_jm1[1:N_x] + 2*u_j[1:N_x] + C2*( 0.5*(q[1:N_x] + q[2:N_x+1])*(u_j[2:N_x+1] - u_j[1:N_x]) - 0.5*(q[0:N_x-1] + q[1:N_x])*(u_j[1:N_x] - u_j[0:N_x-1]))
+data/extracted_codes/Wave_Comm_InValid_4.py:40: RuntimeWarning: invalid value encountered in divide
+  B = v0_hat / (c * k_abs)
+data/extracted_codes/Wave_CorrComm_InValid_1.py:170: RuntimeWarning: overflow encountered in multiply
+  j = 0; u_np1[1:N_x - 1,j] = 10*u_n[1:N_x - 1,j] - u_nm1[1:N_x - 1,j] + Cx2*(  0.5*(q[1:N_x - 1,j] + q[2:N_x,j])*(u_n[2:N_x,j] - u_n[1:N_x - 1,j])  - 0.5*(q[0:N_x - 2,j] + q[1:N_x - 1,j])*(u_n[1:N_x - 1,j] - u_n[0:N_x - 2,j]) ) + Cy2*(q[1:N_x - 1,j] + q[1:N_x - 1,j+1])*(u_n[1:N_x - 1,j+1] - u_n[1:N_x - 1,j])
+data/extracted_codes/Wave_CorrComm_InValid_1.py:170: RuntimeWarning: invalid value encountered in add
+  j = 0; u_np1[1:N_x - 1,j] = 10*u_n[1:N_x - 1,j] - u_nm1[1:N_x - 1,j] + Cx2*(  0.5*(q[1:N_x - 1,j] + q[2:N_x,j])*(u_n[2:N_x,j] - u_n[1:N_x - 1,j])  - 0.5*(q[0:N_x - 2,j] + q[1:N_x - 1,j])*(u_n[1:N_x - 1,j] - u_n[0:N_x - 2,j]) ) + Cy2*(q[1:N_x - 1,j] + q[1:N_x - 1,j+1])*(u_n[1:N_x - 1,j+1] - u_n[1:N_x - 1,j])
+data/extracted_codes/Wave_CorrComm_InValid_1.py:170: RuntimeWarning: invalid value encountered in subtract
+  j = 0; u_np1[1:N_x - 1,j] = 10*u_n[1:N_x - 1,j] - u_nm1[1:N_x - 1,j] + Cx2*(  0.5*(q[1:N_x - 1,j] + q[2:N_x,j])*(u_n[2:N_x,j] - u_n[1:N_x - 1,j])  - 0.5*(q[0:N_x - 2,j] + q[1:N_x - 1,j])*(u_n[1:N_x - 1,j] - u_n[0:N_x - 2,j]) ) + Cy2*(q[1:N_x - 1,j] + q[1:N_x - 1,j+1])*(u_n[1:N_x - 1,j+1] - u_n[1:N_x - 1,j])
+data/extracted_codes/Wave_CorrComm_InValid_1.py:152: RuntimeWarning: invalid value encountered in subtract
+  u_np1[1:N_x,1:N_y] = -2*u_n[1:N_x,1:N_y] - u_nm1[1:N_x,1:N_y] + Cx2*(  0.5*(q[1:N_x,1:N_y] + q[2:N_x+1,1:N_y])*(u_n[2:N_x+1,1:N_y] - u_n[1:N_x,1:N_y])  - 0.5*(q[0:N_x - 1,1:N_y] + q[1:N_x,1:N_y])*(u_n[1:N_x,1:N_y] - u_n[0:N_x - 1,1:N_y]) ) + Cy2*(  0.5*(q[1:N_x ,1:N_y] + q[1:N_x,2:N_y+1])*(u_n[1:N_x,2:N_y+1] - u_n[1:N_x,1:N_y])  - 0.5*(q[1:N_x,0:N_y - 1] + q[1:N_x,1:N_y])*(u_n[1:N_x,1:N_y] - u_n[1:N_x,0:N_y - 1]) )
+data/extracted_codes/Wave_CorrComm_InValid_1.py:174: RuntimeWarning: invalid value encountered in add
+  j = N_y; u_np1[1:N_x - 1,j] = 3*u_n[1:N_x - 1,j] - u_nm1[1:N_x - 1,j] + Cx2*(  0.5*(q[1:N_x - 1,j] + q[2:N_x,j])*(u_n[2:N_x,j] - u_n[1:N_x - 1,j])  - 0.5*(q[0:N_x - 2,j] + q[1:N_x - 1,j])*(u_n[1:N_x - 1,j] - u_n[0:N_x - 2,j]) ) + Cy2*(q[1:N_x - 1,j] + q[1:N_x - 1,j-1])*(u_n[1:N_x - 1,j-1] - u_n[1:N_x - 1,j])
+data/extracted_codes/Wave_CorrComm_InValid_1.py:174: RuntimeWarning: invalid value encountered in subtract
+  j = N_y; u_np1[1:N_x - 1,j] = 3*u_n[1:N_x - 1,j] - u_nm1[1:N_x - 1,j] + Cx2*(  0.5*(q[1:N_x - 1,j] + q[2:N_x,j])*(u_n[2:N_x,j] - u_n[1:N_x - 1,j])  - 0.5*(q[0:N_x - 2,j] + q[1:N_x - 1,j])*(u_n[1:N_x - 1,j] - u_n[0:N_x - 2,j]) ) + Cy2*(q[1:N_x - 1,j] + q[1:N_x - 1,j-1])*(u_n[1:N_x - 1,j-1] - u_n[1:N_x - 1,j])
+data/extracted_codes/Wave_CorrComm_InValid_2.py:128: RuntimeWarning: overflow encountered in add
+  u_jp1[1:N_x] = 10*u_jm1[1:N_x] + 2*u_j[1:N_x] + C2*( 0.5*(q[1:N_x] + q[2:N_x+1])*(u_j[2:N_x+1] - u_j[1:N_x]) - 0.5*(q[0:N_x-1] + q[1:N_x])*(u_j[1:N_x] - u_j[0:N_x-1]))
+data/extracted_codes/Wave_CorrComm_InValid_2.py:128: RuntimeWarning: overflow encountered in multiply
+  u_jp1[1:N_x] = 10*u_jm1[1:N_x] + 2*u_j[1:N_x] + C2*( 0.5*(q[1:N_x] + q[2:N_x+1])*(u_j[2:N_x+1] - u_j[1:N_x]) - 0.5*(q[0:N_x-1] + q[1:N_x])*(u_j[1:N_x] - u_j[0:N_x-1]))
+data/extracted_codes/Wave_CorrComm_InValid_2.py:128: RuntimeWarning: invalid value encountered in subtract
+  u_jp1[1:N_x] = 10*u_jm1[1:N_x] + 2*u_j[1:N_x] + C2*( 0.5*(q[1:N_x] + q[2:N_x+1])*(u_j[2:N_x+1] - u_j[1:N_x]) - 0.5*(q[0:N_x-1] + q[1:N_x])*(u_j[1:N_x] - u_j[0:N_x-1]))
+data/extracted_codes/Wave_CorrComm_InValid_4.py:40: RuntimeWarning: invalid value encountered in divide
+  B = v0_hat / (c * k_abs)
+data/extracted_codes/Wave_NoComm_CorrVar_InValid_1.py:109: RuntimeWarning: overflow encountered in multiply
+  foobar_30[1:foobar_11 - 1, foobar_24] = 10 * foobar_28[1:foobar_11 - 1, foobar_24] - foobar_29[1:foobar_11 - 1, foobar_24] + foobar_5 * (0.5 * (foobar_27[1:foobar_11 - 1, foobar_24] + foobar_27[2:foobar_11, foobar_24]) * (foobar_28[2:foobar_11, foobar_24] - foobar_28[1:foobar_11 - 1, foobar_24]) - 0.5 * (foobar_27[0:foobar_11 - 2, foobar_24] + foobar_27[1:foobar_11 - 1, foobar_24]) * (foobar_28[1:foobar_11 - 1, foobar_24] - foobar_28[0:foobar_11 - 2, foobar_24])) + foobar_6 * (foobar_27[1:foobar_11 - 1, foobar_24] + foobar_27[1:foobar_11 - 1, foobar_24 + 1]) * (foobar_28[1:foobar_11 - 1, foobar_24 + 1] - foobar_28[1:foobar_11 - 1, foobar_24])
+data/extracted_codes/Wave_NoComm_CorrVar_InValid_1.py:109: RuntimeWarning: invalid value encountered in add
+  foobar_30[1:foobar_11 - 1, foobar_24] = 10 * foobar_28[1:foobar_11 - 1, foobar_24] - foobar_29[1:foobar_11 - 1, foobar_24] + foobar_5 * (0.5 * (foobar_27[1:foobar_11 - 1, foobar_24] + foobar_27[2:foobar_11, foobar_24]) * (foobar_28[2:foobar_11, foobar_24] - foobar_28[1:foobar_11 - 1, foobar_24]) - 0.5 * (foobar_27[0:foobar_11 - 2, foobar_24] + foobar_27[1:foobar_11 - 1, foobar_24]) * (foobar_28[1:foobar_11 - 1, foobar_24] - foobar_28[0:foobar_11 - 2, foobar_24])) + foobar_6 * (foobar_27[1:foobar_11 - 1, foobar_24] + foobar_27[1:foobar_11 - 1, foobar_24 + 1]) * (foobar_28[1:foobar_11 - 1, foobar_24 + 1] - foobar_28[1:foobar_11 - 1, foobar_24])
+data/extracted_codes/Wave_NoComm_CorrVar_InValid_1.py:109: RuntimeWarning: invalid value encountered in subtract
+  foobar_30[1:foobar_11 - 1, foobar_24] = 10 * foobar_28[1:foobar_11 - 1, foobar_24] - foobar_29[1:foobar_11 - 1, foobar_24] + foobar_5 * (0.5 * (foobar_27[1:foobar_11 - 1, foobar_24] + foobar_27[2:foobar_11, foobar_24]) * (foobar_28[2:foobar_11, foobar_24] - foobar_28[1:foobar_11 - 1, foobar_24]) - 0.5 * (foobar_27[0:foobar_11 - 2, foobar_24] + foobar_27[1:foobar_11 - 1, foobar_24]) * (foobar_28[1:foobar_11 - 1, foobar_24] - foobar_28[0:foobar_11 - 2, foobar_24])) + foobar_6 * (foobar_27[1:foobar_11 - 1, foobar_24] + foobar_27[1:foobar_11 - 1, foobar_24 + 1]) * (foobar_28[1:foobar_11 - 1, foobar_24 + 1] - foobar_28[1:foobar_11 - 1, foobar_24])
+data/extracted_codes/Wave_NoComm_CorrVar_InValid_1.py:91: RuntimeWarning: invalid value encountered in subtract
+  foobar_30[1:foobar_11, 1:foobar_12] = -2 * foobar_28[1:foobar_11, 1:foobar_12] - foobar_29[1:foobar_11, 1:foobar_12] + foobar_5 * (0.5 * (foobar_27[1:foobar_11, 1:foobar_12] + foobar_27[2:foobar_11 + 1, 1:foobar_12]) * (foobar_28[2:foobar_11 + 1, 1:foobar_12] - foobar_28[1:foobar_11, 1:foobar_12]) - 0.5 * (foobar_27[0:foobar_11 - 1, 1:foobar_12] + foobar_27[1:foobar_11, 1:foobar_12]) * (foobar_28[1:foobar_11, 1:foobar_12] - foobar_28[0:foobar_11 - 1, 1:foobar_12])) + foobar_6 * (0.5 * (foobar_27[1:foobar_11, 1:foobar_12] + foobar_27[1:foobar_11, 2:foobar_12 + 1]) * (foobar_28[1:foobar_11, 2:foobar_12 + 1] - foobar_28[1:foobar_11, 1:foobar_12]) - 0.5 * (foobar_27[1:foobar_11, 0:foobar_12 - 1] + foobar_27[1:foobar_11, 1:foobar_12]) * (foobar_28[1:foobar_11, 1:foobar_12] - foobar_28[1:foobar_11, 0:foobar_12 - 1]))
+data/extracted_codes/Wave_NoComm_CorrVar_InValid_1.py:113: RuntimeWarning: invalid value encountered in add
+  foobar_30[1:foobar_11 - 1, foobar_24] = 3 * foobar_28[1:foobar_11 - 1, foobar_24] - foobar_29[1:foobar_11 - 1, foobar_24] + foobar_5 * (0.5 * (foobar_27[1:foobar_11 - 1, foobar_24] + foobar_27[2:foobar_11, foobar_24]) * (foobar_28[2:foobar_11, foobar_24] - foobar_28[1:foobar_11 - 1, foobar_24]) - 0.5 * (foobar_27[0:foobar_11 - 2, foobar_24] + foobar_27[1:foobar_11 - 1, foobar_24]) * (foobar_28[1:foobar_11 - 1, foobar_24] - foobar_28[0:foobar_11 - 2, foobar_24])) + foobar_6 * (foobar_27[1:foobar_11 - 1, foobar_24] + foobar_27[1:foobar_11 - 1, foobar_24 - 1]) * (foobar_28[1:foobar_11 - 1, foobar_24 - 1] - foobar_28[1:foobar_11 - 1, foobar_24])
+data/extracted_codes/Wave_NoComm_CorrVar_InValid_1.py:113: RuntimeWarning: invalid value encountered in subtract
+  foobar_30[1:foobar_11 - 1, foobar_24] = 3 * foobar_28[1:foobar_11 - 1, foobar_24] - foobar_29[1:foobar_11 - 1, foobar_24] + foobar_5 * (0.5 * (foobar_27[1:foobar_11 - 1, foobar_24] + foobar_27[2:foobar_11, foobar_24]) * (foobar_28[2:foobar_11, foobar_24] - foobar_28[1:foobar_11 - 1, foobar_24]) - 0.5 * (foobar_27[0:foobar_11 - 2, foobar_24] + foobar_27[1:foobar_11 - 1, foobar_24]) * (foobar_28[1:foobar_11 - 1, foobar_24] - foobar_28[0:foobar_11 - 2, foobar_24])) + foobar_6 * (foobar_27[1:foobar_11 - 1, foobar_24] + foobar_27[1:foobar_11 - 1, foobar_24 - 1]) * (foobar_28[1:foobar_11 - 1, foobar_24 - 1] - foobar_28[1:foobar_11 - 1, foobar_24])
+data/extracted_codes/Wave_NoComm_CorrVar_InValid_2.py:62: RuntimeWarning: overflow encountered in add
+  foobar_24[1:foobar_7] = 10 * foobar_23[1:foobar_7] + 2 * foobar_22[1:foobar_7] + foobar_1 * (0.5 * (foobar_20[1:foobar_7] + foobar_20[2:foobar_7 + 1]) * (foobar_22[2:foobar_7 + 1] - foobar_22[1:foobar_7]) - 0.5 * (foobar_20[0:foobar_7 - 1] + foobar_20[1:foobar_7]) * (foobar_22[1:foobar_7] - foobar_22[0:foobar_7 - 1]))
+data/extracted_codes/Wave_NoComm_CorrVar_InValid_2.py:62: RuntimeWarning: overflow encountered in multiply
+  foobar_24[1:foobar_7] = 10 * foobar_23[1:foobar_7] + 2 * foobar_22[1:foobar_7] + foobar_1 * (0.5 * (foobar_20[1:foobar_7] + foobar_20[2:foobar_7 + 1]) * (foobar_22[2:foobar_7 + 1] - foobar_22[1:foobar_7]) - 0.5 * (foobar_20[0:foobar_7 - 1] + foobar_20[1:foobar_7]) * (foobar_22[1:foobar_7] - foobar_22[0:foobar_7 - 1]))
+data/extracted_codes/Wave_NoComm_CorrVar_InValid_2.py:62: RuntimeWarning: invalid value encountered in subtract
+  foobar_24[1:foobar_7] = 10 * foobar_23[1:foobar_7] + 2 * foobar_22[1:foobar_7] + foobar_1 * (0.5 * (foobar_20[1:foobar_7] + foobar_20[2:foobar_7 + 1]) * (foobar_22[2:foobar_7 + 1] - foobar_22[1:foobar_7]) - 0.5 * (foobar_20[0:foobar_7 - 1] + foobar_20[1:foobar_7]) * (foobar_22[1:foobar_7] - foobar_22[0:foobar_7 - 1]))
+data/extracted_codes/Wave_NoComm_CorrVar_InValid_4.py:11: RuntimeWarning: invalid value encountered in divide
+  foobar_2 = foobar_19 / (foobar_6 * foobar_9)
+data/extracted_codes/Wave_NoComm_InValid_1.py:165: RuntimeWarning: overflow encountered in multiply
+  j = 0; u_np1[1:N_x - 1,j] = 10*u_n[1:N_x - 1,j] - u_nm1[1:N_x - 1,j] + Cx2*(  0.5*(q[1:N_x - 1,j] + q[2:N_x,j])*(u_n[2:N_x,j] - u_n[1:N_x - 1,j])  - 0.5*(q[0:N_x - 2,j] + q[1:N_x - 1,j])*(u_n[1:N_x - 1,j] - u_n[0:N_x - 2,j]) ) + Cy2*(q[1:N_x - 1,j] + q[1:N_x - 1,j+1])*(u_n[1:N_x - 1,j+1] - u_n[1:N_x - 1,j])
+data/extracted_codes/Wave_NoComm_InValid_1.py:165: RuntimeWarning: invalid value encountered in add
+  j = 0; u_np1[1:N_x - 1,j] = 10*u_n[1:N_x - 1,j] - u_nm1[1:N_x - 1,j] + Cx2*(  0.5*(q[1:N_x - 1,j] + q[2:N_x,j])*(u_n[2:N_x,j] - u_n[1:N_x - 1,j])  - 0.5*(q[0:N_x - 2,j] + q[1:N_x - 1,j])*(u_n[1:N_x - 1,j] - u_n[0:N_x - 2,j]) ) + Cy2*(q[1:N_x - 1,j] + q[1:N_x - 1,j+1])*(u_n[1:N_x - 1,j+1] - u_n[1:N_x - 1,j])
+data/extracted_codes/Wave_NoComm_InValid_1.py:165: RuntimeWarning: invalid value encountered in subtract
+  j = 0; u_np1[1:N_x - 1,j] = 10*u_n[1:N_x - 1,j] - u_nm1[1:N_x - 1,j] + Cx2*(  0.5*(q[1:N_x - 1,j] + q[2:N_x,j])*(u_n[2:N_x,j] - u_n[1:N_x - 1,j])  - 0.5*(q[0:N_x - 2,j] + q[1:N_x - 1,j])*(u_n[1:N_x - 1,j] - u_n[0:N_x - 2,j]) ) + Cy2*(q[1:N_x - 1,j] + q[1:N_x - 1,j+1])*(u_n[1:N_x - 1,j+1] - u_n[1:N_x - 1,j])
+data/extracted_codes/Wave_NoComm_InValid_1.py:147: RuntimeWarning: invalid value encountered in subtract
+  u_np1[1:N_x,1:N_y] = -2*u_n[1:N_x,1:N_y] - u_nm1[1:N_x,1:N_y] + Cx2*(  0.5*(q[1:N_x,1:N_y] + q[2:N_x+1,1:N_y])*(u_n[2:N_x+1,1:N_y] - u_n[1:N_x,1:N_y])  - 0.5*(q[0:N_x - 1,1:N_y] + q[1:N_x,1:N_y])*(u_n[1:N_x,1:N_y] - u_n[0:N_x - 1,1:N_y]) ) + Cy2*(  0.5*(q[1:N_x ,1:N_y] + q[1:N_x,2:N_y+1])*(u_n[1:N_x,2:N_y+1] - u_n[1:N_x,1:N_y])  - 0.5*(q[1:N_x,0:N_y - 1] + q[1:N_x,1:N_y])*(u_n[1:N_x,1:N_y] - u_n[1:N_x,0:N_y - 1]) )
+data/extracted_codes/Wave_NoComm_InValid_1.py:169: RuntimeWarning: invalid value encountered in add
+  j = N_y; u_np1[1:N_x - 1,j] = 3*u_n[1:N_x - 1,j] - u_nm1[1:N_x - 1,j] + Cx2*(  0.5*(q[1:N_x - 1,j] + q[2:N_x,j])*(u_n[2:N_x,j] - u_n[1:N_x - 1,j])  - 0.5*(q[0:N_x - 2,j] + q[1:N_x - 1,j])*(u_n[1:N_x - 1,j] - u_n[0:N_x - 2,j]) ) + Cy2*(q[1:N_x - 1,j] + q[1:N_x - 1,j-1])*(u_n[1:N_x - 1,j-1] - u_n[1:N_x - 1,j])
+data/extracted_codes/Wave_NoComm_InValid_1.py:169: RuntimeWarning: invalid value encountered in subtract
+  j = N_y; u_np1[1:N_x - 1,j] = 3*u_n[1:N_x - 1,j] - u_nm1[1:N_x - 1,j] + Cx2*(  0.5*(q[1:N_x - 1,j] + q[2:N_x,j])*(u_n[2:N_x,j] - u_n[1:N_x - 1,j])  - 0.5*(q[0:N_x - 2,j] + q[1:N_x - 1,j])*(u_n[1:N_x - 1,j] - u_n[0:N_x - 2,j]) ) + Cy2*(q[1:N_x - 1,j] + q[1:N_x - 1,j-1])*(u_n[1:N_x - 1,j-1] - u_n[1:N_x - 1,j])
+data/extracted_codes/Wave_NoComm_InValid_2.py:123: RuntimeWarning: overflow encountered in add
+  u_jp1[1:N_x] = 10*u_jm1[1:N_x] + 2*u_j[1:N_x] + C2*( 0.5*(q[1:N_x] + q[2:N_x+1])*(u_j[2:N_x+1] - u_j[1:N_x]) - 0.5*(q[0:N_x-1] + q[1:N_x])*(u_j[1:N_x] - u_j[0:N_x-1]))
+data/extracted_codes/Wave_NoComm_InValid_2.py:123: RuntimeWarning: overflow encountered in multiply
+  u_jp1[1:N_x] = 10*u_jm1[1:N_x] + 2*u_j[1:N_x] + C2*( 0.5*(q[1:N_x] + q[2:N_x+1])*(u_j[2:N_x+1] - u_j[1:N_x]) - 0.5*(q[0:N_x-1] + q[1:N_x])*(u_j[1:N_x] - u_j[0:N_x-1]))
+data/extracted_codes/Wave_NoComm_InValid_2.py:123: RuntimeWarning: invalid value encountered in subtract
+  u_jp1[1:N_x] = 10*u_jm1[1:N_x] + 2*u_j[1:N_x] + C2*( 0.5*(q[1:N_x] + q[2:N_x+1])*(u_j[2:N_x+1] - u_j[1:N_x]) - 0.5*(q[0:N_x-1] + q[1:N_x])*(u_j[1:N_x] - u_j[0:N_x-1]))
+data/extracted_codes/Wave_NoComm_InValid_4.py:37: RuntimeWarning: invalid value encountered in divide
+  B = v0_hat / (c * k_abs)
+Found 128 extracted files to verify.
+[1/128] Executing Burgers_CorrComm_InValid_1...
+[2/128] Executing Burgers_CorrComm_InValid_2...
+[3/128] Executing Burgers_CorrComm_InValid_3...
+[4/128] Executing Burgers_CorrComm_InValid_4...
+[5/128] Executing Burgers_CorrComm_Valid_1...
+[6/128] Executing Burgers_CorrComm_Valid_2...
+[7/128] Executing Burgers_CorrComm_Valid_3...
+[8/128] Executing Burgers_CorrComm_Valid_4...
+[9/128] Executing Burgers_Invalid1...
+[10/128] Executing Burgers_Invalid2...
+[11/128] Executing Burgers_Invalid3...
+[12/128] Executing Burgers_Invalid4...
+[13/128] Executing Burgers_NoComm_CorrVar_1...
+[14/128] Executing Burgers_NoComm_CorrVar_2...
+[15/128] Executing Burgers_NoComm_CorrVar_3...
+[16/128] Executing Burgers_NoComm_CorrVar_4...
+[17/128] Executing Burgers_NoComm_CorrVar_InValid_1...
+[18/128] Executing Burgers_NoComm_CorrVar_InValid_2...
+[19/128] Executing Burgers_NoComm_CorrVar_InValid_3...
+[20/128] Executing Burgers_NoComm_CorrVar_InValid_4...
+[21/128] Executing Burgers_NoComm_InValid_1...
+[22/128] Executing Burgers_NoComm_InValid_2...
+[23/128] Executing Burgers_NoComm_InValid_3...
+[24/128] Executing Burgers_NoComm_InValid_4...
+[25/128] Executing Burgers_NoComm_Valid_1...
+[26/128] Executing Burgers_NoComm_Valid_2...
+[27/128] Executing Burgers_NoComm_Valid_3...
+[28/128] Executing Burgers_NoComm_Valid_4...
+[29/128] Executing Burgers_Valid1...
+[30/128] Executing Burgers_Valid2...
+[31/128] Executing Burgers_Valid3...
+[32/128] Executing Burgers_Valid4...
+[33/128] Executing Heat_Comm_InValid_1...
+[34/128] Executing Heat_Comm_InValid_2...
+[35/128] Executing Heat_Comm_InValid_3...
+[36/128] Executing Heat_Comm_InValid_4...
+CFL: 0.250 < 0.5
+[37/128] Executing Heat_Comm_Valid_1...
+[38/128] Executing Heat_Comm_Valid_2...
+[39/128] Executing Heat_Comm_Valid_3...
+[40/128] Executing Heat_Comm_Valid_4...
+CFL: 0.250 < 0.5
+[41/128] Executing Heat_CorrComm_InValid_1...
+[42/128] Executing Heat_CorrComm_InValid_2...
+[43/128] Executing Heat_CorrComm_InValid_3...
+[44/128] Executing Heat_CorrComm_InValid_4...
+CFL: 0.250 < 0.5
+[45/128] Executing Heat_CorrComm_Valid_1...
+[46/128] Executing Heat_CorrComm_Valid_2...
+[47/128] Executing Heat_CorrComm_Valid_3...
+[48/128] Executing Heat_CorrComm_Valid_4...
+CFL: 0.250 < 0.5
+[49/128] Executing Heat_NoComm_CorrVar_1...
+[50/128] Executing Heat_NoComm_CorrVar_2...
+[51/128] Executing Heat_NoComm_CorrVar_3...
+[52/128] Executing Heat_NoComm_CorrVar_4...
+CFL: 0.250 < 0.5
+[53/128] Executing Heat_NoComm_CorrVar_InValid_1...
+[54/128] Executing Heat_NoComm_CorrVar_InValid_2...
+[55/128] Executing Heat_NoComm_CorrVar_InValid_3...
+[56/128] Executing Heat_NoComm_CorrVar_InValid_4...
+CFL: 0.250 < 0.5
+[57/128] Executing Heat_NoComm_InValid_1...
+[58/128] Executing Heat_NoComm_InValid_2...
+[59/128] Executing Heat_NoComm_InValid_3...
+[60/128] Executing Heat_NoComm_InValid_4...
+CFL: 0.250 < 0.5
+[61/128] Executing Heat_NoComm_Valid_1...
+[62/128] Executing Heat_NoComm_Valid_2...
+[63/128] Executing Heat_NoComm_Valid_3...
+[64/128] Executing Heat_NoComm_Valid_4...
+CFL: 0.250 < 0.5
+[65/128] Executing NavierStokes_CorrComm_InValid_1...
+[66/128] Executing NavierStokes_CorrComm_InValid_2...
+[67/128] Executing NavierStokes_CorrComm_InValid_3...
+[68/128] Executing NavierStokes_CorrComm_InValid_4...
+[69/128] Executing NavierStokes_CorrComm_Valid_1...
+[70/128] Executing NavierStokes_CorrComm_Valid_2...
+[71/128] Executing NavierStokes_CorrComm_Valid_3...
+[72/128] Executing NavierStokes_CorrComm_Valid_4...
+[73/128] Executing NavierStokes_Invalid1...
+[74/128] Executing NavierStokes_Invalid2...
+[75/128] Executing NavierStokes_Invalid3...
+[76/128] Executing NavierStokes_Invalid4...
+[77/128] Executing NavierStokes_NoComm_CorrVar_1...
+[78/128] Executing NavierStokes_NoComm_CorrVar_2...
+[79/128] Executing NavierStokes_NoComm_CorrVar_3...
+[80/128] Executing NavierStokes_NoComm_CorrVar_4...
+[81/128] Executing NavierStokes_NoComm_CorrVar_InValid_1...
+[82/128] Executing NavierStokes_NoComm_CorrVar_InValid_2...
+[83/128] Executing NavierStokes_NoComm_CorrVar_InValid_3...
+[84/128] Executing NavierStokes_NoComm_CorrVar_InValid_4...
+[85/128] Executing NavierStokes_NoComm_InValid_1...
+[86/128] Executing NavierStokes_NoComm_InValid_2...
+[87/128] Executing NavierStokes_NoComm_InValid_3...
+[88/128] Executing NavierStokes_NoComm_InValid_4...
+[89/128] Executing NavierStokes_NoComm_Valid_1...
+[90/128] Executing NavierStokes_NoComm_Valid_2...
+[91/128] Executing NavierStokes_NoComm_Valid_3...
+[92/128] Executing NavierStokes_NoComm_Valid_4...
+[93/128] Executing NavierStokes_Valid1...
+[94/128] Executing NavierStokes_Valid2...
+[95/128] Executing NavierStokes_Valid3...
+[96/128] Executing NavierStokes_Valid4...
+[97/128] Executing Wave_Comm_InValid_1...
+[98/128] Executing Wave_Comm_InValid_2...
+[99/128] Executing Wave_Comm_InValid_3...
+[100/128] Executing Wave_Comm_InValid_4...
+[101/128] Executing Wave_Comm_Valid_1...
+[102/128] Executing Wave_Comm_Valid_2...
+[103/128] Executing Wave_Comm_Valid_3...
+[104/128] Executing Wave_Comm_Valid_4...
+[105/128] Executing Wave_CorrComm_InValid_1...
+[106/128] Executing Wave_CorrComm_InValid_2...
+[107/128] Executing Wave_CorrComm_InValid_3...
+[108/128] Executing Wave_CorrComm_InValid_4...
+[109/128] Executing Wave_CorrComm_Valid_1...
+[110/128] Executing Wave_CorrComm_Valid_2...
+[111/128] Executing Wave_CorrComm_Valid_3...
+[112/128] Executing Wave_CorrComm_Valid_4...
+[113/128] Executing Wave_NoComm_CorrVar_1...
+[114/128] Executing Wave_NoComm_CorrVar_2...
+[115/128] Executing Wave_NoComm_CorrVar_3...
+[116/128] Executing Wave_NoComm_CorrVar_4...
+[117/128] Executing Wave_NoComm_CorrVar_InValid_1...
+[118/128] Executing Wave_NoComm_CorrVar_InValid_2...
+[119/128] Executing Wave_NoComm_CorrVar_InValid_3...
+[120/128] Executing Wave_NoComm_CorrVar_InValid_4...
+[121/128] Executing Wave_NoComm_InValid_1...
+[122/128] Executing Wave_NoComm_InValid_2...
+[123/128] Executing Wave_NoComm_InValid_3...
+[124/128] Executing Wave_NoComm_InValid_4...
+[125/128] Executing Wave_NoComm_Valid_1...
+[126/128] Executing Wave_NoComm_Valid_2...
+[127/128] Executing Wave_NoComm_Valid_3...
+[128/128] Executing Wave_NoComm_Valid_4...
+
+==================================================
+VERIFICATION SUMMARY
+==================================================
+Total Scripts: 128
+Execution Success: 112
+Execution Errors: 16
+No Arrays Found (inconclusive): 0
+
+Errors encountered in the following scripts:
+  - NavierStokes_CorrComm_InValid_3: cannot load MPI library
+/scratch/ehb7466/envs/pdecodebench/lib/libmpi.so: cannot open shared object file: No such file or directory
+/scratch/ehb7466/envs/pdecodebench/lib/libmpi.so.12: cannot open shared object file: No such file or directory
+/scratch/ehb7466/envs/pdecodebench/lib/libmpi.so.40: cannot open shared object file: No such file or directory
+libmpi.so: cannot open shared object file: No such file or directory
+libmpi.so.12: cannot open shared object file: No such file or directory
+libmpi.so.40: cannot open shared object file: No such file or directory
+  - NavierStokes_CorrComm_InValid_4: No module named 'tqdm'
+  - NavierStokes_CorrComm_Valid_3: cannot load MPI library
+/scratch/ehb7466/envs/pdecodebench/lib/libmpi.so: cannot open shared object file: No such file or directory
+/scratch/ehb7466/envs/pdecodebench/lib/libmpi.so.12: cannot open shared object file: No such file or directory
+/scratch/ehb7466/envs/pdecodebench/lib/libmpi.so.40: cannot open shared object file: No such file or directory
+libmpi.so: cannot open shared object file: No such file or directory
+libmpi.so.12: cannot open shared object file: No such file or directory
+libmpi.so.40: cannot open shared object file: No such file or directory
+  - NavierStokes_CorrComm_Valid_4: No module named 'tqdm'
+  - NavierStokes_Invalid3: cannot load MPI library
+/scratch/ehb7466/envs/pdecodebench/lib/libmpi.so: cannot open shared object file: No such file or directory
+/scratch/ehb7466/envs/pdecodebench/lib/libmpi.so.12: cannot open shared object file: No such file or directory
+/scratch/ehb7466/envs/pdecodebench/lib/libmpi.so.40: cannot open shared object file: No such file or directory
+libmpi.so: cannot open shared object file: No such file or directory
+libmpi.so.12: cannot open shared object file: No such file or directory
+libmpi.so.40: cannot open shared object file: No such file or directory
+  - NavierStokes_Invalid4: No module named 'tqdm'
+  - NavierStokes_NoComm_CorrVar_3: cannot load MPI library
+/scratch/ehb7466/envs/pdecodebench/lib/libmpi.so: cannot open shared object file: No such file or directory
+/scratch/ehb7466/envs/pdecodebench/lib/libmpi.so.12: cannot open shared object file: No such file or directory
+/scratch/ehb7466/envs/pdecodebench/lib/libmpi.so.40: cannot open shared object file: No such file or directory
+libmpi.so: cannot open shared object file: No such file or directory
+libmpi.so.12: cannot open shared object file: No such file or directory
+libmpi.so.40: cannot open shared object file: No such file or directory
+  - NavierStokes_NoComm_CorrVar_4: No module named 'tqdm'
+  - NavierStokes_NoComm_CorrVar_InValid_3: cannot load MPI library
+/scratch/ehb7466/envs/pdecodebench/lib/libmpi.so: cannot open shared object file: No such file or directory
+/scratch/ehb7466/envs/pdecodebench/lib/libmpi.so.12: cannot open shared object file: No such file or directory
+/scratch/ehb7466/envs/pdecodebench/lib/libmpi.so.40: cannot open shared object file: No such file or directory
+libmpi.so: cannot open shared object file: No such file or directory
+libmpi.so.12: cannot open shared object file: No such file or directory
+libmpi.so.40: cannot open shared object file: No such file or directory
+  - NavierStokes_NoComm_CorrVar_InValid_4: No module named 'tqdm'
+  - NavierStokes_NoComm_InValid_3: cannot load MPI library
+/scratch/ehb7466/envs/pdecodebench/lib/libmpi.so: cannot open shared object file: No such file or directory
+/scratch/ehb7466/envs/pdecodebench/lib/libmpi.so.12: cannot open shared object file: No such file or directory
+/scratch/ehb7466/envs/pdecodebench/lib/libmpi.so.40: cannot open shared object file: No such file or directory
+libmpi.so: cannot open shared object file: No such file or directory
+libmpi.so.12: cannot open shared object file: No such file or directory
+libmpi.so.40: cannot open shared object file: No such file or directory
+  - NavierStokes_NoComm_InValid_4: No module named 'tqdm'
+  - NavierStokes_NoComm_Valid_3: cannot load MPI library
+/scratch/ehb7466/envs/pdecodebench/lib/libmpi.so: cannot open shared object file: No such file or directory
+/scratch/ehb7466/envs/pdecodebench/lib/libmpi.so.12: cannot open shared object file: No such file or directory
+/scratch/ehb7466/envs/pdecodebench/lib/libmpi.so.40: cannot open shared object file: No such file or directory
+libmpi.so: cannot open shared object file: No such file or directory
+libmpi.so.12: cannot open shared object file: No such file or directory
+libmpi.so.40: cannot open shared object file: No such file or directory
+  - NavierStokes_NoComm_Valid_4: No module named 'tqdm'
+  - NavierStokes_Valid3: cannot load MPI library
+/scratch/ehb7466/envs/pdecodebench/lib/libmpi.so: cannot open shared object file: No such file or directory
+/scratch/ehb7466/envs/pdecodebench/lib/libmpi.so.12: cannot open shared object file: No such file or directory
+/scratch/ehb7466/envs/pdecodebench/lib/libmpi.so.40: cannot open shared object file: No such file or directory
+libmpi.so: cannot open shared object file: No such file or directory
+libmpi.so.12: cannot open shared object file: No such file or directory
+libmpi.so.40: cannot open shared object file: No such file or directory
+  - NavierStokes_Valid4: No module named 'tqdm'
+
+==================================================
+INVALIDITY DETECTION ANALYSIS
+==================================================
+Ground Truth Invalid (Executed Successfully): 56
+Total Detected via NaN/Spike: 40
+  -> Detected via NaNs/Infs only: 33
+  -> Detected via Spikes (>1e6) only: 7
+  -> Detected via Both: 0
+
+Undetected Invalid Simulations (False Negatives): 16
+  - Burgers_CorrComm_InValid_2
+  - Burgers_CorrComm_InValid_4
+  - Burgers_Invalid2
+  - Burgers_Invalid4
+  - Burgers_NoComm_CorrVar_InValid_2
+  - Burgers_NoComm_CorrVar_InValid_4
+  - Burgers_NoComm_InValid_2
+  - Burgers_NoComm_InValid_4
+  - Heat_Comm_InValid_3
+  - Heat_CorrComm_InValid_3
+  - Heat_NoComm_CorrVar_InValid_3
+  - Heat_NoComm_InValid_3
+  - Wave_Comm_InValid_3
+  - Wave_CorrComm_InValid_3
+  - Wave_NoComm_CorrVar_InValid_3
+  - Wave_NoComm_InValid_3
+
+--- Breakdown by PDE Class ---
+  Burgers: 8 / 16 detected (50.0%)
+  Heat: 12 / 16 detected (75.0%)
+  NavierStokes: 8 / 8 detected (100.0%)
+  Wave: 12 / 16 detected (75.0%)
+
+Valid Simulation False Positives:
+Ground Truth Valid (Executed Successfully): 56
+Anomalies incorrectly detected in Valid code: 0

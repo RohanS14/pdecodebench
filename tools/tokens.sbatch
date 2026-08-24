@@ -7,7 +7,7 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --output=/scratch/ehb7466/projects/pde-llm-eval/logs/tokens_%j.out
 #SBATCH --error=/scratch/ehb7466/projects/pde-llm-eval/logs/tokens_%j.err
-export HF_HOME=/scratch/ehb7466/projects/pde-llm-eval/cache/hf_cache
+export HF_HOME=/scratch/ehb7466/hf_cache
 export HF_HUB_CACHE=$HF_HOME/hub
 export TMPDIR=/scratch/ehb7466/tmp
 PY=/scratch/ehb7466/envs/pdecodebench-vllm/bin/python
