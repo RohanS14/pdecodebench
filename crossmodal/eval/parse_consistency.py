@@ -29,7 +29,7 @@ import sys
 # compared. parse_score.py lives under freegen/ since the 2026-08-20 reorganisation.
 sys.path.insert(0, os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__)))))
-from freegen.parse_score import _any_alias_match               # noqa: E402
+from freegen.parse_score import _any_alias_match                  # noqa: E402
 
 FIELDS = ("agree", "outlier", "system_pde_class", "system_num_method", "justification")
 VALID_OUTLIERS = {"view_1", "view_2", "view_3", "view_4", "none"}
@@ -262,3 +262,28 @@ def detection_dprime(scored):
     """d' alone. Prefer detection_summary() -- see its docstring."""
     summary = detection_summary(scored)
     return None if summary is None else summary["dprime"]
+
+
+def is_looping(text, window=2500, n=12, threshold=20):
+    """True when the tail of a trace is a repeating n-gram: a decode loop.
+
+    This is the line between the two ways a draw can end without a verdict, and it
+    decides what is worth spending GPU on. A draw that hit its token cap while still
+    producing novel reasoning can be finished by giving it more budget. A draw stuck
+    repeating itself cannot -- Nemotron's loop rate is 21.2% at a 32,768 cap and
+    21.2% at 131,072, unchanged by quadrupling the budget, and its tails repeat a
+    single 12-gram hundreds of times.
+
+    Measured on the TAIL rather than the whole text: a trace can legitimately restate
+    a formula or re-derive a step early on, and what marks a loop is that it never
+    stops. Defined here, in the dependency-free parser module, because both the
+    backfill and the report must draw the line in exactly the same place -- two
+    copies of this rule would drift and the report would then claim to have repaired
+    rows the backfill skipped.
+    """
+    import collections
+    w = str(text or "").split()[-window:]
+    if len(w) < 300:
+        return False
+    grams = collections.Counter(tuple(w[i:i + n]) for i in range(len(w) - n))
+    return bool(grams) and grams.most_common(1)[0][1] >= threshold

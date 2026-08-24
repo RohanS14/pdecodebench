@@ -15,7 +15,7 @@ term and the seven values are therefore dependent.
 Outputs a JSON report and a flat CSV, one row per (model, thinking, condition).
 
 Usage:
-    python crossmodal/eval/aggregate_cross_modal.py --results_dir results/xmodal \
+    python eval/aggregate_cross_modal.py --results_dir results/xmodal \
         --items data/multimodal_items_v1.csv --out results/xmodal_summary.json
 """
 import argparse
@@ -28,7 +28,6 @@ from collections import defaultdict
 
 import numpy as np
 
-# repo root: this file sits at crossmodal/<area>/, so three levels up
 sys.path.insert(0, os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__)))))
 from crossmodal.eval.parse_consistency import dprime  # noqa: E402
@@ -97,30 +96,11 @@ def main():
     ap.add_argument("--out", default="results/xmodal_summary.json")
     ap.add_argument("--csv_out", default="results/xmodal_summary.csv")
     ap.add_argument("--n_boot", type=int, default=N_BOOT)
-    ap.add_argument("--keep_truncated", action="store_true",
-                    help="Include rows whose generation hit the token cap. Off by "
-                         "default: those responses never reached their answer.")
     args = ap.parse_args()
 
     rows = load_rows(args.results_dir)
     if not rows:
         sys.exit(f"[xmodal-agg] no rows in {args.results_dir}")
-    print(f"[xmodal-agg] {len(rows)} rows loaded")
-
-    # Truncation is a failed row, not a datum. A cut-off reasoning trace never
-    # reaches its JSON answer, and the regex fallback then harvests fragments out of
-    # the deliberation -- one such row scored agree="yes" AND outlier="view_1"
-    # simultaneously, which is not an answer, it is two keywords from different
-    # paragraphs. Every parse failure in the 4096-row run was a truncated row, and
-    # 47 more truncated rows were scraped by regex and scored. They are dropped here
-    # and the count is printed, because a silently included one is indistinguishable
-    # from a real judgement.
-    n_trunc = sum(1 for r in rows if r.get("finish_reason") == "length")
-    if n_trunc and not args.keep_truncated:
-        rows = [r for r in rows if r.get("finish_reason") != "length"]
-        print(f"[xmodal-agg] DROPPED {n_trunc} truncated row(s) "
-              f"({100 * n_trunc / (len(rows) + n_trunc):.1f}%) — pass --keep_truncated "
-              f"to include them")
     print(f"[xmodal-agg] {len(rows)} scored rows")
 
     n_sys = len({r["gt_sample"] for r in rows})

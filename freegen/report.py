@@ -23,7 +23,11 @@ import plotly.graph_objects as go
 import plotly.express as px
 from plotly.subplots import make_subplots
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "eval"))
+# This file's own directory FIRST, eval/ appended after. Both hold a parse_score.py on
+# the cluster and eval/'s is the stale pre-split copy; inserting eval/ at position 0
+# shadowed freegen/parse_score.py, which is what killed the first canary submission.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "eval"))
 from parse_score import classify_valid_confidence, valid_intent, VALID_CONF_CLASSES  # noqa: E402
 
 TEMPLATE = "plotly_white"
@@ -69,8 +73,50 @@ MODEL_SHORT = {
 REASONING_MODELS = {"QwQ-32B", "DeepSeek-R1-32B", "Qwen3-32B"}
 
 
+ITEM_KEYS = ["model", "thinking", "mod_type", "title"]
+
+
+def pool_draws(df):
+    """Collapse k sampled draws of one item into ONE observation.
+
+    Under k>1 the frame holds three rows per item, and they are three samples of one
+    model on one prompt -- correlated by construction, not three independent items.
+    Bootstrapping the raw rows resamples 3n values with the same mean, so the point
+    estimate is unchanged and every interval narrows by about sqrt(k): a 42% shrink
+    at k=3, in the direction that makes a result look real. Numeric scores are
+    averaged over the draws, which is the per-item expected score under the sampling
+    distribution; categorical fields take the item's modal value.
+
+    A k=1 frame passes through unchanged, so callers need not know which they hold.
+    """
+    if "sample_idx" not in df.columns or df["sample_idx"].nunique() <= 1:
+        return df
+    keys = [k for k in ITEM_KEYS if k in df.columns]
+    num = df.select_dtypes(include=[np.number]).columns.difference(
+        keys + ["sample_idx", "k_draws"])
+
+    def _one(g):
+        row = g.iloc[0].copy()
+        for c in num:
+            row[c] = g[c].mean()
+        for c in ("valid_conf", "valid_lean", "parsed_valid", "finish_reason"):
+            if c in g.columns:
+                m = g[c].mode(dropna=True)
+                row[c] = m.iloc[0] if len(m) else np.nan
+        row["n_draws_pooled"] = len(g)
+        return row
+
+    out = df.groupby(keys, dropna=False, sort=False).apply(
+        _one, include_groups=False).reset_index()
+    return out
+
+
 def bootstrap_ci(data, n_bootstrap=1000, ci=95, seed=42):
-    """Mean with a percentile bootstrap CI. Returns (lo, hi, mean, n)."""
+    """Mean with a percentile bootstrap CI over ITEMS. Returns (lo, hi, mean, n).
+
+    Callers must hand this pooled items, never raw draws -- see pool_draws(). load()
+    pools before returning, so every figure in this file gets item-level input.
+    """
     data = pd.Series(data).dropna().values
     if len(data) < 1:
         return np.nan, np.nan, np.nan, 0
@@ -110,6 +156,24 @@ def load(path: str) -> pd.DataFrame:
 
     df["overall_acc"] = df[["pde_match", "method_any_match",
                             "behavior_any_match", "valid_match"]].mean(axis=1)
+
+    # A run that reached no answer is DROPPED, not scored. Left in, score_valid gives
+    # it valid_match=0 -- counting a model that said nothing as one that said
+    # something false -- and classify_valid_confidence files it as "Hedged", which
+    # inflates a bucket this report plots. The count is printed rather than absorbed.
+    if "no_verdict" in df.columns:
+        nv = df["no_verdict"].fillna(False).astype(bool)
+        if nv.any():
+            print(f"[report] dropping {int(nv.sum())} row(s) with no verdict "
+                  f"({nv.mean():.1%}) — these reached no answer")
+            df = df[~nv].copy()
+
+    # Pool k draws to one observation per item BEFORE anything computes an interval.
+    n_before = len(df)
+    df = pool_draws(df)
+    if len(df) != n_before:
+        print(f"[report] pooled {n_before} draws -> {len(df)} items "
+              f"(k={n_before / max(1, len(df)):.1f}); every CI below is over ITEMS")
     return df
 
 

@@ -702,10 +702,17 @@ def fig7_prior_weakening(df, n_boot=None):
         return fig, r, "No paired observations."
 
     rows = [r.overall] + list(r.per_outlier)
-    ypos = [float(len(rows)) + 0.55] + [float(len(rows) - 1 - i)
-                                        for i in range(len(rows) - 1)]
+    # Laid out wide and short rather than tall: the figure carries five one-line rows,
+    # so the height it needs is set by the row pitch, not by the column width. The
+    # earlier version reserved a full row-height of empty axes below the last row for
+    # an in-axes legend and put the pooled row 1.55 pitches above the rest, which
+    # together cost about a third of the panel to whitespace. The legend now sits on
+    # one 8pt line above the axes and the head row sits 0.9 of a pitch clear of the
+    # separator -- still visibly set apart, without the gap reading as a missing row.
+    ypos = [float(len(rows) - 1) + 0.9] + [float(len(rows) - 1 - i)
+                                           for i in range(len(rows) - 1)]
 
-    fig, ax = plt.subplots(figsize=style.figsize(1.0, 0.55 * len(rows) + 1.5))
+    fig, ax = plt.subplots(figsize=style.figsize(1.0, 0.30 * len(rows) + 1.0))
     for yi, cst in zip(ypos, rows):
         head = cst is r.overall
         col = c["bar"] if head else MODALITY_COLORS.get(cst.name, c["muted"])
@@ -719,17 +726,19 @@ def fig7_prior_weakening(df, n_boot=None):
                     fontsize=style.ANNOT_PT + (1 if head else 0), color=c["fg"],
                     weight="bold" if head else "normal")
 
-    ax.axhline(len(rows) - 0.35, color=c["muted"], linewidth=0.6)
+    ax.axhline(len(rows) - 1 + 0.45, color=c["muted"], linewidth=0.6)
     ax.set_yticks(ypos)
+    # One line per label, not two. At this pitch a wrapped label would collide with
+    # its neighbour, and the n belongs beside the category rather than under it.
     ax.set_yticklabels(
-        [f"ALL broken items\n(n={r.overall.n_items:,})"]
-        + [f"{ML.get(x.name, x.name)} was broken\n(n={x.n_items:,})"
+        [f"ALL broken items (n={r.overall.n_items:,})"]
+        + [f"{ML.get(x.name, x.name)} was broken (n={x.n_items:,})"
            for x in rows[1:]])
     lo = min(100 * min(x.real, x.obf) for x in rows)
     hi = max(100 * max(x.real, x.obf) for x in rows)
     ax.set_xlim(max(0.0, np.floor((lo - 8) / 10) * 10),
                 min(100.0, np.ceil((hi + 8) / 10) * 10))
-    ax.set_ylim(-0.7, max(ypos) + 0.7)
+    ax.set_ylim(min(ypos) - 0.6, max(ypos) + 0.6)
     ax.set_xlabel("% of these items where the model named the right view")
     ax.grid(True, axis="x", linewidth=0.4, color=c["faint"])
     ax.set_axisbelow(True)
@@ -740,8 +749,119 @@ def fig7_prior_weakening(df, n_boot=None):
                    markeredgecolor=c["muted"], markeredgewidth=1.8, markersize=8,
                    label="obfuscated names"),
     ]
-    ax.legend(handles=handles, loc="lower right", fontsize=style.TICK_PT)
+    # Above the axes, not inside it: an in-axes legend needs an empty corner, and on
+    # a panel this short there is no corner the dumbbells do not reach.
+    ax.legend(handles=handles, loc="lower right", bbox_to_anchor=(1.0, 1.0),
+              ncol=2, frameon=False, fontsize=style.TICK_PT,
+              borderaxespad=0.0, handletextpad=0.4, columnspacing=1.2)
     return fig, r, _prior_caption(r)
+
+
+def fig7b_prior_weakening_split(df, n_boot=None):
+    """fig7, with the trajectory row opened up into its four corruption methods.
+
+    A companion to fig7_prior_weakening, not a replacement. The pooled figure answers
+    the question the section is under and carries the one contrast this design powers;
+    this one asks whether trajectory's four corruptions respond to obfuscation alike,
+    which the pooled row averages over. Every trajectory rung here is exploratory --
+    32 solvers split four ways -- and the head row is the same tested contrast as in
+    the pooled figure, reprinted so the rungs have something to be read against.
+
+    Row order matches fig7 with trajectory expanded IN PLACE (code, the four rungs,
+    description, math), so the two figures can be read against each other row by row.
+    """
+    from . import prior_weakening as PW
+    from .constants import MODALITY_LABELS as ML
+    from .sensitivity import TRAJ_SHORT
+    style.apply(style.theme())
+    c = style.colors()
+    kw = {"n_boot": n_boot} if n_boot else {}
+    r = PW.analyse(df, **kw)
+    rungs = PW.per_trajectory_rung(df, **kw)
+    if r.overall is None or not np.isfinite(r.overall.diff):
+        fig, ax = plt.subplots(figsize=style.figsize(1.0, 2.0))
+        style.empty_axes(ax, "no paired observations")
+        return fig, r, "No paired observations."
+    if not rungs:
+        fig, ax = plt.subplots(figsize=style.figsize(1.0, 2.0))
+        style.empty_axes(ax, "no trajectory rungs in this data")
+        return fig, r, "No trajectory rungs present."
+
+    by_name = {x.name: x for x in r.per_outlier}
+    # (contrast, label, colour-key). Trajectory's own pooled row is dropped: the four
+    # rungs it averages are right below it, and printing both invites reading the
+    # pooled row as a fifth, independent measurement.
+    body = []
+    for m in ("C", "T", "D", "M"):
+        if m == "T":
+            for x in rungs:
+                body.append((x, f"trajectory \u2014 {TRAJ_SHORT[x.name]}", "T"))
+        elif m in by_name:
+            body.append((by_name[m], f"{ML.get(m, m)} was broken", m))
+
+    rows = [(r.overall, f"ALL broken items", None)] + body
+    ypos = [float(len(rows) - 1) + 0.9] + [float(len(rows) - 1 - i)
+                                           for i in range(len(rows) - 1)]
+
+    fig, ax = plt.subplots(figsize=style.figsize(1.0, 0.30 * len(rows) + 1.0))
+    for yi, (cst, _, key) in zip(ypos, rows):
+        head = key is None
+        col = c["bar"] if head else MODALITY_COLORS.get(key, c["muted"])
+        ax.plot([100 * cst.real, 100 * cst.obf], [yi, yi], color=col,
+                linewidth=1.5, alpha=0.9, zorder=2)
+        ax.scatter([100 * cst.real], [yi], s=76 if head else 56, color=col, zorder=4)
+        ax.scatter([100 * cst.obf], [yi], s=76 if head else 56,
+                   facecolor=c["panel"], edgecolor=col, linewidth=1.8, zorder=4)
+        ax.annotate(f"{100 * cst.diff:+.1f} pp", (1.02, yi),
+                    xycoords=("axes fraction", "data"), va="center", ha="left",
+                    fontsize=style.ANNOT_PT + (1 if head else 0), color=c["fg"],
+                    weight="bold" if head else "normal")
+
+    ax.axhline(len(rows) - 1 + 0.45, color=c["muted"], linewidth=0.6)
+    ax.set_yticks(ypos)
+    ax.set_yticklabels([f"{lab} (n={cst.n_items:,})" for cst, lab, _ in rows])
+    lo = min(100 * min(x[0].real, x[0].obf) for x in rows)
+    hi = max(100 * max(x[0].real, x[0].obf) for x in rows)
+    ax.set_xlim(max(0.0, np.floor((lo - 8) / 10) * 10),
+                min(100.0, np.ceil((hi + 8) / 10) * 10))
+    ax.set_ylim(min(ypos) - 0.6, max(ypos) + 0.6)
+    ax.set_xlabel("% of these items where the model named the right view")
+    ax.grid(True, axis="x", linewidth=0.4, color=c["faint"])
+    ax.set_axisbelow(True)
+    handles = [
+        plt.Line2D([], [], marker="o", linestyle="", markerfacecolor=c["muted"],
+                   markeredgecolor=c["muted"], markersize=8, label="real names"),
+        plt.Line2D([], [], marker="o", linestyle="", markerfacecolor=c["panel"],
+                   markeredgecolor=c["muted"], markeredgewidth=1.8, markersize=8,
+                   label="obfuscated names"),
+    ]
+    ax.legend(handles=handles, loc="lower right", bbox_to_anchor=(1.0, 1.0),
+              ncol=2, frameon=False, fontsize=style.TICK_PT,
+              borderaxespad=0.0, handletextpad=0.4, columnspacing=1.2)
+    return fig, r, _split_caption(r, rungs)
+
+
+def _split_caption(r, rungs):
+    p = r.overall
+    sig = [x for x in rungs if np.isfinite(x.lo) and not (x.lo <= 0 <= x.hi)]
+    mdes = [x.mde for x in rungs if np.isfinite(x.mde)]
+    return (
+        f"The same measurement as the pooled figure, with trajectory opened up into "
+        f"the four ways it was corrupted. Filled dot = real variable names, hollow = "
+        f"obfuscated; every row is of the items where THAT view was the broken one, "
+        f"how often the model named it. The head row is the one tested contrast "
+        f"({100 * p.diff:+.1f}pp, {100 * p.lo:+.1f} to {100 * p.hi:+.1f} CI, "
+        f"n={p.n_solvers} solvers) and is identical to the pooled figure's. "
+        f"Trajectory's own pooled row is not drawn: it is the average of the four "
+        f"rungs below it, and showing both would read as five measurements where "
+        f"there are four. "
+        + (f"Every row below the rule is EXPLORATORY. Splitting trajectory four ways "
+           f"divides the same {p.n_solvers} solvers across four denominators, so the "
+           f"smallest effect detectable at 80% power on a rung runs "
+           f"{100 * min(mdes):.1f}pp to {100 * max(mdes):.1f}pp"
+           if mdes else "Every row below the rule is EXPLORATORY")
+        + (f"; the {len(sig)} rung interval(s) excluding zero are suggestive only."
+           if sig else "; no rung interval excludes zero."))
 
 
 def evidence_statement(r):

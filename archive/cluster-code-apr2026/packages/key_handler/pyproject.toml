@@ -1,0 +1,10 @@
+[build-system]
+requires = ["setuptools>=77.0.1", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "key_handler"
+version = "0.1.0"
+description = "Centralized API key management — one place for all your keys"
+requires-python = ">=3.10"
+license = {text = "MIT"}

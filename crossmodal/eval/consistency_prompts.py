@@ -3,7 +3,7 @@ consistency_prompts.py — prompt text, legend, and output schema for the
 cross-modal consistency experiment (plan Part III).
 
 Materializes the four views for an item from the manifest built by
-crossmodal/datagen/build_multimodal_items.py and assembles the prompt. Kept separate from the
+datagen/build_multimodal_items.py and assembles the prompt. Kept separate from the
 generation loop so the prompt copy and the schema can be reviewed without reading
 the vLLM plumbing, matching how eval/frontier/agentic_prompts.py is split from its
 orchestration.
@@ -29,7 +29,6 @@ import csv
 import os
 import sys
 
-# repo root: this file sits at crossmodal/<area>/, so three levels up
 sys.path.insert(0, os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__)))))
 from crossmodal.datagen.build_multimodal_items import (                       # noqa: E402
@@ -78,7 +77,7 @@ Output only the JSON object.\
 
 # Enforced by vLLM guided decoding where available. The "required iff agree == no"
 # rule cannot be expressed in JSON Schema, so it is checked when parsing rather
-# than constrained here -- see crossmodal/eval/parse_consistency.py.
+# than constrained here -- see eval/parse_consistency.py.
 CONSISTENCY_SCHEMA = {
     "type": "object",
     "properties": {

@@ -161,6 +161,15 @@ GENERATIONAL_REPOS = (
     "bermaneh/pde-llm-eval-xmodal-gen-nemotron-3-nano-30b",
     "bermaneh/pde-llm-eval-xmodal-gen-olmo-3-1-32b-think",
     "bermaneh/pde-llm-eval-xmodal-gen-glm-4-7-flash",
+    # The three original models RE-RUN under the uniform protocol (2026-08-21), so
+    # all eight points share one decoding regime. These do NOT replace the frozen
+    # repo -- that stays published and untouched, and build_claims.sh stays pinned
+    # to it. Their remaining asymmetry is architectural, not protocol: QwQ-32B and
+    # Qwen3-32B declare only 40960 context, so max_model_len clamps there and the
+    # worst-case item leaves them 7863 generation tokens against max_tokens=32768.
+    "bermaneh/pde-llm-eval-xmodal-gen-qwq-32b",
+    "bermaneh/pde-llm-eval-xmodal-gen-r1-distill-qwen-32b",
+    "bermaneh/pde-llm-eval-xmodal-gen-qwen3-32b",
 )
 
 # The frozen 4096 rows plus whatever generational arms exist. build_claims.sh must

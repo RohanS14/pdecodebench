@@ -364,6 +364,22 @@ Runs on open weights via cluster vLLM — no API cost.
   measured, not guessed: see the comment block above it for the per-model prompt
   distribution.
 
+  **The generation budget is per model, not global.** `MAX_TOKENS["on"] = 32768` was a
+  real ceiling for Nemotron-3-Nano, which truncated 908 of 3,072 rows at *exactly* that
+  number — its own context is 262,144, so nothing but our setting stopped it.
+  `gen_budget(model, thinking)` consults `MAX_TOKENS_BY_MODEL` first, and `init_vllm`
+  sizes the context as `max(MAX_MODEL_LEN, WORST_PROMPT_TOKENS + gen_budget(...))` so
+  the budget is guaranteed on the **worst** item rather than the median one. The log
+  line states which case holds:
+
+  ```
+  max_model_len=98633; worst measured prompt is 33097 tokens, so the budget
+  on the WORST item is 65536 tokens against max_tokens=65536 (OK)
+  ```
+
+  A `SHORT` verdict there is not always a bug — QwQ-32B declares a 40,960-token
+  context, `model_context_limit()` clamps to it, and no setting of ours can widen it.
+
 - **`model_registry.csv`** (in `data/`) — release date, total/active parameters,
   family, context length and reasoning mode per model. The repo had no parameter or
   release-date table anywhere, so the generational axis was not expressible without
@@ -385,15 +401,59 @@ Runs on open weights via cluster vLLM — no API cost.
   into every pooled panel of the published `consistency_claims.html` and then copy the
   result over the notes-folder version. Do not un-pin it.
 
+- **`viz/build_claims_expanded.py`** — the *other* report,
+  `viz/consistency_claims_expanded.html`. Same figures, generational data only: the
+  eight per-model `pde-llm-eval-xmodal-gen-*` repos under the uniform k=3 protocol. It
+  is a separate script rather than a flag on the first one precisely so the frozen
+  report has no code path into it.
+
+  - `ROSTER` names all eight models whether or not their repo exists yet, so the report
+    can say "queued" rather than silently omitting a model. `load_raw` returns `None`
+    for a missing repo, which is what makes that distinction possible.
+  - Nemotron's entry is a *tuple* of repos (`…-64k`, then the original); `survey()`
+    takes the first complete one, so the 64k re-run supersedes the truncated 32k run
+    automatically once it finishes.
+  - `has_real_verdict()` drops rows that are truncated **and** contain no `</think>`.
+    GLM, Nemotron and Qwen3.5 open the think block in the *prompt*, so those rows are
+    unterminated reasoning from which the regex cascade would otherwise scavenge a
+    verdict biased toward "agree".
+  - `sampling_of()` reads the decoding parameters off the rows themselves and flags
+    `(MIXED)` rather than asserting what the protocol was meant to be.
+
+  **The frozen report is protected structurally, not by convention.** The value labels
+  and `n =` annotations added to `fig_blame_stack` are gated behind `annotate=False`,
+  its default, and only `build_claims_expanded.py` passes `annotate=True`.
+
 ## `sbatch/`
 
 - **`run_exec_trajectories.sbatch`** — CPU, `cpu_short` / `torch_pr_427_general`.
   Builds `T_exec` and rewrites the trajectory record. Prints a native-library banner
   up front so a missing `mpi4py_fft` or `jax_cfd` is visible in the log rather than as
   a mid-run traceback. Run `setup_fftw_mpi.sbatch` first if either is missing.
-- **`run_cross_modal_consistency.sbatch`** — GPU, `h200_courant` /
-  `torch_pr_427_courant`. Sweeps models × reasoning arms, resumable via the checkpoint
-  JSONL, `SKIP_EXEC=true` until `T_exec` exists.
+- **`gpu_guard.py`** — a duty-cycle floor under `utilization.gpu`, for jobs already
+  running under `enforce_eager=True`. NYU HPC cancels jobs whose average utilization
+  falls below a threshold, and `enforce_eager` disables CUDA graphs so every decode
+  step launches its kernels one at a time and the GPU goes briefly idle between them —
+  a generation job that never pauses can still measure ~72%. `utilization.gpu` is the
+  fraction of *time* a kernel is resident, not SM occupancy, so the guard controls the
+  **duty cycle** (small bf16 matmuls for a slice of each second, proportional
+  controller, hard-capped at `--max-duty 0.30`) rather than spinning. It backs off to
+  zero on its own when the real workload is already above target. Run it as a separate
+  process, never a thread in the vLLM driver — a second CUDA context there is the same
+  hazard as the in-process HF upload this repo already warns about. **The actual fix is
+  `enforce_eager=False`**; this is a floor for work already queued under the old
+  setting.
+
+- **`run_cross_modal_consistency.sbatch`** — GPU. Sweeps models × reasoning arms,
+  resumable via the checkpoint JSONL, `SKIP_EXEC=true` until `T_exec` exists.
+
+  **Submit to `h200_cds` / `torch_pr_1168_cds`, not the `h200_courant` default in the
+  header.** All three partitions front the same 34 nodes; `h200_courant` enforces one
+  concurrent GPU per user, so a second job queued there waits out a full 8h wall, and
+  `h200_public` blocks on `QOSGrpGRES` even when mostly idle. Override at submit time:
+  `sbatch --partition=h200_cds --account=torch_pr_1168_cds …`. A pending job reading
+  `ReqNodeNotAvail` is usually short of **CPUs**, not GPUs — the nodes with free H200s
+  are routinely CPU-saturated against `--cpus-per-task=8`.
 
   Two things that are easy to get wrong here:
 
@@ -401,6 +461,16 @@ Runs on open weights via cluster vLLM — no API cost.
   split rather than appending, and the uploader globs the whole `OUTPUT_DIR`. Give
   each job its own `OUTPUT_DIR` **and** its own HF repo and any number can run at
   once; share either and they overwrite each other's uploads.
+
+  **Sampling is UNIFORM across the roster, not per-model:**
+  `temperature=0.6, top_p=0.95, top_k=20`, `k=3` samples per item, seed 20260821 —
+  see `UNIFORM_SAMPLING` in `run_cross_modal_consistency.py`. Greedy is not an option
+  (it makes reasoning models loop: 49 of the 70 truncations in the published dataset
+  are repetition loops, and Nemotron truncated 30 of 64 items at temperature 0). Nor
+  is per-model config, because the cards disagree on temperature in a way correlated
+  with release date, which would confound the time trend. Both the used settings and
+  each model's own recommendation are recorded on every row.
+  `PER_MODEL_SAMPLING=1` restores the per-model arm.
 
   **Qwen3.5/3.6/3.8 need `gdn_prefill_backend="triton"`.** Their Gated Delta Net
   attention JIT-compiles a FlashInfer kernel, and FlashInfer 0.6.6 on torch is missing

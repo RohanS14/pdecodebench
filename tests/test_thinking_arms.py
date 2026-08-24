@@ -100,12 +100,18 @@ def _reasoning_arms():
 
 @pytest.mark.parametrize("model,arm", list(_reasoning_arms()))
 def test_every_reasoning_arm_clears_the_32k_floor(model, arm):
-    grandfathered = {"Qwen/QwQ-32B", "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B"}
+    # The 16384 grandfather clause for QwQ-32B and R1-Distill-32B was lifted on
+    # 2026-08-24 WITH the researcher's approval: they instructed that free generation
+    # run "exactly the same model set from consistency" at the consistency decoding,
+    # and the consistency runner gives both models 32768. Leaving them at 16384 would
+    # have handed the same checkpoint half the budget on one side of a paired
+    # comparison, which reads as a capability difference. The published jul28 rows
+    # were already generated and are unaffected.
+    #
+    # This assertion is now the same for every reasoning arm, which is the point:
+    # there is no longer a model exempt from the floor.
     budget = arm_max_tokens(model, arm)
-    if model in grandfathered:
-        assert budget == 16384      # published at this; changing it needs approval
-    else:
-        assert budget >= 30720, f"{model} [{arm}] would truncate reasoning"
+    assert budget >= 30720, f"{model} [{arm}] would truncate reasoning"
 
 
 @pytest.mark.parametrize("model", sorted(TOGGLE_THINKING_MODELS))

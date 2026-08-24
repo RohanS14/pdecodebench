@@ -63,6 +63,62 @@ DEFAULT_ITEMS = "data/multimodal_items_v1.csv"
 # row parses as a failure. Truncated output is failed output, so the floor is 8192.
 MAX_TOKENS = {"on": 32768, "off": 8192}
 
+# Per-model generation budget, for checkpoints whose reasoning genuinely needs more
+# than the default. MEASURED, not guessed: Nemotron-3-Nano stopped at finish_reason
+# "length" on 908 of its 3072 draws (29.5%), and every one of those sat at EXACTLY
+# 32768 output tokens -- our cap, not its context. It declares 262144 and its
+# hybrid-Mamba/GQA KV cache holds 2,230,144 tokens (140x concurrency at the old
+# setting, ~22x at the new one), so the budget was ours to give and we underspent it.
+# Its completed responses run to a median of 11,632 tokens and a p90 of 25,856, so
+# 32768 was clipping the top of a distribution that genuinely reaches that far.
+#
+# Anything not listed keeps MAX_TOKENS. Raising the default instead would be wrong:
+# QwQ-32B and Qwen3-32B declare only 40960 of context, so a bigger number is not
+# reachable for them and would only make the log claim a budget they cannot use.
+# Raised to 131072 on 2026-08-22 with the researcher approval, after MEASURING the
+# generated lengths rather than trusting the engine "(OK)" banner -- which only says
+# the configured budget reaches the worst prompt, not that the model fits inside it.
+#   Nemotron-64k  median 20174 out tok, 430/1728 (24.9%) truncated at exactly 65536
+#   Qwen3.8-27B   median 27946 out tok, 170/ 384 (44.3%) truncated at exactly 32768
+# Measured concurrency at max_model_len 164169 (2026-08-22): Nemotron 64.14x,
+# Qwen3.8 6.92x (was 16.01x at 69632). Do NOT compute this as KV_size/max_model_len;
+# that understates it ~4x because vLLM accounts for layers that never cache in full.
+# Every truncated row lacked its closing </think>, so all were unusable, and the loss
+# concentrates on the items needing the most reasoning. Both declare 262144 context.
+MAX_TOKENS_BY_MODEL = {
+    "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16": 131072,
+    # 65536, lowered from 131072 on 2026-08-22. Measured over 1,152 draws: p50 17,961,
+    # p90 51,500, p99 77,267. A 65,536 cap truncates 2.9% of draws; 131,072 truncates
+    # 0.7%. The extra 0.7 points cost a doubled STRAGGLER tail -- llm.generate() writes
+    # nothing until every sequence in the batch returns, so one trace running to 131k
+    # holds ~190 finished ones unwritten for an extra hour, collapses GPU utilization
+    # at the batch tail, and invites the cluster's sub-60% killer. Shards s3/s4 sat 3h
+    # at 189/192 and 183/192 with zero rows on disk because of exactly this.
+    # The truncated 2.9% are recovered by continuation, which is exact and now proven
+    # (R1-Distill: 7 of 7 recovered in 71s).
+    "Qwen/Qwen3.8-27B": 65536,
+    # GLM added 2026-08-22 with the researcher's approval. Its 374 lost draws at 32768
+    # were 328 budget and only 46 decode loops -- the reverse of Nemotron's split -- so
+    # unlike Nemotron this one is worth buying with context. Its median was 6,535 output
+    # tokens against a p90 sitting exactly ON the cap, i.e. a long tail of real reasoning
+    # was being clipped rather than a bulk of runaway generations.
+    "zai-org/GLM-4.7-Flash": 131072,
+    # Qwen3.6 added 2026-08-22 with the researcher's approval. The 48 draws it
+    # recovers are not the reason -- that is only 1.6% of its 3072. The reason is
+    # protocol uniformity: at 3.0% it is the last model whose cap does measurable
+    # work, so raising it means every arm with a cap-hit rate above 1% ran at the
+    # same budget. The models left at 32768 hit their cap 0.0-1.2% of the time, where
+    # the budget cannot be confounding a generational comparison.
+    "Qwen/Qwen3.6-27B": 131072,
+}
+
+
+def gen_budget(model, thinking):
+    """max_tokens for this (model, arm). Per-model override applies to the on arm."""
+    if thinking != "on":
+        return MAX_TOKENS[thinking]
+    return MAX_TOKENS_BY_MODEL.get(model, MAX_TOKENS["on"])
+
 # MEASURED, not estimated (2026-08-21). Every one of the 1024 prompts was rebuilt and
 # tokenized with each roster model's OWN tokenizer and chat template -- a chars/token
 # ratio is not portable across tokenizers, and the template adds tokens of its own:
@@ -124,7 +180,20 @@ WORST_PROMPT_TOKENS = 33097
 #                                     registered and still fails. Cost one GPU
 #                                     allocation (job 16119739) before a CPU-side
 #                                     create_model_config() probe was added.
-#   Olmo-3.1-32B-Think                no toggle at all; <think> only -> ALWAYS
+#   Olmo-3.1-32B-Think                DROPPED 2026-08-21. Passes the registry and
+#                                     ModelConfig gates and dies at ENGINE INIT:
+#                                     vllm/model_executor/models/olmo2.py:144 reads
+#                                     config.rope_parameters["rope_theta"] as a FLAT
+#                                     dict, but this transformers builds it NESTED
+#                                     per layer type for Olmo-3 --
+#                                     {'sliding_attention': {rope_type: default...},
+#                                      'full_attention': {rope_type: yarn...}} --
+#                                     over 48 sliding + 16 full layers. Flattening it
+#                                     via hf_overrides makes init succeed but forces
+#                                     yarn onto the 48 layers that should use default
+#                                     rope: a working, silently WRONG model. Every
+#                                     Olmo-3 variant shares this structure, so no AI2
+#                                     model is runnable on vLLM 0.19.1.
 #
 # TOGGLEABLE membership matters even though only the "on" arm is run: it is the sole
 # reason chat_kwargs carries enable_thinking=True at all (run_batch below passes None
@@ -141,7 +210,6 @@ TOGGLEABLE = {
 ALWAYS_THINKING = {
     "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B",
     "Qwen/QwQ-32B",
-    "allenai/Olmo-3.1-32B-Think",
 }
 
 
@@ -167,9 +235,66 @@ def probe_guided_decoding():
             return "prompt_only"
 
 
-def build_sampling_params(route, max_tokens):
+# UNIFORM across the roster, deliberately, and NOT each model's own config.
+#
+# "Each model at its authors' settings" sounds right and is wrong for a TIME TREND.
+# The configs disagree on temperature -- Nemotron 1.0, GLM-4.7-Flash 1.0, everything
+# else 0.6 -- and the split is aligned with the axis: two of the three OLDEST models
+# draw at 1.0 while all three newest draw at 0.6. Higher temperature costs accuracy on
+# a determinate-answer task, so per-model configs would handicap the older models and
+# bias the trend upward, in the same direction as the hypothesis and the generation
+# budget asymmetry. Two confounds stacking the same way is not acceptable on a claim
+# that newer models are better.
+#
+# 0.6 / 0.95 / 20 is the Qwen3.x recommendation, used as-shipped by half the roster,
+# a standard nucleus+top-k combination, and the usual convention for reasoning-model
+# evals. It is NOT greedy, which is the thing that had to change: at temperature 0
+# Nemotron truncated 30 of its first 64 items in repetition loops.
+#
+# Recorded limitation: this adopts one family's convention for all six, so Nemotron
+# and GLM run off their authors' spec (in the conservative direction).
+UNIFORM_SAMPLING = {"temperature": 0.6, "top_p": 0.95, "top_k": 20}
+
+
+def recommended_sampling(model):
+    """The model's OWN generation_config.json sampling settings.
+
+    Read at run time rather than hardcoded, and recorded on every row, because the
+    protocol is "each model at the settings its authors specify" and a table in this
+    file would drift from the model card without anything failing.
+
+    Why not greedy: every model in this roster ships do_sample=True with temperature
+    0.6-1.0, and the reasoning-model cards are explicit that greedy decoding causes
+    endless repetition in thinking mode. Measured here on 2026-08-21: at
+    temperature=0.0, Nemotron-3-Nano (3B active) truncated 30 of its first 64 items,
+    with 129 near-identical segments in the last 4k characters. The published arms at
+    the same setting show the same pathology at 32B-dense scale -- 49 of their 70
+    truncations are repetition loops. Greedy was measuring robustness to an
+    unsupported decoding mode, not physics-consistency detection.
+    """
+    from transformers import GenerationConfig
+    out = {"temperature": 0.6, "top_p": 0.95}          # conservative fallback
+    try:
+        g = GenerationConfig.from_pretrained(model, trust_remote_code=True)
+        for k in ("temperature", "top_p", "top_k"):
+            v = getattr(g, k, None)
+            if v is not None:
+                out[k] = v
+    except Exception as e:                                       # noqa: BLE001
+        print(f"[xmodal] could not read generation_config for {model} "
+              f"({type(e).__name__}); falling back to {out}", flush=True)
+    # top_k=0 means "disabled" in HF but is invalid in vLLM, which wants -1.
+    if out.get("top_k") in (0, None):
+        out.pop("top_k", None)
+    return out
+
+
+def build_sampling_params(route, max_tokens, gen=None, n=1, seed=None):
     from vllm import SamplingParams
-    kwargs = {"temperature": 0.0, "max_tokens": max_tokens}
+    kwargs = {"max_tokens": max_tokens, "n": n}
+    kwargs.update(gen or {"temperature": 0.0})
+    if seed is not None:
+        kwargs["seed"] = seed
     if route == "guided_json":
         from vllm.sampling_params import GuidedDecodingParams
         kwargs["guided_decoding"] = GuidedDecodingParams(json=CONSISTENCY_SCHEMA)
@@ -199,21 +324,27 @@ def model_context_limit(model):
         return None
 
 
-def init_vllm(model, tensor_parallel_size):
+def init_vllm(model, tensor_parallel_size, thinking="on"):
     from vllm import LLM
     limit = model_context_limit(model)
-    max_len = min(MAX_MODEL_LEN, limit) if limit else MAX_MODEL_LEN
+    # The window must hold the worst prompt PLUS this model's generation budget,
+    # otherwise the budget is nominal: a model allowed 65536 output tokens inside a
+    # 69632 window truncates at 36535 on the longest item and the log still claims
+    # 65536. Grow the window to fit, then clamp to what the checkpoint declares.
+    want = max(MAX_MODEL_LEN, WORST_PROMPT_TOKENS + gen_budget(model, thinking))
+    max_len = min(want, limit) if limit else want
     # WORST_PROMPT_TOKENS is measured, not guessed -- see the MAX_MODEL_LEN comment.
     # The old log line here divided by ~11k (the MEDIAN) and so reported a worst-case
     # budget roughly 22k tokens larger than the real one, in the job log, every run.
+    budget = gen_budget(model, thinking)
     worst_budget = max_len - WORST_PROMPT_TOKENS
     if limit and limit < MAX_MODEL_LEN:
         print(f"[xmodal] {model} caps context at {limit}; using max_model_len={max_len} "
               f"(requested {MAX_MODEL_LEN}).", flush=True)
     print(f"[xmodal] max_model_len={max_len}; worst measured prompt is "
           f"{WORST_PROMPT_TOKENS} tokens, so the budget on the WORST item is "
-          f"{worst_budget} tokens against max_tokens={MAX_TOKENS['on']} "
-          f"({'OK' if worst_budget >= MAX_TOKENS['on'] else 'SHORT -- long items will truncate'})",
+          f"{worst_budget} tokens against max_tokens={budget} "
+          f"({'OK' if worst_budget >= budget else 'SHORT -- long items will truncate'})",
           flush=True)
     # Gated Delta Net linear attention (Qwen3.5/3.6/3.8) JIT-compiles a FlashInfer
     # kernel on first prefill. FlashInfer 0.6.6 on the torch cluster is missing
@@ -233,14 +364,34 @@ def init_vllm(model, tensor_parallel_size):
         tensor_parallel_size=tensor_parallel_size,
         trust_remote_code=True,
         max_model_len=max_len,
-        enforce_eager=True,
+        # enforce_eager=True disables CUDA graphs: every decode step launches its
+        # kernels one at a time from Python and the GPU idles in the gaps. Worst
+        # exactly where this roster lives -- Qwen3.8 decodes only 6.92 sequences
+        # concurrently, so each kernel is small and the gap is a large share of
+        # wall-clock. NYU HPC reads utilization.gpu as fraction of TIME a kernel is
+        # resident, so those gaps look like idleness: it CANCELLED two jobs of this
+        # experiment mid-generation on 2026-08-22.
+        #
+        # No reproducibility argument for keeping it. Continuous batching already
+        # makes a sequence depend on its batch-mates, so reduction order was never
+        # fixed, and the design samples k=3 at temperature 0.6 because outputs vary.
+        # The real risk is COMPATIBILITY: Qwen3.5/3.6/3.8 run Gated Delta Net linear
+        # attention on the forced Triton path, and graph capture can interact badly
+        # with custom attention kernels; capture also reserves memory, shrinking the
+        # KV cache. Hence an env switch, measured before it is trusted.
+        enforce_eager=os.environ.get("ENFORCE_EAGER", "1") == "1",
     )
 
 
 def load_checkpoint(path):
-    """Resume set keyed by (item_id, model, thinking). Jobs on this cluster get
-    rescheduled two to four times, so resumability is load-bearing, not a nicety."""
-    done = set()
+    """Resume COUNTER keyed by (item_id, model, thinking) -> samples on disk.
+
+    A counter rather than a set because the run draws K samples per item: an item
+    with 1 of 3 samples written is not done, and resuming it as though it were would
+    silently leave a ragged K across the dataset. Jobs on this cluster get
+    rescheduled two to four times, so resumability is load-bearing, not a nicety.
+    """
+    done = {}
     if not os.path.exists(path):
         return done
     with open(path) as f:
@@ -248,7 +399,8 @@ def load_checkpoint(path):
             line = line.strip()
             if line:
                 r = json.loads(line)
-                done.add((r["item_id"], r["model"], r["thinking"]))
+                key = (r["item_id"], r["model"], r["thinking"])
+                done[key] = done.get(key, 0) + 1
     return done
 
 
@@ -346,8 +498,11 @@ def run(args):
     os.makedirs(args.output_dir, exist_ok=True)
 
     done = load_checkpoint(out_path)
+    # An item is finished only when all K samples exist; a partially sampled item is
+    # re-run in full and its stale rows are dropped at aggregation by (item_id,
+    # sample_idx), so a rescheduled job never leaves a ragged K.
     todo = [i for i in items
-            if (i["item_id"], args.model, args.thinking) not in done]
+            if done.get((i["item_id"], args.model, args.thinking), 0) < args.k]
     if args.limit:
         todo = todo[:args.limit]
 
@@ -367,8 +522,19 @@ def run(args):
               flush=True)
 
     sources = ViewSources(args.multimodal, args.dataset, exec_traj)
-    llm = init_vllm(args.model, args.tp)
-    sampling = build_sampling_params(route, MAX_TOKENS[args.thinking])
+    llm = init_vllm(args.model, args.tp, args.thinking)
+    # What the model's own card asks for -- recorded, not used, so the artifact shows
+    # both the protocol and the deviation from each model's spec.
+    model_rec = recommended_sampling(args.model)
+    gen = dict(UNIFORM_SAMPLING)
+    if os.environ.get("PER_MODEL_SAMPLING") == "1":
+        gen = model_rec
+    sampling = build_sampling_params(route, gen_budget(args.model, args.thinking),
+                                     gen=gen, n=args.k, seed=args.seed)
+    print(f"[xmodal] sampling: k={args.k} seed={args.seed} USED={gen} "
+          f"| model_recommended={model_rec}"
+          f"{'' if gen == model_rec else '  <-- DEVIATES, uniform protocol'}",
+          flush=True)
     chat_kwargs = ({"enable_thinking": args.thinking == "on"}
                    if args.model in TOGGLEABLE else None)
 
@@ -383,12 +549,21 @@ def run(args):
         elapsed = time.time() - t0
 
         for item, out in zip(batch, outputs):
-            text = out.outputs[0].text
+          # K samples per item. Each becomes its own row, tagged with sample_idx, so
+          # the raw draws stay inspectable instead of being averaged away here --
+          # aggregation decides how to pool, and a reader can check the spread.
+          for sample_idx, cand in enumerate(out.outputs):
+            text = cand.text
             parsed = parse_consistency(text)
             scored = score_consistency(parsed, item)
             if parsed["parse_route"] == "failed":
                 n_fail += 1
             append_result(out_path, {
+                "sample_idx": sample_idx,
+                "k": args.k,
+                "sampling": gen,
+                "model_recommended_sampling": model_rec,
+                "seed": args.seed,
                 "item_id": item["item_id"],
                 "model": args.model,
                 "thinking": args.thinking,
@@ -402,9 +577,12 @@ def run(args):
                 "slots": [item[f"slot_{k}"] for k in range(1, 5)],
                 # Full text, never truncated -- the reasoning traces are evidence.
                 "response": text,
-                "finish_reason": out.outputs[0].finish_reason,
+                # PER-SAMPLE, from `cand` -- reading outputs[0] here would stamp
+                # sample 0's finish_reason and length onto all K rows, so a run with
+                # one truncated draw of three would look uniformly truncated.
+                "finish_reason": cand.finish_reason,
                 "n_prompt_tokens": len(out.prompt_token_ids or []),
-                "n_output_tokens": len(out.outputs[0].token_ids or []),
+                "n_output_tokens": len(cand.token_ids or []),
                 "structured_route": route,
                 **parsed,
                 **scored,
@@ -446,6 +624,13 @@ def main():
     p.add_argument("--limit", type=int, default=int(os.environ.get("LIMIT", "0")))
     p.add_argument("--conditions", default=os.environ.get("CONDITIONS", ""))
     p.add_argument("--systems", default=os.environ.get("SYSTEMS", ""))
+    p.add_argument("--k", type=int, default=int(os.environ.get("K_SAMPLES", "3")),
+                   help="samples per item. Reasoning models are run with their own "
+                        "recommended sampling settings, which are stochastic, so a "
+                        "single draw carries run-to-run variance on top of the 32 "
+                        "solver clusters. k>1 averages that down.")
+    p.add_argument("--seed", type=int, default=int(os.environ.get("SAMPLING_SEED", "20260821")),
+                   help="sampling seed, recorded on every row so a draw is reproducible.")
     p.add_argument("--upload_every", type=int,
                    default=int(os.environ.get("UPLOAD_EVERY", "128")),
                    help="Upload the results so far every N items. 0 disables.")

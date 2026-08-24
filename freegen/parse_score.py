@@ -41,6 +41,69 @@ VALID_MAPPING = {
 _PLACEHOLDER = re.compile(r"^[_\s]*$")
 
 
+_THINK = re.compile(r"<think>.*?</think>", re.DOTALL)
+_UNCLOSED_THINK = re.compile(r"^.*?</think>", re.DOTALL)
+
+
+def strip_think(text: str) -> str:
+    """Remove reasoning traces before parsing the answer.
+
+    Byte-identical to crossmodal/eval/parse_consistency.strip_think, deliberately:
+    the two experiments run the same eight checkpoints over the same 32 solver
+    systems, and a paired comparison between them is only meaningful if a reasoning
+    trace is stripped the same way on both sides.
+
+    The single-regex version this replaces required a MATCHED pair of tags, which is
+    wrong for this roster in two distinct ways, both measured on the consistency run:
+
+      * Some models never emit an opening <think>. Their chat template opens the
+        reasoning block in the PROMPT, so only the closing tag comes back. The
+        matched-pair regex finds nothing and the whole trace stays in the text the
+        field parser reads. parse_response's "last non-placeholder match wins" rule
+        happens to survive the common ordering -- a draft answer inside the trace is
+        overwritten by the real one after it -- so this is a latent hazard here
+        rather than a measured loss: it bites when the trace mentions a field AFTER
+        the answer. Stripping at the closing tag removes the hazard outright.
+      * A response truncated at the token cap never closes the tag at all, and this
+        one is not latent. MEASURED on the case below: a run cut off mid-reasoning,
+        having answered nothing, parses under the old regex to the draft value
+        sitting in its own deliberation -- "pde: heat equation" reported as the
+        model's answer when the model never gave one. Returning "" makes the row
+        parse to all-None, and is_no_verdict() then marks it so it is dropped and
+        counted rather than scored.
+
+    On the consistency arms the same class of failure produced a verdict the model
+    never gave for 907 of Nemotron's 3,072 rows (29.5%) and 256 of GLM's 2,304
+    (11.1%), and those invented verdicts skewed toward one answer -- so it biased
+    the result, not just the noise. Both models are in this roster.
+    """
+    text = _THINK.sub("", text)
+    if "<think>" in text:
+        return ""
+    if "</think>" in text:
+        text = _UNCLOSED_THINK.sub("", text)
+    return text.strip()
+
+
+def is_no_verdict(text: str, finish_reason: str = "") -> bool:
+    """True when this run never reached an answer and must not be scored.
+
+    Two causes, one consequence. The run hit its token budget (finish_reason
+    "length"), or it opened a reasoning block it never closed. Either way the model
+    produced no answer, and both of the alternatives to dropping the row are wrong:
+    scoring it as an incorrect answer counts a run that said nothing as if it had
+    said something false, and scoring the scavenged text as the answer invents one.
+
+    Callers should record this as its own outcome and report the count, exactly as
+    the consistency report does -- a dropped row that nobody counts is a silent
+    change to the denominator.
+    """
+    if str(finish_reason).strip().lower() == "length":
+        return True
+    body = _THINK.sub("", text or "")
+    return "<think>" in body
+
+
 def parse_response(text: str) -> dict:
     """
     Parse structured output from a model response.
@@ -58,8 +121,7 @@ def parse_response(text: str) -> dict:
                           as a refusal rather than the complete, correct answer it is).
     - Numbered lists:     "1. pde: value"
     """
-    # Strip thinking tokens
-    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+    text = strip_think(text or "")
 
     result = {}
     for field in ("pde", "method", "behavior", "valid"):

@@ -87,3 +87,67 @@ def test_saves_both_vector_and_raster(df, tmp_path):
     assert (tmp_path / "t.pdf").stat().st_size > 0
     assert (tmp_path / "t.png").stat().st_size > 0
     plt.close(fig)
+
+
+def test_hatch_is_lighter_than_the_text_printed_on_it_but_only_on_light():
+    """The residual bands carry a percentage printed inside them.
+
+    On the white ground the hatch was drawn in `muted` -- the same near-black as the
+    label -- so the number had to be read through the lines. It now has its own
+    lighter colour. Dark must keep `muted`: its hatch is already low-contrast against
+    the panel, and any change there rewrites the published consistency_claims.html.
+    """
+    from viz.consistency import style
+
+    style.apply("light")
+    assert style.hatch_kw() == {"hatchcolor": style.colors()["hatch"]}
+    assert style.colors()["hatch"] != style.colors()["muted"]
+
+    style.apply("dark")
+    assert style.hatch_kw() == {}, "dark must emit no hatchcolor at all"
+    style.apply("light")
+
+
+def test_the_report_svgs_are_byte_reproducible():
+    """An md5 against the published file only means something if a rebuild is
+    deterministic. Matplotlib stamps a <dc:date> and salts its element ids per
+    process, so both have to be pinned or every rebuild 'changes' the report."""
+    import inspect
+
+    from viz.consistency import claim_report as CR
+    from viz.consistency import style
+
+    assert 'metadata={"Date": None}' in inspect.getsource(CR._svg)
+    assert style.RC.get("svg.hashsalt")
+
+
+def test_no_figure_shows_the_generators_internal_condition_codes():
+    """rand/shuf/swap/exec are generator names and say nothing about the manipulation.
+
+    The blame figures were given readable rung names; fig_sensitivity took a `verbose`
+    argument and ignored it, so its y-axis kept printing "trajectory - exec corrupted"
+    and the report spoke two vocabularies for the same four rows.
+    """
+    import inspect
+    import re
+
+    from viz.consistency.claim_report import fig_sensitivity
+    from viz.consistency.sensitivity import (SIGNAL_CONDITIONS, row_caption,
+                                             row_caption_corrupted)
+
+    for cond in SIGNAL_CONDITIONS:
+        for clear in (row_caption(cond, verbose=True),
+                      row_caption_corrupted(cond)):
+            for code in ("rand", "shuf", "swap", "exec"):
+                # word-boundary: "random values" legitimately starts with the code it
+                # replaced, and a substring check would fail that good caption
+                assert not re.search(rf"\b{code}\b", clear), \
+                    f"{cond} -> {clear!r} still carries {code!r}"
+
+    # the dot plot has no axis label carrying the word, so its rows must keep it
+    assert all(row_caption_corrupted(c).count("corrupted") == 1
+               for c in SIGNAL_CONDITIONS)
+
+    src = inspect.getsource(fig_sensitivity)
+    assert 'row_caption_corrupted(x["condition"])' in src, \
+        "fig_sensitivity must use the clear captions when verbose"

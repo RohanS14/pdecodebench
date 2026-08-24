@@ -34,6 +34,25 @@ from pathlib import Path
 
 
 COLUMN_DESCRIPTIONS = {
+    # ── k>1 sampling and answer-reached flags (added 2026-08-24) ─────────────
+    "sample_idx": ("Which of the k sampled draws this row is, 0-based. Rows sharing "
+                   "(title, mod_type, model, thinking) are draws of ONE item and are "
+                   "NOT independent observations — pool them before any interval."),
+    "k_draws": "How many draws were sampled per item in this run (3 for the xmodal roster).",
+    "temperature": "Sampling temperature. 0.6 for the xmodal roster, mirroring the cross-representation runner.",
+    "top_p": "Nucleus sampling cutoff. 0.95 for the xmodal roster.",
+    "top_k": "Top-k sampling cutoff. 20 for the xmodal roster.",
+    "sampling_seed": "Seed passed to vLLM SamplingParams, so the draws are reproducible.",
+    "no_verdict": ("True when the run never reached an answer — the generation hit "
+                   "its token cap (finish_reason 'length') or opened a reasoning "
+                   "block it never closed. These rows must be DROPPED, not scored: "
+                   "scoring them counts a run that said nothing as one that said "
+                   "something false, and files it in the 'Hedged' confidence bucket."),
+    "thinking": "Which reasoning arm produced the row, 'on' or 'off'. Part of the row identity.",
+    "prompt_version": "Identifier of the prompt template used, so two prompt revisions never pool.",
+    "dataset": "Basename of the item CSV this row was generated from.",
+    "valid_conf": ("Confidence class of the model's `valid` answer — Confident / "
+                   "Hedged / Absent. Canonical rule: freegen/parse_score.py."),
     "title":              "Dataset row identifier, e.g. Wave_Comm_Valid_1",
     "gt_sample":          "Base problem ID, e.g. Wave_1",
     "pde_class":          "Ground truth PDE class (wave/heat/burgers/navier-stokes)",
@@ -135,6 +154,29 @@ def union_schema(rows):
     return [{k: r.get(k) for k in keys} for r in rows]
 
 
+def _hparams_from_rows(rows):
+    """Decoding parameters as the DATA reports them, one entry per distinct value.
+
+    A field absent from every row is reported as "not recorded" rather than guessed:
+    older arms predate the sampling instrumentation, and "unknown" is the honest
+    answer for them.
+    """
+    out = {}
+    for key in ("thinking", "k_draws", "temperature", "top_p", "top_k",
+                "sampling_seed", "prompt_version", "dataset"):
+        vals = sorted({str(r[key]) for r in rows if r.get(key) is not None})
+        if vals:
+            out[key] = vals[0] if len(vals) == 1 else vals
+        else:
+            out[key] = "not recorded"
+    caps = sorted({r["model"] + "=" + str(r.get("max_tokens"))
+                   for r in rows if r.get("max_tokens") is not None})
+    out["max_tokens"] = caps or "per-model, see run_eval.py MODEL_CONFIGS"
+    nv = [r for r in rows if r.get("no_verdict")]
+    out["rows_with_no_verdict"] = len(nv)
+    return out
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--jsonl",            default=None,
@@ -148,7 +190,24 @@ def main():
                         help="Directory that directly contains key_handler/ and hf_utility/, "
                              "overriding <workspace>/packages. On torch they are vendored at "
                              "/scratch/ehb7466/shared/raca-packages, not inside the repo.")
-    parser.add_argument("--experiment",       default="pde-llm-eval")
+    parser.add_argument("--experiment",       default="pde-llm-eval",
+                        help="HF NAMING slug. Every dataset from this experiment is "
+                             "required to start with it, and it is passed to "
+                             "push_dataset_to_hub as experiment_slug.")
+    # Two different things used to share --experiment, and the dashboard was the
+    # one that lost. hf_utility writes the manifest's experiment_id straight from
+    # metadata["experiment_id"], which nothing here set, so all eight freegen arms
+    # landed in RACA-PROJECT-MANIFEST with experiment_id=None -- and
+    # import_experiments.py keeps only rows that HAVE one. The artifacts uploaded
+    # fine, verified fine, and were invisible on the Artifacts tab.
+    #
+    # They are genuinely distinct: the HF slug here is `pde-llm-eval` (it prefixes
+    # the dataset names) while the notes folder is `notes/experiments/
+    # pde-freegen-xmodal`. Collapsing them would break the naming check.
+    parser.add_argument("--experiment_id",    default=None,
+                        help="Experiment FOLDER name under notes/experiments/, which "
+                             "is what the dashboard joins artifacts on. Defaults to "
+                             "--experiment when they happen to match.")
     parser.add_argument("--artifact_status",  default="partial", choices=["partial", "final"])
     parser.add_argument("--job_id",           default="local:0")
     parser.add_argument("--cluster",          default="torch")
@@ -255,14 +314,22 @@ def main():
                                 + f"{args.artifact_status}. {len(rows)} rows from "
                                 f"{len(models)} model(s) on {args.dataset_file}."),
             "experiment_name": args.experiment,
+            "experiment_id":   args.experiment_id or args.experiment,
             "job_id":          args.job_id,
             "cluster":         args.cluster,
             "artifact_status": args.artifact_status,
             "canary":          is_canary,
             "input_datasets":  [args.dataset_file],
-            "hyperparameters": {"max_tokens": "per-model", "thinking": "suppressed"},
+            # READ OFF THE ROWS, never asserted. This dict used to be the literal
+            # {"max_tokens": "per-model", "thinking": "suppressed"} regardless of
+            # what ran -- so a --thinking on run published a README stating the
+            # opposite. That is the F9 failure (an arm mislabelled with nothing
+            # recording the truth) relocated into the metadata layer, where it is
+            # harder to catch because the rows themselves are right.
+            "hyperparameters": _hparams_from_rows(rows),
         },
-        tags=[args.experiment, "free-gen", "jul28", args.artifact_status],
+        tags=sorted({args.experiment, args.experiment_id or args.experiment,
+                     "free-gen", "jul28", args.artifact_status}),
         column_descriptions=COLUMN_DESCRIPTIONS,
     )
 

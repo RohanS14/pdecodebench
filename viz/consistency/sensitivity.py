@@ -24,7 +24,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__)))))
 
 from . import metrics as M
-from .constants import (CONDITIONS, CONDITION_OUTLIER, MODALITIES,
+from .constants import (TRAJ_LEVEL_LABELS, CONDITIONS, CONDITION_OUTLIER, MODALITIES,
                         MODALITY_LABELS, NONE, OUTLIER_LEVELS)
 
 # Corrupted conditions, trajectory disaggregated into its four rungs. The
@@ -40,6 +40,53 @@ def row_label(cond):
     if cond.startswith("A-T-"):
         return f"trajectory \u2014 {cond.rsplit(chr(45), 1)[1]}"
     return MODALITY_LABELS[m]
+
+
+# Short, readable names for the four trajectory rungs. `rand`/`shuf`/`swap`/`exec`
+# are the generator's internal names and say nothing about what was done to the data
+# -- which matters most here, because those four rows are a DIFFICULTY LADDER and the
+# codes give no hint of the ordering. Kept to two words so they stay scannable down a
+# y-axis, and worded identically to the blame matrix so one vocabulary carries between
+# the two figures.
+TRAJ_SHORT = {
+    "rand": "random values",
+    "shuf": "shuffled",
+    "swap": "wrong system",
+    # The invalid solver's OWN output, not a synthetic corruption: this rung is the
+    # subtlest of the four because the trajectory is physically self-consistent with
+    # the (wrong) code that produced it. "solver output" alone lost that.
+    "exec": "invalid solver's output",
+}
+
+
+def row_caption_corrupted(cond):
+    """Clear caption that still SAYS "corrupted".
+
+    The blame figures can drop the word because their axis label carries it once
+    ("which view was corrupted"). The sensitivity dot plot has no such label -- its
+    axis is a rate -- so each row has to say what happened to it. The trajectory
+    rungs put the word on the modality rather than on the rung, because "random
+    values corrupted" reads as though the random values were the victim.
+    """
+    if cond.startswith("A-T-"):
+        return ("trajectory corrupted \u2014 "
+                + TRAJ_SHORT[cond.rsplit(chr(45), 1)[1]])
+    return MODALITY_LABELS[CONDITION_OUTLIER[cond]] + " corrupted"
+
+
+def row_caption(cond, verbose=False):
+    """Y-axis caption for a corrupted condition row.
+
+    Defaults to the terse form: consistency_claims.html is a frozen artifact and its
+    build must keep reproducing it byte for byte, so the expanded report opts in.
+    The clear form drops the repeated "was corrupted" -- the axis label already says
+    it once -- which is what buys the room to name the trajectory rungs.
+    """
+    if not verbose:
+        return f"{row_label(cond)} was corrupted"
+    if cond.startswith("A-T-"):
+        return "trajectory \u2014 " + TRAJ_SHORT[cond.rsplit(chr(45), 1)[1]]
+    return MODALITY_LABELS[CONDITION_OUTLIER[cond]]
 
 try:
     from crossmodal.eval.parse_consistency import dprime as _dprime

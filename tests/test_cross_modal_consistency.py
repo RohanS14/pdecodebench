@@ -389,3 +389,55 @@ def test_stack_history_produces_the_dataset_layout():
 def test_stack_history_refuses_an_empty_run():
     with pytest.raises(ValueError, match="never ran"):
         stack_history([])
+
+
+# ------------------------------------------------------------------ k sampling
+
+def test_checkpoint_counts_samples_so_a_partial_item_is_rerun(tmp_path):
+    """With K draws per item, resume must not treat 1-of-3 as done.
+
+    A set-based checkpoint would, leaving a ragged K across the dataset that nothing
+    would flag -- some items with 3 draws, some with 1, and a pooled rate silently
+    weighting them unequally.
+    """
+    from crossmodal.eval.run_cross_modal_consistency import load_checkpoint
+    import json as _json
+    p = tmp_path / "out.jsonl"
+    rows = [{"item_id": "A", "model": "m", "thinking": "on"},
+            {"item_id": "A", "model": "m", "thinking": "on"},
+            {"item_id": "B", "model": "m", "thinking": "on"}]
+    p.write_text("".join(_json.dumps(r) + "\n" for r in rows))
+    done = load_checkpoint(str(p))
+    assert done[("A", "m", "on")] == 2
+    assert done[("B", "m", "on")] == 1
+    # under k=3 both are unfinished; under k=1 both are finished
+    assert [i for i in ("A", "B") if done.get((i, "m", "on"), 0) < 3] == ["A", "B"]
+    assert [i for i in ("A", "B") if done.get((i, "m", "on"), 0) < 1] == []
+
+
+def test_sampling_params_carry_k_and_the_models_own_settings():
+    """The protocol is 'each model at the settings its authors specify'. Greedy is
+    explicitly contraindicated for these reasoning models -- at temperature 0 they
+    emit endless repetition -- so a silently dropped temperature would reintroduce
+    exactly the failure this change exists to remove."""
+    pytest.importorskip("vllm")   # library-backed; runs on the cluster, skips locally
+    from crossmodal.eval.run_cross_modal_consistency import build_sampling_params
+    sp = build_sampling_params("prompt_only", 32768,
+                               gen={"temperature": 0.6, "top_p": 0.95, "top_k": 20},
+                               n=3, seed=42)
+    assert sp.n == 3
+    assert sp.temperature == 0.6 and sp.top_p == 0.95 and sp.top_k == 20
+    assert sp.seed == 42
+    assert sp.max_tokens == 32768
+
+
+def test_top_k_zero_is_dropped_not_passed_through():
+    """HF writes top_k=0 for 'disabled'; vLLM rejects 0 and wants it absent."""
+    pytest.importorskip("transformers")
+    from crossmodal.eval.run_cross_modal_consistency import recommended_sampling
+    import unittest.mock as _m
+    class G:
+        temperature, top_p, top_k = 1.0, 1.0, 0
+    with _m.patch("transformers.GenerationConfig.from_pretrained", return_value=G()):
+        got = recommended_sampling("fake/model")
+    assert "top_k" not in got and got["temperature"] == 1.0

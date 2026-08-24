@@ -19,7 +19,8 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
-from .constants import MODALITIES, NAMING_LEVELS, NONE
+from .constants import (MODALITIES, NAMING_LEVELS, NONE, TRAJ_LEVELS,
+                        TRAJ_LEVEL_LABELS)
 
 PAIR_KEY = ["solver_id", "condition", "reasoning", "model"]
 N_BOOT = 10_000
@@ -182,6 +183,40 @@ def analyse(d, n_boot=N_BOOT, seed=SEED):
                             "cond_localization")
     res.interaction = _interaction(a_tab, b_tab, n_boot, seed)
     return res
+
+
+def per_trajectory_rung(d, n_boot=N_BOOT, seed=SEED):
+    """The trajectory row of `analyse().per_outlier`, split into its four corruptions.
+
+    Kept OUT of analyse() on purpose. The pooled per-representation breakdown is
+    already exploratory and already underpowered at 32 solvers; splitting trajectory
+    four ways divides the same solvers across four denominators and would put four
+    more intervals into a figure whose one tested contrast is the pooled top row.
+    This exists as a separate, separately-labelled view for the reader who wants to
+    ask whether the four trajectory corruptions behave alike under obfuscation --
+    a question the design can illustrate but cannot settle.
+
+    Same outcome as the headline row, so the numbers are comparable to it: of the
+    items where trajectory was the broken view AND it was broken this particular
+    way, how often the model named trajectory.
+    """
+    matched, _ = _matched(d.copy())
+    out = []
+    if matched.empty:
+        return out
+    t = matched[matched["true_outlier"].eq("T")]
+    for lvl in TRAJ_LEVELS:
+        sub = t[t["condition"].eq(f"A-T-{lvl}")]
+        if sub.empty:
+            continue
+        c = _contrast(_solver_outcome(sub, "overall_accuracy"), lvl, n_boot, seed,
+                      exploratory=True, n_items=len(sub),
+                      denom=("items where trajectory was broken by "
+                             + TRAJ_LEVEL_LABELS[lvl]))
+        c.conditional = _contrast(_solver_outcome(sub, "cond_localization"), lvl,
+                                  n_boot, seed, exploratory=True)
+        out.append(c)
+    return out
 
 
 def _interaction(a_tab, b_tab, n_boot, seed):

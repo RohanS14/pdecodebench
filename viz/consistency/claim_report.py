@@ -38,8 +38,13 @@ HF_URL = "https://huggingface.co/datasets/bermaneh/pde-llm-eval-xmodal-consisten
 def _svg(fig):
     """Inline SVG, with the XML prologue stripped so it embeds in the document."""
     buf = io.StringIO()
+    # `Date: None` drops the <dc:date> stamp matplotlib otherwise writes into every
+    # SVG. Together with the `svg.hashsalt` pinned in style.RC (which fixes the
+    # otherwise-random clip-path and glyph ids) this makes the report byte-identical
+    # across rebuilds, so an md5 comparison against the published file actually means
+    # "nothing changed" instead of "you rebuilt it".
     fig.savefig(buf, format="svg", bbox_inches="tight",
-                facecolor=fig.get_facecolor())
+                facecolor=fig.get_facecolor(), metadata={"Date": None})
     plt.close(fig)
     s = buf.getvalue()
     return s[s.index("<svg"):]
@@ -143,7 +148,8 @@ def fig_rate_by_condition(d, kind, base):
         b = ax.bar(i, v, width=0.66,
                    color=c["bar"] if not thin else c["faint"],
                    hatch="///" if thin else "",
-                   edgecolor=c["muted"] if thin else "none", linewidth=0.6)
+                   edgecolor=c["muted"] if thin else "none",
+                   linewidth=0.6, **style.hatch_kw())
         b[0].set_gid(f"bar|{cond}")
         ax.annotate(f"n={n:,}", (i, 0), xytext=(0, 3), textcoords="offset points",
                     ha="center", va="bottom", fontsize=style.ANNOT_PT - 1,
@@ -205,6 +211,24 @@ def _obfuscation_block(d):
         return None, None, f"Could not render the figure: {exc}"
 
 
+def _obfuscation_split_block(d):
+    """The same contrast with trajectory opened into its four corruption methods.
+
+    A second figure rather than a replacement for the first. The pooled figure is the
+    one carrying the tested contrast; this one is the follow-up question -- do the
+    four trajectory corruptions respond to obfuscation alike -- and it is drawn below
+    with its own caption so the exploratory rows cannot be mistaken for the result.
+    Returns "" on failure so a missing companion never takes the section down with it.
+    """
+    from . import figures as F
+    try:
+        fig, _r, cap = F.fig7b_prior_weakening_split(d)
+    except Exception as exc:                                    # noqa: BLE001
+        return f'<p class="figcap">Could not render the split figure: {_esc(exc)}</p>'
+    return ('<h4 class="subfig">Trajectory, split into its four corruptions</h4>'
+            + _svg(fig) + f'<p class="figcap">{cap}</p>')
+
+
 def _inject_titles(svg, tips):
     """Give gid'd SVG elements a <title> child, which browsers show as a tooltip.
 
@@ -230,7 +254,7 @@ def _inject_titles(svg, tips):
     return svg
 
 
-def fig_sensitivity(d, tier=None):
+def fig_sensitivity(d, tier=None, verbose=False):
     """Single-panel dot plot. Flag rate per corrupted condition, against the A0 floor.
 
     Replaces a two-panel version that encoded the same quantity twice (rate on the
@@ -248,7 +272,11 @@ def fig_sensitivity(d, tier=None):
     src = d if tier is None else _restrict_tier(d, tier)
     r = detection_sensitivity(src)
     rows = [x for x in r.rows if not x["empty"]]
-    fig, ax = plt.subplots(figsize=style.figsize(1.0, 0.42 * (len(rows) + 4) + 1.0))
+    # Wide and short. The old allocation gave every row 0.42in and then added four
+    # rows' worth of padding on top of a 1.0in constant, which on a seven-row figure
+    # spent more than half the panel on margin, group gaps and the trailing note. The
+    # row pitch is what has to be legible; everything else is packing.
+    fig, ax = plt.subplots(figsize=style.figsize(1.0, 0.26 * (len(rows) + 2.0) + 0.85))
     if not rows or not np.isfinite(r.fa_rate):
         style.empty_axes(ax, "no rows")
         return _svg(fig)
@@ -262,17 +290,21 @@ def fig_sensitivity(d, tier=None):
                   key=lambda x: -x["hit_rate"])
     other = sorted([x for x in rows if not x["condition"].startswith("A-T-")],
                    key=lambda x: -x["hit_rate"])
-    groups = [g for g in (("trajectory, by how it was corrupted", traj),
-                          ("one corruption method each", other)) if g[1]]
-    ordered, y_corrupt, headers = [], [], []
+    # The blocks carry no in-figure headers. The gap between them is the whole signal:
+    # every row already names its own corruption, so a banner over each block restated
+    # what the labels say and cost a line of height per group. Why the blocks exist --
+    # trajectory's four methods are comparable with each other, the three
+    # single-method views with each other, and the two sets are not severity-matched
+    # -- is in the caption, which is where an argument about the design belongs.
+    groups = [g for g in (traj, other) if g]
+    ordered, y_corrupt = [], []
     y = 0.0
-    for gi, (gname, members) in enumerate(reversed(groups)):
+    for members in reversed(groups):
         for x in reversed(members):          # highest rate at the TOP of its block
             y += 1.0
             ordered.append(x)
             y_corrupt.append(y)
-        headers.append((gname, y + 0.42))
-        y += 0.75
+        y += 0.6
     rows = ordered
     y_base = -0.75
 
@@ -306,25 +338,36 @@ def fig_sensitivity(d, tier=None):
             solid_capstyle="round", zorder=3)
     ax.scatter([r.fa_rate], [y_base], s=46, color=c["muted"], zorder=4)
     ax.axhline(0.15, color=c["muted"], linewidth=0.6)
-    for gname, gy in headers:
-        ax.annotate(gname, (0.012, gy), xycoords=("axes fraction", "data"),
-                    ha="left", va="center", fontsize=style.ANNOT_PT,
-                    color=c["muted"], style="italic")
-
     ax.set_yticks(y_corrupt + [y_base])
-    labels = [x["label"] + " corrupted" for x in rows] + ["nothing corrupted"]
+    # `x["label"]` is the terse form and still carries the generator's own codes --
+    # "trajectory - exec corrupted". This figure accepted `verbose` and then never
+    # used it, so the four trajectory rungs kept their internal names here long after
+    # the blame figures had been given readable ones, and the report spoke two
+    # vocabularies for the same four rows. In the clear form the trailing "corrupted"
+    # goes too: both group headers already say it, and the baseline row still names
+    # itself. The terse branch is what the frozen report rebuilds from.
+    if verbose:
+        from .sensitivity import row_caption_corrupted
+        labels = ([row_caption_corrupted(x["condition"]) for x in rows]
+                  + ["nothing corrupted"])
+    else:
+        labels = [x["label"] + " corrupted" for x in rows] + ["nothing corrupted"]
     ax.set_yticklabels(labels)
     ax.get_yticklabels()[-1].set_color(c["muted"])
-    ax.set_ylim(y_base - 0.7, max(y_corrupt) + 1.1)
+    ax.set_ylim(y_base - 0.55, max(y_corrupt) + 0.55)
     ax.set_xlim(xlo, xhi)
     ax.set_xticks(np.arange(xlo, xhi + 1e-9, 0.05))
     ax.set_xticklabels([f"{100 * t:.0f}%" for t in np.arange(xlo, xhi + 1e-9, 0.05)])
     ax.set_xlabel("items the model flagged as disagreeing")
     ax.grid(True, axis="x", linewidth=0.4, color=c["faint"])
     ax.set_axisbelow(True)
+    # Offset in POINTS, not axes fraction. As a fraction of a shorter axes the same
+    # -0.30 lands on top of the x-label; a fixed offset keeps the note the same
+    # distance below the tick labels whatever height the figure ends up at.
     ax.annotate(f"Shaded region: flagged even when all four representations agree "
                 f"({100 * r.fa_rate:.1f}%).",
-                (0, -0.30), xycoords="axes fraction", fontsize=style.ANNOT_PT,
+                (0, 0), xycoords="axes fraction", xytext=(0, -30),
+                textcoords="offset points", fontsize=style.ANNOT_PT,
                 color=c["muted"], va="top")
     return _inject_titles(_svg(fig), tips)
 
@@ -355,31 +398,249 @@ def fig_sensitivity_matched(d):
         f"{common[0]}.")
 
 
-def fig_blame_stack(d):
-    """Four true-outlier rows plus the pooled marginal reference. Segments clickable."""
+def fig_blame_stack_unconditional(d, d_all=None, verbose=False):
+    """The blame figure with EVERY corrupted item in the denominator.
+
+    `fig_blame_stack` conditions on the model having flagged the item, which answers
+    "when it says something disagrees, does it know which thing". That is the right
+    denominator for that question, but it hides how often the model never gets to
+    the question at all: a model that flags 10% of corruptions and localizes those
+    perfectly scores 100% there, identically to one that flags everything and is
+    always right.
+
+    So this version divides by all corrupted items for the condition and adds the
+    category the conditional figure cannot show -- the model said the four
+    representations AGREE, on an item where one of them was corrupted. Read together,
+    the first figure is skill-given-attempt and this one is skill-per-opportunity.
+
+    Deliberately NOT clickable. The drill-down keys (`tp|cond|cat`) address the
+    conditional table, so wiring the same gids here would open a set of runs whose
+    count disagrees with the bar the reader just clicked.
+    """
+    from .constants import (MODALITY_LABELS as ML, MODALITY_COLORS, NONE_COLOR,
+                            NONE, MODALITIES, CONDITION_OUTLIER)
+    from .sensitivity import SIGNAL_CONDITIONS, row_label, row_caption
+    from . import metrics as M
+    style.apply(style.theme())
+    c = style.colors()
+
+    # `d_all` carries every draw the models wrote, no-verdict ones included. Without
+    # it the row totals are unequal -- the exclusion is not uniform across conditions
+    # -- and the shares rest on a denominator that quietly lost the model's longest
+    # deliberations.
+    src = d if d_all is None else d_all
+    p = M.prepare(src)
+    p["no_verdict"] = (src["no_verdict"].to_numpy()
+                       if "no_verdict" in src.columns else False)
+    corrupted = p[p["is_corrupted"]]
+    # Same treatment as the conditional figure above: height from the row count, and
+    # the legend beside the axes rather than under them. This one had the worse of
+    # the two layouts -- a seven-entry legend in three columns at y=-0.42, which is
+    # nearly three data rows of height spent naming the segments.
+    fig, ax = plt.subplots(figsize=style.figsize(1.0, 0.235 * len(SIGNAL_CONDITIONS)
+                                                 + 0.95))
+    if corrupted.empty:
+        style.empty_axes(ax, "no corrupted items")
+        return _svg(fig)
+
+    MISS = "__miss__"          # flagged nothing: said the representations agree
+    UNCLEAR = "__unclear__"    # flagged it, but named no view we can read
+    NOVERDICT = "__noverdict__"  # never finished: budget truncation or a decode loop
+    order = list(MODALITIES) + [NONE, UNCLEAR, MISS, NOVERDICT]
+    label = {**ML, NONE: "named none",
+             UNCLEAR: "flagged, view unreadable",
+             MISS: "does not identify disagreement",
+             NOVERDICT: "no verdict \u2014 truncated or looping"}
+
+    # No pooled row. Pooling across conditions averages corruptions that differ by
+    # orders of magnitude in detectability (trajectory-rand vs code), so the summary
+    # bar reads as a fact about the model when it is mostly a fact about the mix.
+    rows = list(SIGNAL_CONDITIONS)
+    ypos = [len(rows) - i for i in range(len(rows))]
+    # Which categories actually occur, so the legend cannot advertise an empty one.
+    # `none` is the pred_outlier the parser assigns exactly when the model said the
+    # views AGREE, which is already the MISS bucket -- so "flagged, named none" is
+    # empty by construction in this dataset (0 of 14,030 flagged corrupted rows).
+    # Kept in the draw order rather than deleted: it costs nothing, and a future
+    # parser that does emit it would otherwise drop those rows silently.
+    seen = set()
+    share_max = {}          # biggest share any single row gives each category
+    for row_i, cond in enumerate(rows):
+        yi = ypos[row_i]
+        sub = corrupted[corrupted["condition"].eq(cond)]
+        total = int(len(sub))
+        if total == 0:
+            ax.annotate("no corrupted rows", (0.01, yi), va="center",
+                        fontsize=style.ANNOT_PT, color=c["muted"])
+            continue
+        # Order matters. A no-verdict draw is classified BEFORE the flag/miss split:
+        # 709 of Nemotron's 907 carry an `agree=yes` the regex scavenged out of
+        # reasoning the model never finished, so treating them as answers would file
+        # 78% of them under "does not identify disagreement" and manufacture the very
+        # finding this figure reports.
+        nv = sub["no_verdict"].astype(bool)
+        counts = {NOVERDICT: int(nv.sum())}
+        ans = sub[~nv]
+        det = ans["detected"]
+        named = ans["pred_outlier"].where(det)
+        for m in MODALITIES:
+            counts[m] = int(named.eq(m).sum())
+        counts[NONE] = int(named.eq(NONE).sum())
+        counts[MISS] = int((~det).sum())
+        # Whatever is left is a flagged row whose named view we could not read. It is
+        # derived by subtraction rather than by a parse predicate so the segments are
+        # guaranteed to sum to the row total -- a stacked bar that silently drops
+        # rows is worse than one that shows an unexplained sliver.
+        counts[UNCLEAR] = total - sum(counts.values())
+
+        left = 0.0
+        true_m = CONDITION_OUTLIER[cond]
+        for cat in order:
+            n_here = counts.get(cat, 0)
+            if n_here <= 0:
+                continue
+            seen.add(cat)
+            w = n_here / total
+            share_max[cat] = max(share_max.get(cat, 0.0), w)
+            if cat == MISS:
+                bar = ax.barh(yi, w, left=left, height=0.62,
+                              facecolor=c["panel"], hatch="///",
+                              edgecolor=c["muted"], linewidth=1.2,
+                              **style.hatch_kw())
+            elif cat == NOVERDICT:
+                bar = ax.barh(yi, w, left=left, height=0.62,
+                              facecolor=c["faint"], hatch="xxx",
+                              edgecolor=c["muted"], linewidth=1.2,
+                              **style.hatch_kw())
+            elif cat == UNCLEAR:
+                bar = ax.barh(yi, w, left=left, height=0.62,
+                              facecolor=NONE_COLOR, alpha=0.35,
+                              edgecolor=c["panel"], linewidth=1.5)
+            else:
+                col = MODALITY_COLORS.get(cat, NONE_COLOR)
+                bar = ax.barh(yi, w, left=left, height=0.62, color=col,
+                              edgecolor=c["panel"], linewidth=1.5)
+            if w >= 0.07:
+                ax.text(left + w / 2, yi, f"{100 * w:.0f}%", ha="center",
+                        va="center", fontsize=style.ANNOT_PT,
+                        color=c["muted"] if cat == MISS else c["bg"], zorder=5)
+            if cat == true_m:
+                ax.barh(yi, w, left=left, height=0.62, facecolor="none",
+                        edgecolor=c["fg"], linewidth=1.5, zorder=4)
+            left += w
+    # No per-row n. Every row of THIS figure has the same denominator by
+    # construction -- the benchmark assigns each item exactly one condition, 128
+    # apiece -- so printing it seven times down the margin repeats one number and
+    # invites the reading that the rows have denominators worth comparing. The
+    # caption states it once. (The conditional figure keeps its n's: there the
+    # denominators are flagged items and genuinely do differ per row.)
+
+    ax.set_yticks(ypos)
+    ax.set_yticklabels([row_caption(c_, verbose) for c_ in rows])
+    if verbose:
+        # The captions no longer repeat "was corrupted" on every row, so the axis
+        # carries it once. Without this the rows read as blame targets, not causes.
+        ax.set_ylabel("which view was corrupted")
+    # 1.13 left a margin for the per-row "n = ..." labels that used to sit outside
+    # the bars. With those gone the extra 13% was dead space that pushed the 100%
+    # tick away from the plot edge.
+    ax.set_xlim(0, 1.02)
+    ax.set_xticks([0, 0.25, 0.5, 0.75, 1.0])
+    ax.set_xticklabels(["0", "25%", "50%", "75%", "100%"])
+    # Parallel to the conditional figure's "share of flagged items, by the view the
+    # model blamed". The second clause is what ties the colours to the legend; without
+    # it the axis describes only the denominator and the segments look unexplained.
+    ax.set_xlabel("share of all items with this corruption, "
+                  "by the view the model blamed")
+    for side in ("top", "right", "left"):
+        ax.spines[side].set_visible(False)
+    handles = [Patch(facecolor=MODALITY_COLORS[m], label=label[m])
+               for m in MODALITIES if m in seen]
+    if NONE in seen:
+        handles.append(Patch(facecolor=NONE_COLOR, label=label[NONE]))
+    # UNCLEAR is the residual bucket -- total minus everything we could classify --
+    # not a measured category, and in this dataset it is ONE draw in 21,379 (0.005%,
+    # all of it in A-C). At that size the segment is well under a pixel, so a legend
+    # entry names something the reader cannot find and puts a parser edge case on the
+    # same footing as the four representations. It is still drawn and still counted,
+    # so the segments continue to sum to the row total; only the legend line goes.
+    # The threshold, not a special case for this number: if a future parse regression
+    # pushes it up to a visible share, it names itself again without an edit here.
+    if UNCLEAR in seen and share_max.get(UNCLEAR, 0.0) >= 0.005:
+        handles.append(Patch(facecolor=NONE_COLOR, alpha=0.35,
+                             label=label[UNCLEAR]))
+    if MISS in seen:
+        handles.append(Patch(facecolor=c["panel"], hatch="///",
+                             edgecolor=c["muted"], label=label[MISS],
+                             **style.hatch_kw()))
+    # The outlined segment marks the row's true outlier. It is drawn on every row,
+    # so it needs naming here exactly as it is in the conditional figure above --
+    # an unexplained outline reads as emphasis rather than as the correct answer.
+    if NOVERDICT in seen:
+        handles.append(Patch(facecolor=c["faint"], hatch="xxx",
+                             edgecolor=c["muted"], label=label[NOVERDICT],
+                             **style.hatch_kw()))
+    handles.append(Patch(facecolor="none", edgecolor=c["fg"], linewidth=1.5,
+                         label="correct answer for this row"))
+    # One column, to the right of the axes. The x-limit is 1.02 here (no "n = "
+    # column to clear), so the legend can sit close in.
+    ax.legend(handles=handles, loc="center left", bbox_to_anchor=(1.01, 0.5),
+              ncol=1, frameon=False, fontsize=style.ANNOT_PT,
+              handlelength=1.1, handletextpad=0.5, labelspacing=0.5,
+              borderaxespad=0.0)
+    return _svg(fig)
+
+
+def fig_blame_stack(d, annotate=False, hide_empty=False, verbose=False):
+    """Four true-outlier rows plus the pooled marginal reference. Segments clickable.
+
+    `annotate` prints each share on its segment and the row denominator at the right.
+    It defaults to OFF so that this function keeps producing exactly the figure that
+    is in the published consistency_claims.html: that report is a frozen artifact,
+    and a shared figure helper that silently changed its appearance would rewrite it
+    the next time anyone reran its build script. The expanded report opts in.
+
+    `hide_empty` drops any blame category with zero rows across the whole table --
+    in this dataset that is "none", which the parser emits exactly when the model
+    said the views AGREE, so it can never co-occur with the flagged subset this
+    figure is drawn from. It is 0 of 14,030 flagged corrupted rows. Also OFF by
+    default, for the same frozen-artifact reason.
+    """
     from .sensitivity import blame_information
     from .constants import MODALITY_LABELS as ML, NONE_COLOR
+    from .sensitivity import row_caption
     style.apply(style.theme())
     c = style.colors()
     from .sensitivity import SIGNAL_CONDITIONS, row_label
     from .constants import CONDITION_OUTLIER
     b = blame_information(d, n_perm=1)      # the table is all this figure needs
-    fig, ax = plt.subplots(figsize=style.figsize(1.0, 3.2))
+    # Height from the row count, not a constant. Eight stacked bars in a fixed 3.2in
+    # box left the rows further apart than they need to be, and the legend used to
+    # sit UNDER the x-label in three columns, which added a band as tall as two data
+    # rows to a figure that is already the tallest in the report. The legend now
+    # stands beside the axes instead, where it costs width -- which this figure has
+    # to spare, its bars being a 0-100% axis -- rather than height.
+    fig, ax = plt.subplots(figsize=style.figsize(1.0, 0.235 * len(SIGNAL_CONDITIONS)
+                                                 + 0.95))
     if b.table is None:
         style.empty_axes(ax, "no flagged items")
         return _svg(fig)
     conds = list(SIGNAL_CONDITIONS)
-    labels = [f"{row_label(c)} was corrupted" for c in conds]
+    levels = list(OUTLIER_LEVELS)
+    if hide_empty:
+        levels = [cat for cat in levels
+                  if cat in b.table.columns and int(b.table[cat].sum()) > 0]
+    labels = [row_caption(c, verbose) for c in conds]
     ypos = [len(conds) - i for i in range(len(conds))]
     tips = {}
     for row_i, cond in enumerate(conds):
         yi = ypos[row_i]
         m = CONDITION_OUTLIER[cond] if cond else None
         if cond is None:
-            shares = b.marginal.reindex(OUTLIER_LEVELS).fillna(0.0)
+            shares = b.marginal.reindex(levels).fillna(0.0)
             total = int(b.table.to_numpy().sum())
         else:
-            counts = b.table.loc[cond].reindex(OUTLIER_LEVELS).fillna(0)
+            counts = b.table.loc[cond].reindex(levels).fillna(0)
             total = int(counts.sum())
             if total == 0:
                 ax.annotate("no detected rows", (0.01, yi), va="center",
@@ -387,7 +648,7 @@ def fig_blame_stack(d):
                 continue
             shares = counts / total
         left = 0.0
-        for cat in OUTLIER_LEVELS:
+        for cat in levels:
             w = float(shares.get(cat, 0.0))
             if w <= 0:
                 continue
@@ -395,6 +656,14 @@ def fig_blame_stack(d):
             bar = ax.barh(yi, w, left=left, height=0.62, color=col,
                           edgecolor=c["panel"], linewidth=1.5,
                           alpha=0.55 if cond is None else 1.0)
+            # The share, printed on the segment. Without it the only way to read a
+            # value is to hover, which is unavailable in print and on a phone.
+            # Narrow segments are left unlabelled rather than overplotted -- below
+            # about 7% the text is wider than the segment it would sit in.
+            if annotate and w >= 0.07:
+                ax.text(left + w / 2, yi, f"{100 * w:.0f}%", ha="center",
+                        va="center", fontsize=style.ANNOT_PT, color=c["bg"],
+                        zorder=5)
             if cond is not None:
                 gid = f"tp|{cond}|{cat}"
                 bar[0].set_gid(gid)
@@ -407,20 +676,30 @@ def fig_blame_stack(d):
                     ax.barh(yi, w, left=left, height=0.62, facecolor="none",
                             edgecolor=c["fg"], linewidth=1.5, zorder=4)
             left += w
+        # Row denominator, so a share can be read back to a count. A row of
+        # percentages with no n invites reading a 3-item row as if it were a 600-item
+        # one, and the rows here differ by more than that.
+        if annotate:
+            ax.annotate(f"n = {total:,}", (1.015, yi), va="center", ha="left",
+                        fontsize=style.ANNOT_PT, color=c["muted"])
     ax.set_yticks(ypos)
     ax.set_yticklabels(labels, fontsize=style.TICK_PT)
-    ax.set_xlim(0, 1)
+    ax.set_xlim(0, 1.13 if annotate else 1)
     ax.set_xlabel("share of flagged items, by the view the model blamed")
-    ax.set_ylim(min(ypos) - 0.7, max(ypos) + 0.7)
+    ax.set_ylim(min(ypos) - 0.55, max(ypos) + 0.55)
     # A legend, because five fixed segments in every bar cannot be named any other
     # way; the outlined segment marks the correct answer for its row.
     handles = [Patch(facecolor=MODALITY_COLORS.get(cat, NONE_COLOR),
                      edgecolor=c["panel"], linewidth=1.2,
-                     label=ML.get(cat, cat)) for cat in OUTLIER_LEVELS]
+                     label=ML.get(cat, cat)) for cat in levels]
     handles.append(Patch(facecolor="none", edgecolor=c["fg"], linewidth=1.5,
                          label="correct answer for this row"))
-    ax.legend(handles=handles, loc="upper center", bbox_to_anchor=(0.5, -0.22),
-              ncol=3, fontsize=style.TICK_PT)
+    # Anchored past the right edge of the axes -- clear of the "n = " column, which
+    # sits at x=1.015 in DATA coords and so is still inside the 1.13 x-limit.
+    ax.legend(handles=handles, loc="center left", bbox_to_anchor=(1.02, 0.5),
+              ncol=1, fontsize=style.TICK_PT, frameon=False,
+              handlelength=1.1, handletextpad=0.5, labelspacing=0.5,
+              borderaxespad=0.0)
     ax.grid(True, axis="x", linewidth=0.4, color=c["faint"]); ax.set_axisbelow(True)
     return _inject_titles(_svg(fig), tips)
 
@@ -545,6 +824,63 @@ def fig_obfuscation_overall(d):
     return _svg(fig)
 
 
+# Reader-facing names for the two axes of the blame matrix. Kept next to the figure
+# rather than in constants.py because they are presentation, not design: the codes in
+# CONDITIONS/OUTLIER_LEVELS stay canonical and every gid, drill-down key and stored
+# column continues to use them.
+_BLAMED_LABELS = {
+    # "none" is the model answering that the four representations agree, i.e. it named
+    # no outlier at all. Left as the bare word it reads like an empty column.
+    "none": "none — said they agree",
+}
+def _condition_labels():
+    """Built from the same table the y-axes use, so the two figures cannot drift.
+
+    Computed on call rather than at import: row_caption lives in .sensitivity, which
+    this module imports lazily inside functions to keep the import graph acyclic.
+    """
+    from .sensitivity import row_caption
+    return {"A0": "nothing corrupted",
+            **{c: row_caption(c, verbose=True) for c in CONDITIONS if c != "A0"}}
+
+
+def _unconditional_caption_stats(d_all):
+    """Row n, no-verdict count, and how many of those carry a scavenged verdict.
+
+    Returned as display strings so the caption never has to know whether the rows
+    came out equal: while an arm is still filling they can differ, and asserting
+    "every row has the same n" would then be false.
+    """
+    if d_all is None or not len(d_all):
+        return "n varies by row", 0, "some", "unevenly", "unevenly"
+    corrupted = d_all[d_all["condition"].astype(str).ne("A0")]
+    per_row = corrupted.groupby("condition").size()
+    if len(set(per_row)) == 1:
+        row_n = f"{int(per_row.iloc[0]):,} draws"
+    else:
+        row_n = (f"{int(per_row.min()):,}\u2013{int(per_row.max()):,} draws, "
+                 "not yet equal while an arm is still filling")
+    nv = d_all[d_all["no_verdict"].astype(bool)] if "no_verdict" in d_all else d_all.iloc[:0]
+    scav = "some"
+    if len(nv) and "pred_agree" in nv:
+        n = int(nv["pred_agree"].astype(str).isin(("yes", "no")).sum())
+        scav = f"{n:,}"
+    # Which conditions lose the most and the least to no-verdict draws. These were
+    # written into the caption by hand ("8.1% for corrupted code against 4.2% for
+    # trajectory-rand") and went stale on the first repair pass; the rung was also
+    # named there by its generator code, which no figure says any more.
+    hi_s = lo_s = "unevenly across rows"
+    if "no_verdict" in corrupted and len(corrupted):
+        from .sensitivity import row_caption_corrupted
+        share = corrupted.groupby("condition")["no_verdict"].mean().sort_values()
+        if len(share) > 1:
+            def _fmt(cond):
+                return (f"{100 * float(share[cond]):.1f}% for "
+                        f"{row_caption_corrupted(cond)}")
+            hi_s, lo_s = _fmt(share.index[-1]), _fmt(share.index[0])
+    return row_n, len(nv), scav, hi_s, lo_s
+
+
 def fig_blame_matrix(d):
     """Condition x blamed view, row-normalized, every cell individually clickable."""
     style.apply(style.theme())
@@ -570,19 +906,26 @@ def fig_blame_matrix(d):
             if n < C.MIN_N:
                 ax.add_patch(plt.Rectangle((j - 0.5, i - 0.5), 1, 1, fill=False,
                                            hatch="///", edgecolor=c["muted"],
-                                           linewidth=0.0, alpha=0.55))
+                                           linewidth=0.0, alpha=0.55,
+                                           **style.hatch_kw()))
             ax.text(j, i, f"{n}", ha="center", va="center",
                     fontsize=style.ANNOT_PT,
                     color="#0b0d14" if (np.isfinite(v) and v > 0.62) else c["fg"])
     ax.set_xlim(-0.5, len(OUTLIER_LEVELS) - 0.5)
     ax.set_ylim(len(CONDITIONS) - 0.5, -0.5)
+    # Both axes carried internal codes: the columns read "none" (which reads as "no
+    # data", not "the model said they agree"), and the rows read A0 / A-C / T:rand /
+    # A-M, which are the spec's condition ids and mean nothing to a reader. The cell
+    # gids keep the codes -- the drill-down is keyed on them -- but nothing on screen
+    # needs to.
     ax.set_xticks(range(len(OUTLIER_LEVELS)))
-    ax.set_xticklabels([MODALITY_LABELS.get(v, v) for v in OUTLIER_LEVELS],
-                       rotation=45, ha="right")
+    ax.set_xticklabels([_BLAMED_LABELS.get(v, MODALITY_LABELS.get(v, v))
+                        for v in OUTLIER_LEVELS], rotation=30, ha="right")
     ax.set_yticks(range(len(CONDITIONS)))
-    ax.set_yticklabels([x.replace("A-T-", "T:") for x in CONDITIONS])
-    ax.set_xlabel("view the model blamed")
-    ax.set_ylabel("condition")
+    _cond_lab = _condition_labels()
+    ax.set_yticklabels([_cond_lab.get(x, x) for x in CONDITIONS])
+    ax.set_xlabel("which view the model named as the odd one out")
+    ax.set_ylabel("which view was actually corrupted")
     for s in ax.spines.values():
         s.set_visible(False)
     ax.tick_params(length=0)
@@ -635,11 +978,14 @@ def crossing_table(d, kind="detection"):
 
 
 # ── assembly ─────────────────────────────────────────────────────────────────
-def build(d, out="viz/consistency_claims.html", defects=None, theme="dark"):
+def build(d, out="viz/consistency_claims.html", defects=None, theme="dark",
+          annotate=False, blame_unconditional=False, d_all=None,
+          verbose_labels=False):
     style.apply(theme)
     base = C.baselines(d)
     obf_svg, obf_stats, obf_cap = _obfuscation_block(d)
     obf_design = _obfuscation_design_note(d)
+    obf_split = _obfuscation_split_block(d) if obf_svg else ""
     verdicts = C.all_verdicts(d, shared={"obfuscation": obf_stats}
                               if obf_stats else None)
     drill = build_drilldown(d, defects)
@@ -652,7 +998,7 @@ def build(d, out="viz/consistency_claims.html", defects=None, theme="dark"):
                   'across representations. Row ordering may reflect how each '
                   'corruption was generated rather than what the model trusts.</div>')
     figs = {
-        "q1": (sev_banner + fig_sensitivity(d)
+        "q1": (sev_banner + fig_sensitivity(d, verbose=verbose_labels)
                + (matched_svg or ""),
                "Left: how often each corruption is flagged, against the SHARED rate "
                "at which consistent items are flagged (the dashed line). The visual "
@@ -663,7 +1009,9 @@ def build(d, out="viz/consistency_claims.html", defects=None, theme="dark"):
                "each other, and the three single-method views with each other, but "
                "the two groups are not severity-matched. Only the corruption "
                "varies; models, naming and reasoning are pooled. " + matched_note),
-        "q2": (fig_blame_stack(d),
+        "q2": (fig_blame_stack(d, annotate=annotate,
+                               hide_empty=blame_unconditional,
+                               verbose=verbose_labels),
                "One row per corruption. Segments are always in the order code, "
                "trajectory, description, math, none, and the outlined segment is the "
                "correct answer for that row &mdash; a row that is mostly its own "
@@ -677,17 +1025,68 @@ def build(d, out="viz/consistency_claims.html", defects=None, theme="dark"):
                "NOT the broken one. Only the view varies; naming and reasoning are "
                "pooled. Bars are 95% intervals. The six pairwise differences are in "
                "the details block."),
-        "q4": ((obf_design + obf_svg) if obf_svg else obf_svg, obf_cap),
+        "q4": ((obf_design + obf_svg + obf_split) if obf_svg else obf_svg, obf_cap),
         "q5": (None, ""),
     }
+
 
     sections = []
     for qid, title, v in verdicts:
         svg, caption = figs.get(qid, (None, ""))
         if qid == "q3":
             svg = svg + fig_blame_matrix(d)
-            caption += ("<br>Below: the full blame matrix, row-normalized. "
-                        "Every cell is clickable and opens the runs behind it.")
+            caption += ("<br><br><b>Below: the full blame matrix.</b> Read a row as "
+                        "&ldquo;when THIS view was corrupted, where did the blame "
+                        "go?&rdquo; The number in each cell is a count of draws; the "
+                        "shading is that count as a share of its row, so the diagonal "
+                        "lighting up is the model being right. The first column is the "
+                        "model answering that all four representations agree &mdash; a "
+                        "bright cell there is a miss, not a correct answer. The top row "
+                        "is the control where nothing was corrupted, so for that row "
+                        "the first column is the correct answer and everything else is "
+                        "a false alarm. A cell crossed by <b>diagonal lines</b> holds "
+                        f"fewer than {C.MIN_N} draws &mdash; too few to read a rate "
+                        "from, so the shading there is marking how rare the cell is "
+                        "rather than measuring anything. The pale gaps between cells "
+                        "are only separators. Every cell is clickable and opens the "
+                        "runs behind it.")
+        # Opt-in only, for the same reason `annotate` is: consistency_claims.html is
+        # a frozen artifact and its build script must keep producing it byte for byte.
+        if qid == "q2" and blame_unconditional and svg is not None:
+            svg = svg + fig_blame_stack_unconditional(d, d_all=d_all,
+                                                       verbose=verbose_labels)
+            # These were hardcoded ("2,784 draws", "709 of Nemotron's 907") and went
+            # stale the moment a repair pass landed -- by 2026-08-23 Nemotron's count
+            # had moved 907 -> 734 while the caption still said 907. A caption that
+            # states numbers the figure above it no longer holds is worse than one
+            # that states none, so both now come from the frame being plotted.
+            _rn, _nv, _sc, _hi_s, _lo_s = _unconditional_caption_stats(d_all)
+            caption += (
+                "<br><br><b>Below: the same rows over every corrupted item.</b> The "
+                "figure above divides by the items the model flagged, so it measures "
+                "localization <i>given</i> that it noticed something. This one "
+                "divides by all items where that representation was corrupted and "
+                "adds the category the first cannot show &mdash; <i>does not "
+                "identify disagreement</i> (hatched), where the model answered that "
+                "the four representations agree. A row that is mostly hatched never "
+                "reached the question the figure above is asking, however well it "
+                "scores there. Same colours and same outlined-correct-answer "
+                "convention; not clickable, because these denominators are not the "
+                "ones the drill-down indexes."
+                f"<br><br><b>Every row has the same n</b> ({_rn}), because "
+                "this is the one figure that keeps the draws which ended without a "
+                "verdict &mdash; budget truncation or a decode loop &mdash; instead "
+                "of dropping them. Every other figure in this report excludes them, "
+                "which is right there: scoring a run that produced no verdict as if "
+                "it had produced a wrong one invents an answer. But those draws are "
+                "consumed opportunities, and excluding them here would both unbalance "
+                f"the rows (the loss runs {_hi_s} against {_lo_s}) "
+                "and quietly remove the model&rsquo;s longest "
+                "deliberations from the denominator. They are counted separately "
+                f"rather than as misses on purpose: {_sc} of the {_nv:,} no-verdict "
+                "draws carry an &ldquo;agree&rdquo; the parser scavenged out of "
+                "reasoning the model never finished, so folding them into &ldquo;does "
+                "not identify disagreement&rdquo; would manufacture that finding.")
         if svg is None:
             figblock = ("<div class='pending'><b>No figure.</b> "
                         f"{_esc(v.detail or 'This question has no measured data.')}"
@@ -712,6 +1111,7 @@ def build(d, out="viz/consistency_claims.html", defects=None, theme="dark"):
 </section>""")
 
     doc = TEMPLATE.format(
+        cssvars=CSS_THEMES.get(theme, CSS_THEMES["dark"]),
         sections="\n".join(sections),
         drill=json.dumps(drill), n=len(d), hf=HF_URL,
         models=_esc(", ".join(sorted(d["model"].astype(str).unique()))))
@@ -723,13 +1123,22 @@ def build(d, out="viz/consistency_claims.html", defects=None, theme="dark"):
     return out
 
 
+# One palette per ground. The page and the figures must agree: a white raster
+# dropped into a dark report reads as a foreign object, and the reverse is worse.
+# Dark is the default so build_claims.sh keeps reproducing the frozen
+# consistency_claims.html byte for byte; the expanded report opts into light.
+CSS_THEMES = {
+    "dark":  "--accent:#7eb8ff; --bg:#0d0f18; --blue2:#cfe0ff; --deep:#0a0c14; --dim:#5a6274; --dim2:#6b7a99; --drawer:#0f1119; --fg:#e0e0e0; --green:#8fd694; --hi:#2a3450; --line:#1e2130; --link2:#8fa6c9; --muted:#8592ae; --ok:#4fa96a; --orange:#f2a97e; --panel:#12141e; --panel2:#141826; --panel3:#1b2032; --raised:#171d30; --sunk:#12182a; --tagbg:#1d2540; --tagline:#26304a; --text2:#cfd8e8; --text3:#b8c2d6; --text4:#c8cddb; --warn:#c9a227; --warn2:#e0c88f",
+    "light": "--accent:#1a5fb4; --bg:#ffffff; --blue2:#1a4f9c; --deep:#f7f8fb; --dim:#7b8493; --dim2:#6b7280; --drawer:#ffffff; --fg:#16181d; --green:#1f7a45; --hi:#d9e2f3; --line:#dfe3ea; --link2:#1f5aa6; --muted:#5b6472; --ok:#1f7a45; --orange:#a85520; --panel:#ffffff; --panel2:#f4f6fa; --panel3:#eef1f7; --raised:#eef1f7; --sunk:#f4f6fa; --tagbg:#e6edfb; --tagline:#c9d6ef; --text2:#2a313c; --text3:#39404d; --text4:#333a45; --warn:#8a6d0f; --warn2:#6b5410",
+}
+
+
 TEMPLATE = """<!DOCTYPE html>
 <html lang="en"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Cross-representation consistency — results</title>
 <style>
-  :root {{ --bg:#0d0f18; --panel:#12141e; --line:#1e2130; --fg:#e0e0e0;
-           --muted:#8592ae; --dim:#5a6274; --accent:#7eb8ff; }}
+  :root {{ {cssvars}; }}
   * {{ box-sizing:border-box; }}
   body {{ margin:0; background:var(--bg); color:var(--fg); line-height:1.6;
           font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
@@ -740,21 +1149,29 @@ TEMPLATE = """<!DOCTYPE html>
   h2 {{ font-size:1.12rem; font-weight:500; margin:0 0 12px; }}
   section {{ border-top:1px solid var(--line); padding-top:26px; margin-top:34px; }}
   .verdict {{ font-size:1.0rem; padding:13px 16px; border-radius:7px;
-              border-left:3px solid var(--dim); background:#141826; margin:0 0 18px; }}
-  .v-supported {{ border-left-color:#4fa96a; }}
-  .v-inconclusive {{ border-left-color:#c9a227; }}
-  .v-unmeasured {{ border-left-color:#6b7a99; color:var(--muted); }}
+              border-left:3px solid var(--dim); background:var(--panel2); margin:0 0 18px; }}
+  .v-supported {{ border-left-color:var(--ok); }}
+  .v-inconclusive {{ border-left-color:var(--warn); }}
+  .v-unmeasured {{ border-left-color:var(--dim2); color:var(--muted); }}
   figure {{ margin:0 0 14px; background:var(--panel); border:1px solid var(--line);
             border-radius:8px; padding:14px; overflow-x:auto; }}
   figure svg {{ max-width:100%; height:auto; display:block; margin:0 auto; }}
-  .designnote {{ font-size:0.82rem; color:#b8c2d6; background:#12141e;
-                 border:1px solid #1e2130; border-radius:7px; padding:13px 16px;
+  .designnote {{ font-size:0.82rem; color:var(--text3); background:var(--panel);
+                 border:1px solid var(--line); border-radius:7px; padding:13px 16px;
                  margin:0 0 14px; line-height:1.65; }}
-  .designnote b {{ color:#e0e0e0; }}
-  .promoted {{ font-size:0.95rem; color:#cfd8e8; background:#141826;
-               border-left:3px solid #7eb8ff; border-radius:6px;
+  .designnote b {{ color:var(--fg); }}
+  .promoted {{ font-size:0.95rem; color:var(--text2); background:var(--panel2);
+               border-left:3px solid var(--accent); border-radius:6px;
                padding:12px 15px; margin:0 0 14px; }}
   .figsays {{ color:var(--muted); font-size:13px; margin:8px 2px 0; }}
+  /* The companion figure inside a section: its own heading and its own caption, so
+     the exploratory rows below the rule are never read as part of the section's
+     result. Styled lighter than a section heading -- it is a sub-figure, not a
+     sixth question. */
+  h4.subfig {{ color:var(--text2); font-size:0.86rem; font-weight:600;
+               margin:26px 0 8px; padding-top:16px;
+               border-top:1px solid var(--line); }}
+  .figcap {{ color:var(--muted); font-size:0.78rem; margin:9px 2px 0; }}
   figcaption {{ color:var(--muted); font-size:0.78rem; margin-top:10px;
                 border-top:1px solid var(--line); padding-top:9px; }}
   details {{ background:var(--panel); border:1px solid var(--line); border-radius:7px;
@@ -766,19 +1183,19 @@ TEMPLATE = """<!DOCTYPE html>
                                 text-align:left; }}
   table.raw th {{ color:var(--dim); font-weight:500; }}
   table.raw td.num {{ font-family:ui-monospace,Menlo,monospace; text-align:right;
-                      color:#cfd8e8; }}
+                      color:var(--text2); }}
   h4 {{ color:var(--dim); font-size:0.74rem; text-transform:uppercase;
         letter-spacing:0.08em; margin:16px 0 6px; }}
-  button {{ background:#1b2032; color:var(--fg); border:1px solid var(--line);
+  button {{ background:var(--panel3); color:var(--fg); border:1px solid var(--line);
             border-radius:5px; padding:6px 11px; font-size:0.75rem; cursor:pointer;
             margin:4px 0 14px; font-family:inherit; }}
   button:hover {{ border-color:var(--accent); color:var(--accent); }}
-  .pending {{ border:1px dashed #2a3450; color:var(--muted); padding:20px;
+  .pending {{ border:1px dashed var(--hi); color:var(--muted); padding:20px;
               border-radius:7px; font-size:0.85rem; }}
   [id^="cell|"], [id^="bar|"] {{ cursor:pointer; }}
   [id^="cell|"]:hover, [id^="bar|"]:hover {{ opacity:0.72; }}
   #drawer {{ position:fixed; top:0; right:0; width:min(620px,94vw); height:100%;
-             background:#0f1119; border-left:1px solid var(--line); overflow-y:auto;
+             background:var(--drawer); border-left:1px solid var(--line); overflow-y:auto;
              transform:translateX(100%); transition:transform .18s ease; z-index:50;
              padding:20px 22px 60px; }}
   #drawer.open {{ transform:none; }}
@@ -790,11 +1207,11 @@ TEMPLATE = """<!DOCTYPE html>
                color:var(--muted); margin-bottom:7px; }}
   .run .lbl {{ color:var(--dim); font-size:0.68rem; text-transform:uppercase;
                letter-spacing:0.07em; margin-top:8px; }}
-  .run .just {{ white-space:pre-wrap; font-size:0.79rem; color:#cfd8e8; }}
-  .run .defect {{ font-size:0.79rem; color:#e0c88f; }}
+  .run .just {{ white-space:pre-wrap; font-size:0.79rem; color:var(--text2); }}
+  .run .defect {{ font-size:0.79rem; color:var(--warn2); }}
   .close {{ position:absolute; top:14px; right:18px; }}
   .toast {{ position:fixed; bottom:22px; left:50%; transform:translateX(-50%);
-            background:#1b2032; border:1px solid var(--accent); color:var(--accent);
+            background:var(--panel3); border:1px solid var(--accent); color:var(--accent);
             padding:9px 16px; border-radius:6px; font-size:0.8rem; opacity:0;
             transition:opacity .2s; z-index:99; }}
   .toast.show {{ opacity:1; }}
