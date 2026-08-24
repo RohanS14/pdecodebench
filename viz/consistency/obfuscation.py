@@ -149,7 +149,7 @@ def paired_blame_shift(d, slice_name="innocent", n_boot=N_BOOT, seed=SEED,
 
 
 def paired_guilty_recall(d, n_boot=N_BOOT, seed=SEED):
-    """Paired shift in how often a genuinely broken code view is named, A-C only."""
+    """Paired shift in how often a genuinely corrupted code view is named, A-C only."""
     matched, dropped, unparsed = match_pairs(d, "guilty")
     res = PairedResult(dropped_cells=dropped, dropped_unparsed=unparsed,
                        n_boot=n_boot, slice_name="guilty")
@@ -171,7 +171,7 @@ def paired_guilty_recall(d, n_boot=N_BOOT, seed=SEED):
     n_real = int(matched["naming"].eq(NAMING_LEVELS[0]).sum())
     n_obf = int(matched["naming"].eq(NAMING_LEVELS[1]).sum())
     res.rows.append(dict(
-        category="names the broken code", real=float(tab[NAMING_LEVELS[0]].mean()),
+        category="names the corrupted code", real=float(tab[NAMING_LEVELS[0]].mean()),
         obf=float(tab[NAMING_LEVELS[1]].mean()), diff=float(diff.mean()),
         lo=float(lo), hi=float(hi), clo=float(lo), chi=float(hi),
         n_real=n_real, n_obf=n_obf, thin=min(n_real, n_obf) < MIN_N,

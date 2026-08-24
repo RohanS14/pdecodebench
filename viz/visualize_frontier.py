@@ -34,11 +34,11 @@ MOD_SHORT = {
     "Comm_Valid":              "Clean+Comment",
     "NoComm_Valid":            "Clean, No Comment",
     "CorrComm":                "Corrupt Comment",
-    "NoComm_CorrVar":          "Corrupt Variable",
+    "NoComm_CorrVar":          "Obfuscated Variables",
     "Comm_InValid":            "Invalid+Comment",
     "NoComm_InValid":          "Invalid, No Comment",
     "CorrComm_Invalid":        "CorrComment+Invalid",
-    "NoComm_CorrVar_InValid":  "CorrVar+Invalid",
+    "NoComm_CorrVar_InValid":  "Obfuscated+Invalid",
 }
 
 PDE_ORDER = ["burgers", "heat", "wave", "navier-stokes"]

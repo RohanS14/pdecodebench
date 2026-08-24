@@ -24,7 +24,7 @@ Detection calls sensitivity.detection_sensitivity per model -- the same bootstra
 over solver systems, the same log-linear d' correction, the same 95% percentile
 interval. Obfuscation calls prior_weakening.analyse per model, which is the function
 behind the pooled obfuscation figure. Innocent-blame reuses the denominator that
-fig_blame_levels uses (ALL draws where the view was not the broken one, clean items
+fig_blame_levels uses (ALL draws where the view was not the corrupted one, clean items
 and "said they agree" included), because a per-model panel computed against a
 different denominator would look like a disagreement with the pooled figure when it
 was only a disagreement with itself.
@@ -248,7 +248,7 @@ def blame_by_model(d, models):
         rec["clean_flag"] = (kk, nn, kk / nn if nn else float("nan"),
                              *M.wilson_ci(kk, nn))
         # Innocent-blame, with fig_blame_levels' denominator EXACTLY: every draw
-        # where this view was not the broken one, clean items and declines included.
+        # where this view was not the corrupted one, clean items and declines included.
         rec["innocent"] = {}
         for m in MODALITIES:
             den = sub[sub["true_outlier"].ne(m)]
@@ -307,7 +307,7 @@ def fig_blame_facets(res, models):
         ax.set_ylim(0.3, len(rows) + 0.7)
         ax.set_yticks([len(rows) - i for i in range(len(rows))])
         if k % NCOL == 0:
-            ax.set_yticklabels([f"{MODALITY_LABELS[m]} broken" for m in rows],
+            ax.set_yticklabels([f"{MODALITY_LABELS[m]} corrupted" for m in rows],
                                fontsize=style.TICK_PT - 1.5)
         else:
             ax.set_yticklabels([])
@@ -322,7 +322,7 @@ def fig_blame_facets(res, models):
     handles.append(Patch(facecolor=c["panel"], hatch="///", edgecolor=c["hatch"],
                          label=_BLAME_LABEL[_SAID_AGREE], **style.hatch_kw()))
     handles.append(Patch(facecolor="none", edgecolor=c["fg"], linewidth=1.3,
-                         label="blamed the view that was actually broken"))
+                         label="blamed the view that was actually corrupted"))
     fig.legend(handles=handles, loc="lower center", ncol=3, frameon=False,
                fontsize=style.TICK_PT, bbox_to_anchor=(0.5, -0.02))
     fig.tight_layout(w_pad=0.6, h_pad=1.1, rect=(0, 0.07, 1, 1))
@@ -360,7 +360,7 @@ def fig_innocent_facets(res, models):
                         fontsize=style.TICK_PT - 2, color=c["fg"])
     ax.set_yticks([len(have) - 1 - i for i in range(len(have))])
     ax.set_yticklabels([s for _m, s in have], fontsize=style.TICK_PT)
-    ax.set_xlabel("blamed while innocent (% of draws where this view was NOT broken)")
+    ax.set_xlabel("blamed while innocent (% of draws where this view was NOT corrupted)")
     ax.grid(True, axis="x", linewidth=0.4, color=c["faint"])
     ax.set_axisbelow(True)
     ax.legend(loc="center left", bbox_to_anchor=(1.01, 0.5), ncol=1, frameon=False,
@@ -390,7 +390,7 @@ def blame_table(res, models):
 
 def blame_dist_table(res, models):
     have = [(mid, s) for mid, s in models if mid in res]
-    head = ("<tr><th>model</th><th>view actually broken</th><th>n</th>"
+    head = ("<tr><th>model</th><th>view actually corrupted</th><th>n</th>"
             + "".join(f"<th>blamed {_BLAME_LABEL[c]}</th>" for c in _BLAME_ORDER)
             + "<th>unreadable</th></tr>")
     body = []
@@ -476,8 +476,8 @@ def fig_obfuscation_facets(res, models):
         ax.set_yticks(ypos)
         if k % NCOL == 0:
             ax.set_yticklabels(
-                ["ALL broken items"]
-                + [f"{MODALITY_LABELS.get(x.name, x.name)} broken"
+                ["ALL corrupted items"]
+                + [f"{MODALITY_LABELS.get(x.name, x.name)} corrupted"
                    for x in r.per_outlier], fontsize=style.TICK_PT - 1.5)
         else:
             ax.set_yticklabels([])
@@ -508,10 +508,10 @@ def obfuscation_table(res, models):
     body = []
     for mid, short in have:
         r = res[mid]
-        named = [("named the right view, of ALL broken items", r.overall),
+        named = [("named the right view, of ALL corrupted items", r.overall),
                  ("correct GIVEN it committed", r.primary),
                  ("committed to a verdict at all", r.detection)]
-        named += [(f"&mdash; {MODALITY_LABELS.get(x.name, x.name)} was broken", x)
+        named += [(f"&mdash; {MODALITY_LABELS.get(x.name, x.name)} was corrupted", x)
                   for x in r.per_outlier]
         for i, (lab, cst) in enumerate(named):
             if cst is None or not np.isfinite(cst.diff):
@@ -635,16 +635,16 @@ def build_section(d, models, dropped=None, n_boot=None):
 
         '<h3 class="pmh">2 &middot; Outlier localization and blame, by model</h3>'
         '<p class="sub">Each bar is all the items where one view really was the '
-        'broken one, divided by where that model put the blame. The hatched segment '
+        'corrupted one, divided by where that model put the blame. The hatched segment '
         'is the model saying all four agree &mdash; kept as its own category and '
         '<b>never folded into a wrong answer</b>, since declining and guessing '
         'wrong are different failures and the pooled figure separates them too. The '
         'outlined segment is blame that landed on the view that was actually '
-        'broken.</p>'
+        'corrupted.</p>'
         f'<figure>{blame_svg}</figure>'
         '<p class="sub">Below: the pooled section&rsquo;s question asked per model '
         '&mdash; how often each view is blamed on the draws where it was '
-        '<i>not</i> the broken one. Denominator is every such draw, clean items and '
+        '<i>not</i> the corrupted one. Denominator is every such draw, clean items and '
         'declines included, exactly as in the pooled figure. '
         f'<b>Trajectory takes the most innocent blame in {traj_top} of '
         f'{len(blame)} models</b>, which is the per-model form of the pooled '
@@ -654,7 +654,7 @@ def build_section(d, models, dropped=None, n_boot=None):
         'innocent-blame rates, and the full blame distribution</summary>'
         f'<div style="overflow-x:auto">{blame_table(blame, models)}</div>'
         '<p class="sub" style="margin-top:16px">Full distribution, one row per '
-        '(model, broken view). <b>unreadable</b> is the shortfall between the '
+        '(model, corrupted view). <b>unreadable</b> is the shortfall between the '
         'segments and the row total &mdash; a flagged draw whose named view the '
         'parser could not resolve. It is shown rather than absorbed so the segments '
         'can be checked against n.</p>'
@@ -665,8 +665,8 @@ def build_section(d, models, dropped=None, n_boot=None):
         '<p class="sub">Filled dot = real variable names, hollow = obfuscated, and '
         'the line between them is the effect; the number beside each model is '
         '<i>obfuscated &minus; real</i> on the pooled top row. Same outcome as the '
-        'pooled obfuscation figure: of the items where something really was broken, '
-        'how often the model named the view that was broken. '
+        'pooled obfuscation figure: of the items where something really was corrupted, '
+        'how often the model named the view that was corrupted. '
         f'<b>{obf_neg} of {len(obf)} models move in the negative direction</b>, and '
         f'<b>{obf_sig}</b> have an interval excluding zero on their own. Paired '
         'within solver across the naming factor, bootstrapped over solver systems.</p>'

@@ -41,11 +41,11 @@ COND_SHORT = {
     "Comm_Valid":             "Clean+Comment",
     "NoComm_Valid":           "Clean, No Comment",
     "CorrComm":               "Corrupt Comment",
-    "NoComm_CorrVar":         "Corrupt Variable",
+    "NoComm_CorrVar":         "Obfuscated Variables",
     "Comm_InValid":           "Invalid+Comment",
     "NoComm_InValid":         "Invalid, No Comment",
     "CorrComm_Invalid":       "CorrComment+Invalid",
-    "NoComm_CorrVar_InValid": "CorrVar+Invalid",
+    "NoComm_CorrVar_InValid": "Obfuscated+Invalid",
 }
 LLM_METRICS = [
     ("pde_match",       "PDE Type"),
@@ -207,8 +207,8 @@ def fig_score_by_condition(df):
             hovertemplate=label + " | %{x}: %{y:.1f}%  (n=%{customdata})<extra></extra>",
         ))
     for x0, x1, color, note in [
-        ("Corrupt Comment", "Corrupt Variable", "#e74c3c", "lexical cues removed/misleading"),
-        ("Invalid+Comment", "CorrVar+Invalid",  "#9b59b6", "physically invalid code"),
+        ("Corrupt Comment", "Obfuscated Variables", "#e74c3c", "lexical cues removed/misleading"),
+        ("Invalid+Comment", "Obfuscated+Invalid",  "#9b59b6", "physically invalid code"),
     ]:
         if x0 in [COND_SHORT[c] for c in conds] and x1 in [COND_SHORT[c] for c in conds]:
             fig.add_vrect(x0=x0, x1=x1, fillcolor=color, opacity=0.07, line_width=0,

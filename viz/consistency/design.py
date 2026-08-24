@@ -77,7 +77,7 @@ def factorise(raw):
     crossed = (len(cells) == len(conds) * len(naming) * len(orders)
                and set(cells.values()) == {len(systems)})
 
-    # Counterbalancing: over the corrupted items, which SLOT held the broken view.
+    # Counterbalancing: over the corrupted items, which SLOT held the corrupted view.
     # This is the property that stops localization from being readable off position,
     # so it is measured per condition rather than pooled -- a design can be balanced
     # overall and lopsided inside one condition.
@@ -199,7 +199,7 @@ def _condition_table(f):
                  f"<td style='color:var(--dim)'>{note}</td>"
                  f"<td style='text-align:right'>{per}</td></tr>")
     return ("<div style='overflow-x:auto'><table><thead><tr><th>Key</th>"
-            "<th>Condition</th><th>What is broken</th>"
+            "<th>Condition</th><th>What is corrupted</th>"
             "<th style='text-align:right'>Items</th></tr></thead><tbody>"
             + body + "</tbody></table></div>")
 
@@ -297,7 +297,7 @@ def build_section(raw):
         'over-represented among the corrupted items, by construction.</b> It '
         f'carries {len(f["traj_conds"])} corruption methods where the other three '
         f'views carry one each, so {f["n_traj"]:,} of the {f["n_corrupt"]:,} '
-        f'corrupted items ({traj_share:.0%}) have a broken trajectory. This is the '
+        f'corrupted items ({traj_share:.0%}) have a corrupted trajectory. This is the '
         'single most important thing to know when reading any micro-averaged number '
         'in this report: a model that answers &ldquo;trajectory&rdquo; by reflex is '
         'rewarded by the mix. It is also why the per-model appendix reports '

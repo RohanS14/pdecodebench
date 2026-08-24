@@ -47,6 +47,14 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from freegen.parse_score import valid_intent                       # noqa: E402
 from freegen.parse_score import classify_valid_confidence_2x2      # noqa: E402
 from crossmodal.eval.parse_consistency import dprime               # noqa: E402
+# Same reasoning as the scoring helpers above: imported, not reimplemented. This
+# file was written when Experiment 1 was k=1 and every row was one item. The
+# roster now runs k=3 to match the consistency arms, so a raw frame holds THREE
+# correlated rows per item and every n in this report would be 3x too large --
+# point estimates unchanged, every interval about 42% too narrow, in the direction
+# that makes a result look real. pool_draws() is a no-op on k=1 input, so this is
+# safe for the older CSVs too.
+from freegen.report import pool_draws                              # noqa: E402
 
 DARK = "#0d0f18"
 PANEL = "#12141e"
@@ -152,11 +160,11 @@ COND_ORDER = [
     ("Comm_Valid",              "Clean+Comment",       True),
     ("NoComm_Valid",            "Clean, No Comment",   True),
     ("CorrComm",                "Corrupt Comment",     True),
-    ("NoComm_CorrVar",          "Corrupt Variable",    True),
+    ("NoComm_CorrVar",          "Obfuscated Vars",     True),
     ("Comm_InValid",            "Invalid+Comment",     False),
     ("NoComm_InValid",          "Invalid, No Comment", False),
     ("CorrComm_Invalid",        "CorrComment+Invalid", False),
-    ("NoComm_CorrVar_InValid",  "CorrVar+Invalid",     False),
+    ("NoComm_CorrVar_InValid",  "Obfuscated+Invalid",     False),
 ]
 CONF_ORDER = [("Confident Yes", "#4fa96a"), ("Uncertain Yes", "#e8c35a"),
               ("Hedged", "#e2913f"), ("Confident No", "#c4574d")]
@@ -638,6 +646,232 @@ def consistency_figure_panels(xmodal_rows=None):
     return out
 
 
+
+
+# ── The confidence breakdown, pooled and per model ────────────────────────────
+# Shared by the two panels below so they cannot disagree about what a bucket is.
+# NOTE the buckets come from classify_valid_confidence_2x2, NOT from the published
+# `valid_conf` column, which is what freegen/report.py's panel ② uses. That column's
+# rule has an uncertain-YES bucket and no uncertain-no, so every hedged negative is
+# filed as a confident no -- an asymmetry that would sit badly next to the two
+# direction-and-confidence panels in this document, which are symmetric by
+# construction. Same figure, symmetric rule.
+# "no lean" is a REAL bucket and sits between the two directions, not off the chart.
+# classify_valid_confidence_2x2 returns "" for an answer with no direction at all --
+# an abstention is not a lean -- and on this roster that is 92 of 5,426 answers
+# (1.7%), things like "depends on the time step and grid resolution". Leaving it out
+# of the stack made every bar fall short of 100% by a different amount with nothing
+# saying why, which reads as a rendering fault rather than as data.
+# DIRECTION only. The confident/hedged split was four legend entries here and it
+# overstated what the verdict field can carry: the prompt asks for a terse
+# fill-in-the-blank answer ("Be concise. Output only: ... valid: ____"), so 85% of
+# answers are a bare yes or no and the hedged bands were slivers that invited reading
+# a confidence signal off a format artefact. Real confidence needs resampling, not a
+# lexicon -- see the k=3 flip rate.
+HEDGE_ORDER = ["says invalid", "no lean", "says valid"]
+HEDGE_COLOR = {"says invalid": "#c1546a", "no lean": "#5a6274", "says valid": "#4fa96a"}
+_DIRECTION = {"Confident No": "says invalid", "Hedged No": "says invalid",
+              "Confident Yes": "says valid", "Hedged Yes": "says valid"}
+
+
+def _hedge_frame(df):
+    """(present conditions, frame with a `bucket` column) or (None, None)."""
+    if df is None or df.empty or "parsed_valid" not in df or "mod_type" not in df:
+        return None, None
+    d = df.copy()
+    d["bucket"] = d["parsed_valid"].map(classify_valid_confidence_2x2)
+    d["bucket"] = (d["bucket"].map(_DIRECTION)
+                   .fillna("no lean").replace("", "no lean"))
+    present = [(k, lab, gt) for k, lab, gt in COND_ORDER if (d["mod_type"] == k).any()]
+    return (present, d) if present else (None, None)
+
+
+def _hedge_labels(present):
+    """Condition labels carrying the answer that is actually correct for each.
+
+    Without the marker a reader takes "more green" for "better", which is exactly
+    backwards on the four invalid rows.
+    """
+    return [(lab + " \u2713") if gt else ("\u26a0 " + lab) for _, lab, gt in present]
+
+
+def _hedge_split(present):
+    """Index of the first invalid condition, for the divider and the shading."""
+    return sum(1 for _, _, gt in present if gt)
+
+
+def hedge_breakdown_panel(df):
+    """Stacked confidence shares per perturbation, every model pooled.
+
+    The overview the per-model grid below deviates from. Two of the eight
+    perturbations -- a corrupted comment and corrupted variable names -- change the
+    ANNOTATION and not the physics, so a model reading the code should answer them
+    exactly as it answers the clean variant. Movement between those bars is the
+    model reading the label.
+    """
+    present, d = _hedge_frame(df)
+    if present is None:
+        return [("Validity confidence breakdown", "",
+                 placeholder("No free-generation rows loaded.", "freegen/run_eval.py"))]
+
+    labels, split = _hedge_labels(present), _hedge_split(present)
+    fig = go.Figure()
+    for bucket in HEDGE_ORDER:
+        means, hi_err, lo_err = [], [], []
+        for code, _, _ in present:
+            sub = d[d["mod_type"].eq(code)].copy()
+            sub["_ind"] = (sub["bucket"] == bucket).astype(float)
+            # Resampling the 32 SYSTEMS, not the rows: eight conditions and eight
+            # models share each base solver, so rows within a system are not
+            # independent and a row bootstrap would shrink these intervals by
+            # roughly the square root of that clustering.
+            mn, lo, hi = _cluster_ci(sub, "_ind")
+            means.append(mn * 100)
+            lo_err.append((mn - lo) * 100 if lo == lo else 0.0)
+            hi_err.append((hi - mn) * 100 if hi == hi else 0.0)
+        fig.add_bar(
+            name=bucket, x=labels, y=means, marker_color=HEDGE_COLOR[bucket],
+            marker_line=dict(color=PANEL, width=0.6),
+            error_y=dict(type="data", symmetric=False, array=hi_err, arrayminus=lo_err,
+                         color="rgba(224,224,224,0.5)", thickness=1.1, width=4),
+            hovertemplate=bucket + " | %{x}: %{y:.1f}%<extra></extra>")
+
+    boundary = split - 0.5
+    fig.add_vline(x=boundary, line=dict(color="#a878d8", width=1.5, dash="dash"))
+    fig.add_vrect(x0=boundary, x1=len(present) - 0.5, fillcolor="#7d3c98",
+                  opacity=0.10, line_width=0)
+    fig.add_annotation(x=0, y=107, text="VALID CODE \u2014 correct answer is Yes",
+                       showarrow=False, xanchor="left",
+                       font=dict(size=10, color="#8fd694"))
+    fig.add_annotation(x=len(present) - 1, y=107,
+                       text="INVALID CODE \u2014 correct answer is No",
+                       showarrow=False, xanchor="right",
+                       font=dict(size=10, color="#d98fd6"))
+    fig.update_layout(
+        barmode="stack", height=470,
+        yaxis=dict(title="% of answers", range=[0, 112], gridcolor=GRID),
+        xaxis=dict(tickangle=-25),
+        legend=dict(orientation="h", y=-0.42, x=0.5, xanchor="center"))
+
+    return [(
+        "What the models say, all models pooled",
+        "Every answer to the validity question, bucketed by which way the model "
+        "leaned and whether it committed. Each bar is one perturbation; the shaded "
+        "half is the four where the code really is broken.<br><br>"
+        "<b>Green over the shaded half is the failure of interest</b> &mdash; the "
+        "model asserting that physically invalid code is fine. Red over the unshaded "
+        "half is the opposite failure, and the one that has grown: a false alarm on "
+        "working code.<br><br>"
+        "<b>Corrupt Comment and Obfuscated Variables are the controls.</b> Both leave "
+        "the physics untouched and change only the naming, so a model reading the "
+        "code should answer them exactly as it answers Clean. Any movement is the "
+        "model reading the label instead.<br><br>"
+        "Intervals are 95% bootstrap over the <b>32 base systems</b>, not over rows: "
+        "eight conditions and eight models share each solver, so a row bootstrap "
+        "would narrow every one of them. Each interval is for that bucket's own "
+        "share, not for the cumulative height it is drawn at. Grey is <b>no lean</b> "
+        "&mdash; an answer with no direction at all, 1.7% of the roster, kept in the "
+        "stack so every bar reaches 100%.<br><br>"
+        "<b>This is direction, not confidence.</b> The confident/hedged split used to "
+        "be four bands here and it has been dropped: the prompt asks for a terse "
+        "fill-in-the-blank verdict, so 85% of answers are a bare <code>yes</code> or "
+        "<code>no</code> and the hedged bands were slivers of a format artefact. "
+        "Confidence is measured by resampling instead &mdash; see the k=3 flip rate.",
+        fig_html(fig, height=520, margin=dict(l=70, r=30, t=40, b=190)))]
+
+
+def hedge_breakdown_by_model_panel(df):
+    """The same breakdown, one small multiple per model.
+
+    The pooled panel above averages across the roster, and on this measure the
+    roster does not agree: the newer checkpoints answer the invalid half almost
+    perfectly and the valid half barely better than chance, and the older ones do
+    the reverse. A single pooled bar shows the average of two opposite behaviours
+    and looks like moderate competence at both.
+    """
+    present, d = _hedge_frame(df)
+    if present is None or "model" not in d:
+        return []
+
+    models = sorted(d["model"].unique(),
+                    key=lambda m: (d[d["model"].eq(m)]["bucket"]
+                                   .isin(["Hedged Yes", "Confident Yes"]).mean()))
+    if len(models) < 2:
+        return []
+
+    labels, split = _hedge_labels(present), _hedge_split(present)
+    ncols = 4
+    nrows = (len(models) + ncols - 1) // ncols
+    fig = make_subplots(
+        rows=nrows, cols=ncols, shared_yaxes=True,
+        subplot_titles=[m.split("/")[-1] for m in models],
+        vertical_spacing=0.09, horizontal_spacing=0.045)
+
+    for i, model in enumerate(models):
+        r, c = i // ncols + 1, i % ncols + 1
+        g = d[d["model"].eq(model)]
+        for bucket in HEDGE_ORDER:
+            ys = []
+            for code, _, _ in present:
+                sub = g[g["mod_type"].eq(code)]
+                ys.append(100 * (sub["bucket"] == bucket).mean() if len(sub) else 0.0)
+            fig.add_bar(
+                x=labels, y=ys, name=bucket, marker_color=HEDGE_COLOR[bucket],
+                marker_line=dict(color=PANEL, width=0.4),
+                legendgroup=bucket, showlegend=(i == 0),
+                hovertemplate=("<b>" + model.split("/")[-1]
+                               + "</b><br>" + bucket
+                               + " | %{x}: %{y:.1f}%<extra></extra>"),
+                row=r, col=c)
+        fig.add_vrect(x0=split - 0.5, x1=len(present) - 0.5, fillcolor="#7d3c98",
+                      opacity=0.10, line_width=0, row=r, col=c)
+        fig.add_vline(x=split - 0.5, line=dict(color="#a878d8", width=1, dash="dash"),
+                      row=r, col=c)
+
+    # Legend ABOVE the panels: at the bottom it shares a strip with the vertical
+    # tick labels and clips the middle columns.
+    fig.update_layout(barmode="stack", height=360 * nrows,
+                      legend=dict(orientation="h", y=1.04, x=0.5, xanchor="center",
+                                  yanchor="bottom"))
+    fig.update_yaxes(range=[0, 100], gridcolor=GRID, title_text="")
+    fig.update_xaxes(tickangle=-90, tickfont=dict(size=8), showticklabels=False)
+    # Tick labels on the BOTTOM row only. Eight labels at -55 degrees are taller than
+    # the gap between rows, so every one of them ran into the subplot title beneath
+    # it. The columns share one category axis, so a label under the bottom panel
+    # names its whole column and nothing is lost by hiding the repeats.
+    last_row_of = {}
+    for i in range(len(models)):
+        last_row_of[i % ncols] = i // ncols + 1
+    for c, r in last_row_of.items():
+        fig.update_xaxes(showticklabels=True, row=r, col=c + 1)
+    for ann in fig.layout.annotations[:len(models)]:
+        ann.font = dict(size=11, color=FG)
+
+    return [(
+        "What each model says",
+        "Ordered by how often the model says the code is valid, least to most. The "
+        "shaded half of each panel is the four perturbations where the code really "
+        "is broken.<br><br>"
+        "<b>This is the panel the pooled bar hides.</b> Read the shaded half across "
+        "the row and the newer checkpoints go almost solid red &mdash; they call "
+        "broken code broken nearly every time. Then read the unshaded half of the "
+        "same panels: the red does not go away. They are not detecting the fault, "
+        "they are readier to call anything faulty, and the pooled average of that "
+        "against the older models' opposite bias reads as moderate competence at "
+        "both.<br><br>"
+        "No intervals here: each bar is one model on one perturbation, 32 items, and "
+        "an interval on 32 would be wide enough to swamp the panel. The pooled figure "
+        "above carries the uncertainty; this one carries the shape.<br><br>"
+        "<b>What this panel cannot tell you is how sure any of them are.</b> Every "
+        "model here is a reasoning model answering with thinking on, and the "
+        "deliberation happens inside <code>&lt;think&gt;</code>, which is stripped "
+        "before parsing. A model can reason for twenty thousand tokens about whether "
+        "the CFL condition holds and then write <code>valid: no</code>, and this "
+        "panel records that identically to a reflexive answer. Pooled over the "
+        "roster, 90.1% of items have every draw giving an unqualified verdict "
+        "&mdash; but only 67.4% have all three draws agreeing.",
+        fig_html(fig, height=360 * nrows + 220,
+                 margin=dict(l=55, r=30, t=95, b=250)))]
 
 
 def perturbation_confidence_panel(df):
@@ -2229,6 +2463,23 @@ def build(freegen_csv, xmodal_dir, xmodal_summary, out,
         df = pd.read_csv(freegen_csv)
         print(f"[report] free-gen rows from CSV: {len(df)}")
 
+    if df is not None and len(df):
+        # A draw that ran out of budget mid-reasoning reached no answer. Scoring it
+        # counts a model that said nothing as a model that said something false, so
+        # it is dropped here rather than carried into the panels.
+        if "no_verdict" in df.columns:
+            bad = df["no_verdict"].astype(str).str.lower().isin(("true", "1"))
+            if bad.any():
+                print(f"[report] dropping {int(bad.sum())} row(s) with no verdict "
+                      f"({100 * bad.mean():.1f}%) — these reached no answer")
+                df = df[~bad]
+        n_raw = len(df)
+        df = pool_draws(df)
+        if len(df) != n_raw:
+            k = n_raw / max(len(df), 1)
+            print(f"[report] pooled {n_raw} draws -> {len(df)} items (k={k:.1f}); "
+                  f"every Experiment 1 n below counts ITEMS, not draws")
+
     rows = []
     if xmodal_hf:
         xdf = from_hub(xmodal_hf)
@@ -2312,6 +2563,13 @@ def build(freegen_csv, xmodal_dir, xmodal_summary, out,
          + fig1_panels(df)[:1] + validity_dprime_panel(df)
          + validity_confidence_panel(df)
          + perturbation_confidence_panel(df)
+         # Pooled first as the overview, then the per-model grid it deviates from.
+         # The pooled bar on its own is the average of two opposite behaviours --
+         # newer checkpoints near-perfect on the invalid half and near chance on the
+         # valid half, older ones the reverse -- which reads as moderate competence
+         # at both, and is the one thing this figure must not say.
+         + hedge_breakdown_panel(df)
+         + hedge_breakdown_by_model_panel(df)
          + [p for p in exp1_panels_all
             if any(p[0].startswith(k) for k in KEEP_E1)]),
         ("Experiment 2 &mdash; cross-modal consistency", "e2",

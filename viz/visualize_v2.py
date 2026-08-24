@@ -48,7 +48,7 @@ CONDITION_LABELS = {
     "Comm_Valid":      "Clean + Comment",
     "NoComm_Valid":    "Clean, No Comment",
     "CorrComm":        "Corrupt Comment",
-    "NoComm_CorrVar":  "Corrupt Variable",
+    "NoComm_CorrVar":  "Obfuscated Variables",
     "Comm_InValid":    "Invalid + Comment",
     "NoComm_InValid":  "Invalid, No Comment",
 }
@@ -216,7 +216,7 @@ for qtype in ["pde_class", "phys_valid"]:  # the two most informative
             marker=dict(size=8),
         ))
     # shade corrupted zone
-    fig.add_vrect(x0="Corrupt Comment", x1="Corrupt Variable",
+    fig.add_vrect(x0="Corrupt Comment", x1="Obfuscated Variables",
                   fillcolor="red", opacity=0.07, line_width=0,
                   annotation_text="Corruption zone", annotation_position="top left")
     fig.update_layout(
@@ -341,7 +341,7 @@ for pde in PDE_CLASSES:
         line=dict(color=PDE_COLORS[pde], width=2),
         marker=dict(size=9),
     ))
-fig2f.add_vrect(x0="Corrupt Comment", x1="Corrupt Variable",
+fig2f.add_vrect(x0="Corrupt Comment", x1="Obfuscated Variables",
                 fillcolor="red", opacity=0.07, line_width=0,
                 annotation_text="Corruption zone", annotation_position="top left")
 fig2f.update_layout(

@@ -57,11 +57,11 @@ COND_SHORT = {
     "Comm_Valid":             "Clean+Comment",
     "NoComm_Valid":           "Clean, No Comment",
     "CorrComm":               "Corrupt Comment",
-    "NoComm_CorrVar":         "Corrupt Variable",
+    "NoComm_CorrVar":         "Obfuscated Variables",
     "Comm_InValid":           "Invalid+Comment",
     "NoComm_InValid":         "Invalid, No Comment",
     "CorrComm_Invalid":       "CorrComment+Invalid",
-    "NoComm_CorrVar_InValid": "CorrVar+Invalid",
+    "NoComm_CorrVar_InValid": "Obfuscated+Invalid",
 }
 COND_COLOR = {
     "Comm_Valid":             "#2ecc71",
@@ -258,7 +258,7 @@ for i, (metric, mlabel) in enumerate(LLM_METRICS):
 # Shade zones
 for x0, x1, color, label in [
     ("Clean+Comment","Clean, No Comment","#2ecc71","Clean valid"),
-    ("Corrupt Comment","Corrupt Variable","#e74c3c","Corrupted"),
+    ("Corrupt Comment","Obfuscated Variables","#e74c3c","Corrupted"),
     ("Invalid+Comment","Invalid, No Comment","#9b59b6","Invalid"),
 ]:
     fig_a2.add_vrect(x0=x0, x1=x1, fillcolor=color, opacity=0.06, line_width=0,
@@ -306,7 +306,7 @@ for metric, mlabel in LLM_METRICS:
             line=dict(color=metric_colors[i], width=2), marker=dict(size=8),
         ))
     for x0, x1, color in [
-        ("Corrupt Comment","Corrupt Variable","#e74c3c"),
+        ("Corrupt Comment","Obfuscated Variables","#e74c3c"),
         ("Invalid+Comment","Invalid, No Comment","#9b59b6"),
     ]:
         fig.add_vrect(x0=x0, x1=x1, fillcolor=color, opacity=0.06, line_width=0)
@@ -1041,7 +1041,7 @@ fig_b6a.add_hline(y=25, line_dash="dot", line_color="rgba(200,200,200,0.3)",
 
 for x0, x1, color, label in [
     ("Clean+Comment","Clean, No Comment","#2ecc71","Clean valid"),
-    ("Corrupt Comment","Corrupt Variable","#e74c3c","Corrupted"),
+    ("Corrupt Comment","Obfuscated Variables","#e74c3c","Corrupted"),
     ("Invalid+Comment","Invalid, No Comment","#9b59b6","Invalid"),
 ]:
     fig_b6a.add_vrect(x0=x0, x1=x1, fillcolor=color, opacity=0.06, line_width=0,
@@ -1088,7 +1088,7 @@ for i, model in enumerate(models_abs):
 
 for x0, x1, color, label in [
     ("Clean+Comment","Clean, No Comment","#2ecc71","Clean valid"),
-    ("Corrupt Comment","Corrupt Variable","#e74c3c","Corrupted"),
+    ("Corrupt Comment","Obfuscated Variables","#e74c3c","Corrupted"),
     ("Invalid+Comment","Invalid, No Comment","#9b59b6","Invalid"),
 ]:
     fig_b6b.add_vrect(x0=x0, x1=x1, fillcolor=color, opacity=0.06, line_width=0,

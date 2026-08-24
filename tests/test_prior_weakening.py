@@ -220,7 +220,11 @@ def test_figure_names_both_conditions_on_its_face():
     for needle in ("real names", "obfuscated"):
         assert needle in svg, f"figure never says {needle!r}"
     assert "named the right view" in svg, "the axis does not state the outcome"
-    assert "broken" in svg, "rows do not say what population they are a percent of"
+    # "corrupted", not "broken": the figure calls a tampered-with view corrupted,
+    # which is the term the rest of the consistency report uses. Experiment 1 keeps
+    # "broken" for physically invalid CODE -- a different thing, and conflating the
+    # two in one document is what this rename was for.
+    assert "corrupted" in svg, "rows do not say what population they are a percent of"
 
 
 def test_single_panel_with_two_marks_per_row():

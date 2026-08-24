@@ -145,3 +145,70 @@ def test_no_verdict_rows_are_excluded_downstream_not_merely_flagged():
     assert "no_verdict" in rpt and "~nv" in rpt
     agg = open(os.path.join(ROOT, "freegen/aggregate_freegen.py")).read()
     assert "no_verdict" in agg
+
+
+# ── Experiment 1 in the dual report must pool k draws ─────────────────────────
+# pde_dual_report.py was written when Experiment 1 was k=1, so every row was one
+# item and n was just len(df). The roster now runs k=3 to match the consistency
+# arms. Handing that frame to the old code triples every n: the point estimates
+# are unchanged and every interval narrows by about sqrt(3), which is 42% in the
+# direction that makes a result look real.
+
+import os
+import pandas as pd
+
+_VIZ_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def _dual_report_source():
+    with open(os.path.join(_VIZ_ROOT, "viz", "pde_dual_report.py")) as f:
+        return f.read()
+
+
+def test_dual_report_imports_the_one_pooler():
+    src = _dual_report_source()
+    assert "from freegen.report import pool_draws" in src, (
+        "pde_dual_report.py must import pool_draws rather than reimplement it -- a "
+        "second copy lets Experiment 1 and the free-gen report drift apart while "
+        "still looking comparable in one document")
+    assert "pool_draws(df)" in src, "pool_draws is imported but never applied"
+
+
+def test_pooling_collapses_k_draws_and_preserves_the_mean():
+    from freegen.report import pool_draws
+    rows = []
+    for item in range(4):
+        for draw, score in enumerate((1.0, 0.0, 1.0)):
+            rows.append({"model": "m", "thinking": "on", "mod_type": "Comm_Valid",
+                         "title": f"t{item}", "sample_idx": draw, "k_draws": 3,
+                         "valid_match": score})
+    df = pd.DataFrame(rows)
+    out = pool_draws(df)
+    assert len(out) == 4, f"12 draws of 4 items must pool to 4 items, got {len(out)}"
+    assert abs(out["valid_match"].mean() - df["valid_match"].mean()) < 1e-9, (
+        "pooling must not move the point estimate, only the n behind it")
+
+
+def test_pooling_is_a_noop_on_k1_so_older_csvs_still_work():
+    from freegen.report import pool_draws
+    df = pd.DataFrame([{"model": "m", "thinking": "on", "mod_type": "Comm_Valid",
+                        "title": f"t{i}", "valid_match": 1.0} for i in range(5)])
+    assert len(pool_draws(df)) == 5
+
+
+def test_every_dual_report_panel_returns_rendered_markup():
+    """A panel's third element must be an HTML STRING, not a plotly Figure.
+
+    The renderer drops the tuple's third element into the document as-is. Returning
+    the Figure object instead of fig_html(fig) raises nothing and writes no warning
+    -- the panel's title and caption appear in the page and the chart is simply
+    absent. Caught only by looking at the report, which is exactly what happened.
+    """
+    import re
+    src = _dual_report_source()
+    # Panel builders end with `return [( "title", "caption", <third> )]`; the third
+    # element is what matters. Any bare `fig)]` is a Figure escaping unrendered.
+    offenders = [m.start() for m in re.finditer(r"\n\s+fig\)\]", src)]
+    assert not offenders, (
+        f"{len(offenders)} panel(s) return a raw Figure instead of fig_html(fig); "
+        f"they render as a title and caption with no chart")

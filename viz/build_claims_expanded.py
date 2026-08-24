@@ -253,7 +253,7 @@ def survey(raw, include_partial):
             for i, (r_, d_) in enumerate(have):
                 if i >= pick_idx or d_ is None or not len(d_):
                     continue          # only arms PREFERRED over the scored one
-                # Count the draws MISSING from the repair arm as still-broken, not as
+                # Count the draws MISSING from the repair arm as still-corrupted, not as
                 # absent. A repair arm copies good rows through and appends fixes as it
                 # goes, so a draw it has not reached yet is in neither group -- and
                 # counting only what is present reported Nemotron as "689 -> 0" when

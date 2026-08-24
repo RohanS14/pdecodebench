@@ -51,7 +51,7 @@ class Contrast:
 
 @dataclass
 class PriorWeakening:
-    overall: Contrast = None        # the direct answer: right view / all broken items
+    overall: Contrast = None        # the direct answer: right view / all corrupted items
     primary: Contrast = None        # the same thing, conditioned on committing
     detection: Contrast = None
     specificity: Contrast = None
@@ -132,9 +132,9 @@ def analyse(d, n_boot=N_BOOT, seed=SEED):
                     & matched["pred_agree"].eq("no")).sum())
     n_clean = int(matched["true_outlier"].eq(NONE).sum())
     res.overall = _contrast(_solver_outcome(matched, "overall_accuracy"),
-                            "named the right view, of all broken items",
+                            "named the right view, of all corrupted items",
                             n_boot, seed, n_items=n_corrupt,
-                            denom="all items where something was broken")
+                            denom="all items where something was corrupted")
     res.primary = _contrast(_solver_outcome(matched, "cond_localization"),
                             "correct outlier, given it committed", n_boot, seed,
                             n_items=n_commit,
@@ -142,7 +142,7 @@ def analyse(d, n_boot=N_BOOT, seed=SEED):
     res.detection = _contrast(_solver_outcome(matched, "detection"),
                               "committed to a verdict at all", n_boot, seed,
                               n_items=n_corrupt,
-                              denom="all broken items — a flag rate, NOT correctness")
+                              denom="all corrupted items — a flag rate, NOT correctness")
     res.specificity = _contrast(_solver_outcome(matched, "specificity"),
                                 "correctly said 'all agree'", n_boot, seed,
                                 n_items=n_clean,
@@ -160,7 +160,7 @@ def analyse(d, n_boot=N_BOOT, seed=SEED):
                              - ovr.dropna().loc[common].to_numpy())))
 
     # Per representation, on the SAME outcome as the headline: of the items where
-    # THIS view was the broken one, how often the model named it. Corruption subtypes
+    # THIS view was the corrupted one, how often the model named it. Corruption subtypes
     # stay pooled -- splitting trajectory four ways multiplies comparisons this
     # design cannot power, and the question is about representations, not rungs.
     for m in MODALITIES:
@@ -169,7 +169,7 @@ def analyse(d, n_boot=N_BOOT, seed=SEED):
             continue
         c_overall = _contrast(_solver_outcome(sub, "overall_accuracy"), m,
                               n_boot, seed, exploratory=True, n_items=len(sub),
-                              denom=f"items where {m} was the broken view")
+                              denom=f"items where {m} was the corrupted view")
         c_cond = _contrast(_solver_outcome(sub, "cond_localization"), m,
                            n_boot, seed, exploratory=True)
         c_overall.conditional = c_cond
@@ -197,7 +197,7 @@ def per_trajectory_rung(d, n_boot=N_BOOT, seed=SEED):
     a question the design can illustrate but cannot settle.
 
     Same outcome as the headline row, so the numbers are comparable to it: of the
-    items where trajectory was the broken view AND it was broken this particular
+    items where trajectory was the corrupted view AND it was corrupted this particular
     way, how often the model named trajectory.
     """
     matched, _ = _matched(d.copy())
@@ -211,7 +211,7 @@ def per_trajectory_rung(d, n_boot=N_BOOT, seed=SEED):
             continue
         c = _contrast(_solver_outcome(sub, "overall_accuracy"), lvl, n_boot, seed,
                       exploratory=True, n_items=len(sub),
-                      denom=("items where trajectory was broken by "
+                      denom=("items where trajectory was corrupted by "
                              + TRAJ_LEVEL_LABELS[lvl]))
         c.conditional = _contrast(_solver_outcome(sub, "cond_localization"), lvl,
                                   n_boot, seed, exploratory=True)

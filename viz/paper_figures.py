@@ -60,11 +60,11 @@ COND_SHORT = {
     "Comm_Valid":             "Clean+Comment",
     "NoComm_Valid":           "Clean, No Comment",
     "CorrComm":               "Corrupt Comment",
-    "NoComm_CorrVar":         "Corrupt Variable",
+    "NoComm_CorrVar":         "Obfuscated Variables",
     "Comm_InValid":           "Invalid+Comment",
     "NoComm_InValid":         "Invalid, No Comment",
     "CorrComm_Invalid":       "CorrComment+Invalid",
-    "NoComm_CorrVar_InValid": "CorrVar+Invalid",
+    "NoComm_CorrVar_InValid": "Obfuscated+Invalid",
 }
 COND_COLOR = {
     "Comm_Valid":             "#2ecc71",
@@ -253,7 +253,7 @@ for i, (metric, mlabel) in enumerate(LLM_METRICS):
 # Zone shading left panel
 for x0, x1, color, label in [
     ("Clean+Comment",   "Clean, No Comment",   "#2ecc71", "Clean valid"),
-    ("Corrupt Comment", "Corrupt Variable",    "#e74c3c", "Corrupted"),
+    ("Corrupt Comment", "Obfuscated Variables",    "#e74c3c", "Corrupted"),
     ("Invalid+Comment", "Invalid, No Comment", "#9b59b6", "Invalid"),
 ]:
     fig2.add_vrect(x0=x0, x1=x1, fillcolor=color, opacity=0.07, line_width=0,
@@ -381,7 +381,7 @@ for mtype, color in [("Reasoning", "#e67e22"), ("Non-reasoning", "#3498db")]:
     ), row=1, col=1)
 
 for x0, x1, color in [
-    ("Corrupt Comment", "Corrupt Variable",    "#e74c3c"),
+    ("Corrupt Comment", "Obfuscated Variables",    "#e74c3c"),
     ("Invalid+Comment", "Invalid, No Comment", "#9b59b6"),
 ]:
     fig3.add_vrect(x0=x0, x1=x1, fillcolor=color, opacity=0.07,

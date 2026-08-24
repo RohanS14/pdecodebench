@@ -297,7 +297,7 @@ def details_table(res, order):
 
 def per_class_table(res, order):
     head = ("<tr><th>model</th>"
-            + "".join(f"<th>{MODALITY_LABELS[m]} was broken</th>"
+            + "".join(f"<th>{MODALITY_LABELS[m]} was corrupted</th>"
                       for m in MODALITIES)
             + "<th>macro</th></tr>")
     body = []
@@ -370,7 +370,7 @@ def build_section(d, cfg, items=None, provisional=None):
         '<p class="sub" style="margin-bottom:14px">Three rates, no d&prime; and no '
         'z-transform &mdash; percentage points end to end. <b>Flagged | '
         'corrupted</b> is how often a model says the views disagree when one of '
-        'them really was broken; <b>flagged | clean</b> is how often it says so '
+        'them really was corrupted; <b>flagged | clean</b> is how often it says so '
         'when nothing was. The two are plotted together because neither means '
         'anything alone: a model can raise the first simply by raising the second, '
         'and the shaded band between them is the part that is actually '

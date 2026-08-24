@@ -760,7 +760,7 @@ def fig_blame_levels(d):
                     fontsize=style.ANNOT_PT, color=c["fg"])
     ax.set_yticks(y)
     ax.set_yticklabels([MODALITY_LABELS[r[0]] for r in rows])
-    ax.set_xlabel("how often this view is blamed when it is NOT the broken one (%)")
+    ax.set_xlabel("how often this view is blamed when it is NOT the corrupted one (%)")
     ax.set_xlim(0, max(100 * r[3] for r in rows) * 1.35)
     ax.grid(True, axis="x", linewidth=0.4, color=c["faint"])
     ax.set_axisbelow(True)
@@ -1022,7 +1022,7 @@ def build(d, out="viz/consistency_claims.html", defects=None, theme="dark",
                "details block."),
         "q3": (fig_blame_levels(d),
                "How often the model blames each view on the items where that view is "
-               "NOT the broken one. Only the view varies; naming and reasoning are "
+               "NOT the corrupted one. Only the view varies; naming and reasoning are "
                "pooled. Bars are 95% intervals. The six pairwise differences are in "
                "the details block."),
         "q4": ((obf_design + obf_svg + obf_split) if obf_svg else obf_svg, obf_cap),

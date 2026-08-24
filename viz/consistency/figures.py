@@ -582,7 +582,7 @@ def fig5_obfuscation_contrast(df, n_boot=None):
         labels.append(row_label(r["condition"]))
         ypos.append(yi)
     if guilty:
-        labels.append("names the broken code\n(A-C items only)")
+        labels.append("names the corrupted code\n(A-C items only)")
         ypos.append(y_guilty)
     ax.set_yticks(ypos)
     ax.set_yticklabels(labels)
@@ -684,8 +684,8 @@ def fig7_prior_weakening(df, n_boot=None):
     denominators, two panels and three separate significance encodings. The mixed
     denominators were the core problem -- a single percent axis cannot mean four
     things at once. Every row here is the same quantity: of the items in this
-    category where something really was broken, how often the model named the view
-    that was actually broken. So the rows are comparable and the axis means one thing.
+    category where something really was corrupted, how often the model named the view
+    that was actually corrupted. So the rows are comparable and the axis means one thing.
 
     The decomposition -- did it commit, was it right given it committed, how it does
     on clean items -- explains this number but does not answer the question, so it
@@ -731,8 +731,8 @@ def fig7_prior_weakening(df, n_boot=None):
     # One line per label, not two. At this pitch a wrapped label would collide with
     # its neighbour, and the n belongs beside the category rather than under it.
     ax.set_yticklabels(
-        [f"ALL broken items (n={r.overall.n_items:,})"]
-        + [f"{ML.get(x.name, x.name)} was broken (n={x.n_items:,})"
+        [f"ALL corrupted items (n={r.overall.n_items:,})"]
+        + [f"{ML.get(x.name, x.name)} was corrupted (n={x.n_items:,})"
            for x in rows[1:]])
     lo = min(100 * min(x.real, x.obf) for x in rows)
     hi = max(100 * max(x.real, x.obf) for x in rows)
@@ -797,9 +797,9 @@ def fig7b_prior_weakening_split(df, n_boot=None):
             for x in rungs:
                 body.append((x, f"trajectory \u2014 {TRAJ_SHORT[x.name]}", "T"))
         elif m in by_name:
-            body.append((by_name[m], f"{ML.get(m, m)} was broken", m))
+            body.append((by_name[m], f"{ML.get(m, m)} was corrupted", m))
 
-    rows = [(r.overall, f"ALL broken items", None)] + body
+    rows = [(r.overall, f"ALL corrupted items", None)] + body
     ypos = [float(len(rows) - 1) + 0.9] + [float(len(rows) - 1 - i)
                                            for i in range(len(rows) - 1)]
 
@@ -848,7 +848,7 @@ def _split_caption(r, rungs):
     return (
         f"The same measurement as the pooled figure, with trajectory opened up into "
         f"the four ways it was corrupted. Filled dot = real variable names, hollow = "
-        f"obfuscated; every row is of the items where THAT view was the broken one, "
+        f"obfuscated; every row is of the items where THAT view was the corrupted one, "
         f"how often the model named it. The head row is the one tested contrast "
         f"({100 * p.diff:+.1f}pp, {100 * p.lo:+.1f} to {100 * p.hi:+.1f} CI, "
         f"n={p.n_solvers} solvers) and is identical to the pooled figure's. "
@@ -877,7 +877,7 @@ def evidence_statement(r):
     cond, det = r.primary, r.detection
     if p.significant and p.diff > 0:
         tail = ("Removing the lexical shortcut made it MORE often right about which "
-                "view was broken: the prior was getting in the way.")
+                "view was corrupted: the prior was getting in the way.")
     elif p.significant and p.diff < 0:
         tail = ("Removing the lexical shortcut made it LESS often right, so the "
                 "names were carrying information it was using.")
@@ -905,8 +905,8 @@ def _prior_caption(r):
             else "none of them can settle anything on its own.")
     return (
         f"Every row is the same quantity: of the items in that category where "
-        f"something really was broken, how often the model named the view that was "
-        f"actually broken. Filled dot = real variable names, hollow = obfuscated. "
+        f"something really was corrupted, how often the model named the view that was "
+        f"actually corrupted. Filled dot = real variable names, hollow = obfuscated. "
         f"Paired within solver across naming; n={p.n_solvers} solvers; "
         f"{r.n_boot:,} bootstrap resamples of solvers. "
         f"The pooled top row is the tested one: {100 * p.diff:+.1f}pp "

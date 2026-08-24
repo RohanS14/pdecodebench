@@ -176,7 +176,7 @@ def q3(df):
                     f"{len(sig)} of {len(usable)} pairwise contrasts exclude zero.")
         phrase = f"prefers {MODALITY_LABELS[most]}"
         direction = "supported"
-    rows = [(f"blamed when not the broken view — {MODALITY_LABELS[m]}",
+    rows = [(f"blamed when not the corrupted view — {MODALITY_LABELS[m]}",
              f"{pct(rates[m])}  (n={stats[m][1]:,})") for m in MODALITIES]
     rows += [(f"difference: {c['label']}",
               f"{pp(c['diff'])} [{pp(c['lo'])}, {pp(c['hi'])}]"
@@ -368,17 +368,17 @@ def q_blame_information(df):
         return Verdict("Q2", "no data",
                        "No item was both corrupted and flagged.", "unmeasured")
     gloss = ("The comparison is against the best FIXED answer: always naming one "
-             "view, whichever is most often the broken one. A stereotyped responder "
+             "view, whichever is most often the corrupted one. A stereotyped responder "
              "reduces exactly to that, so clearing it is the bar.")
     claim = ("blame tracks the actual outlier" if b.informative
              else "blame is indistinguishable from a fixed response bias")
-    sentence = (f"The model names the broken view on {pct(b.localization)} of the "
+    sentence = (f"The model names the corrupted view on {pct(b.localization)} of the "
                 f"{b.n:,} flagged items, against {pct(b.best_constant)} for the best "
                 f"fixed answer — a margin of "
                 f"{pp(b.localization - b.best_constant)} "
                 f"({pp(b.margin_lo)} to {pp(b.margin_hi)}, bootstrapped over solvers) "
                 f"— {claim}. {gloss}")
-    rows = [("names the broken view", pct(b.localization)),
+    rows = [("names the corrupted view", pct(b.localization)),
             ("best fixed answer", pct(b.best_constant)),
             ("margin", f"{pp(b.localization - b.best_constant)} "
                        f"[{pp(b.margin_lo)}, {pp(b.margin_hi)}]"),
