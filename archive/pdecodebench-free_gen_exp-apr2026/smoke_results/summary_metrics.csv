@@ -1,2 +1,0 @@
-model,condition,equation_exact_match,equation_normalized_match,equation_keyword_match,equation_keyword_f1,method_exact_match,method_normalized_match,method_keyword_match,method_keyword_f1,behavior_exact_match,behavior_normalized_match,behavior_keyword_match,behavior_keyword_f1,all_exact_match,all_normalized_match,all_keyword_match,n_examples
-sshleifer/tiny-gpt2,original,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1

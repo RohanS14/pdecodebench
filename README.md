@@ -255,7 +255,19 @@ known limitations. Every count in it is measured against `data/merged_mod_jul28.
   vs non-reasoning, and a per-condition table. Self-contained HTML.
   `--input results/pde_llm_eval_jul28.csv`. Degrades cleanly on older result CSVs,
   dropping the two panels that need `source` / `num_char`.
-- `paper_figures.py` — generates static figures for the paper
+- `paper_figures.py` — generates static figures for the paper (Exp 1 + MC logprob).
+- **`paper_freegen_figures.py`** — the cross-representation-roster paper figures, as
+  light-background PNGs at scale 2 (no HTML twin; these go into a document). Renamed
+  from `paper_hedge_figures.py`, which outgrew the name. Writes to `figures/`:
+  `paper_hedge_pooled` / `paper_hedge_by_model` (validity DIRECTION per perturbation
+  — the confident/hedged split was removed because the prompt asks for a terse
+  fill-in-the-blank verdict, so 85% of answers are a bare yes/no and the hedge bands
+  were a format artefact), `paper_overclaim` (stated confidence against resampling
+  stability: 28.0% of items where every draw was unqualified flip under k=3),
+  `paper_pde_naming` and `paper_pde_by_perturbation`. Intervals bootstrap the 32 base
+  SYSTEMS, not rows, and on stacked bars they sit on the CUMULATIVE boundaries — a
+  segment's own CI drawn at the running total puts the top error bar above 100% on a
+  chart whose bars sum to exactly 100.
 - `visualize_v3.py` / `visualize_v4_enhanced.py` — interactive dashboards for experiments 1 and 2.
   All three now import the shared hedge classifier instead of redefining it, take their
   free-gen input from `PDE_FREEGEN_CSV` (default unchanged), and prefer `num_char` from
@@ -426,6 +438,25 @@ Runs on open weights via cluster vLLM — no API cost.
 
 ## `sbatch/`
 
+- **`rescore_freegen.sbatch`** — CPU, `cpu_short` / `torch_pr_427_general`. Re-derives
+  `parsed_*` and the score columns from stored `model_response` text. A JOB, not a
+  login-node command: it loads a sentence transformer and embeds two strings per row,
+  which over 5,376 rows took ~50 minutes on the login node and under 3 on a compute
+  node, while slowing every other ssh to the cluster. Point it at a STAGED copy of the
+  results, never at `outputs/` directly; `rescore_jsonl.py` also writes a
+  `.prerescore` backup beside every file. **Diff the result against those backups per
+  model before copying anything back** — on 2026-08-24 a rescore ran with a regex that
+  silently truncated every value ending in an equation, every test passed on it, and
+  it was caught only because one model showed 60 changed rows when it should have
+  shown none.
+- **`sync_code_to_cluster.sh`** — the only sanctioned way to push code. Applies the
+  flattening transform (`crossmodal/eval/x.py` -> `eval/x.py`, imports rewritten, and
+  `sys.path` DEPTH adjusted because the flat copy is two dirnames from the repo root
+  and the packaged one is three). Also reports files that exist ONLY on the cluster,
+  which a one-way push never mentions and a cleanup will not know are unbacked; that
+  check exists because three separate sets of cluster-only code have turned up in this
+  project. `APPLY=1` to upload, otherwise it is a dry run.
+
 - **`run_exec_trajectories.sbatch`** — CPU, `cpu_short` / `torch_pr_427_general`.
   Builds `T_exec` and rewrites the trajectory record. Prints a native-library banner
   up front so a missing `mpi4py_fft` or `jax_cfd` is visible in the log rather than as
@@ -484,6 +515,55 @@ Runs on open weights via cluster vLLM — no API cost.
   architectures; `ninja` is installed but was invisible, so a job loaded the model and
   then died on the first `chat()` with `FileNotFoundError: 'ninja'` →
   `EngineDeadError`, after burning the GPU allocation.
+
+## `freegen/`
+
+Experiment 1 — free generation on a single solver.
+
+- **`run_eval.py`** — the runner. Prompt `v2-valid-disambiguated`; decoding mirrors
+  `crossmodal/eval/run_cross_modal_consistency.py` (T=0.6, top-p 0.95, top-k 20, seed
+  20260821, k=3), which is what makes a per-model comparison across the two
+  experiments a capability comparison rather than a decoding one. Resumable on
+  `(title, mod_type, model, sample_idx)`.
+- **`parse_score.py`** — extracts the four fields and scores them. Handles bullets,
+  markdown emphasis, numbered lists, template echo, and **run-on single-line output**:
+  Nemotron-3-Nano writes all four fields on one line, and a line-anchored parser let
+  `pde` swallow the whole answer while method/behaviour/validity came back empty —
+  88 rows (11.5% of its arm) scored 0.000 on three metrics for answering correctly.
+  Values stop at the next field label, using SAME-LINE whitespace only: `\s` matches
+  newlines, and a terminator built from it reaches past the end of the line and
+  truncates any value ending in an equation.
+- **`validate_rows.py`** — arm health check. Completeness, no duplicate
+  `(item, sample_idx)`, constant sampling parameters across the arm, truncation,
+  `no_verdict`, and whether the k draws are actually textually distinct (identical
+  draws mean sampling silently collapsed to greedy).
+- **`aggregate_freegen.py`** — concatenates per-model JSONL to one CSV. Globs
+  RECURSIVELY: the one-job-per-model launcher gives each model its own subdirectory.
+  Reads k from the data rather than assuming it.
+- **`report.py`** — the HTML report. `pool_draws()` collapses the k draws of an item
+  to one observation before any interval; bootstrapping raw rows leaves the point
+  estimate untouched and narrows every CI by ~42%.
+- **`rescore_jsonl.py`** — re-derives scores from stored responses. Run it through
+  `sbatch/rescore_freegen.sbatch`, not directly.
+
+## `tools/`
+
+Operational scripts, not experiment code.
+
+- **`verify_hf_merge.py`** — proves one HuggingFace cache is fully contained in
+  another before anything is deleted. Matching directory names are not evidence:
+  when the two caches on torch were compared, three "duplicate" models still held
+  blobs the destination did not. Walks every file AND symlink, comparing sizes and
+  link targets, and exits 0 only on a strict subset.
+- `probe_configs.py` / `probe.sbatch` — CPU-side vLLM `ModelConfig` probe. Registry
+  membership is not loadability, and a GPU allocation is the wrong place to learn it.
+- `measure_tokens.py` / `tokens.sbatch` — per-model prompt length with that model's
+  own tokenizer. A chars-to-tokens ratio is not portable across tokenizers.
+
+## `archive/`
+
+`cluster-code-apr2026/` — 76 files that existed ONLY on torch and were nearly lost.
+Nothing there is live; see its README.
 
 ## `tests/`
 
