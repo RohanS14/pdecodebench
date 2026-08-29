@@ -3,13 +3,13 @@
 The generational roster is submitted all at once and harvested as it lands, so an
 upload that silently no-ops turns every 8h job into a black box. This is a
 regression test for a real defect: upload_partial() looked for upload_helper.py
-beside itself, the file moved to shared/ in the eval->freegen refactor, and the
+beside itself, the file moved to shared/ in the eval->freegen_static_judgments refactor, and the
 lookup then failed os.path.exists and returned. Nothing raised. The only trace was
 one "skipping" line buried in the log, and no artifact ever appeared.
 """
 import os
 
-import crossmodal.eval.run_cross_modal_consistency as X
+import cross_modal_consistency.eval.run_cross_modal_consistency as X
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(X.__file__)))
 ROOT = os.path.dirname(ROOT)
@@ -57,7 +57,7 @@ def test_no_hf_dataset_is_a_deliberate_skip():
     assert X.upload_partial(Args(), "/tmp/x.jsonl", 1, 1) is None
 
 
-# ── The freegen sbatch's heartbeat ────────────────────────────────────────────
+# ── The freegen_static_judgments sbatch's heartbeat ────────────────────────────────────────────
 # Three jobs on 2026-08-24 died mid-model (two SIGKILLed by root's utilization
 # sweep, one at its wall) and 1,176 finished draws never reached HF, because
 # upload_partial ran only at the END of a model in both branches of the roster
@@ -75,7 +75,7 @@ def _sbatch_text():
 
 def test_heartbeat_uploader_is_armed_in_the_background():
     text = _sbatch_text()
-    assert "upload_heartbeat" in text, "no heartbeat uploader in the freegen sbatch"
+    assert "upload_heartbeat" in text, "no heartbeat uploader in the freegen_static_judgments sbatch"
     assert "upload_heartbeat &" in text, (
         "the heartbeat must run in the BACKGROUND -- in the foreground it blocks the "
         "roster loop, and in vLLM's own process HF's threads kill the EngineCore")
@@ -114,7 +114,7 @@ def test_heartbeat_survives_set_e():
 # ── Artifacts must actually reach the dashboard ───────────────────────────────
 # hf_utility writes the manifest's experiment_id from metadata["experiment_id"],
 # and import_experiments.py keeps ONLY manifest rows that have one. Nothing set it,
-# so all eight freegen arms uploaded cleanly, verified cleanly, and were invisible
+# so all eight freegen_static_judgments arms uploaded cleanly, verified cleanly, and were invisible
 # on the Artifacts tab. "Uploaded" and "visible to the user" are not the same claim.
 
 def test_upload_helper_sets_experiment_id_not_just_experiment_name():

@@ -125,12 +125,32 @@ def test_every_row_has_the_same_n_when_no_verdict_draws_are_kept():
 
 def test_no_verdict_rows_are_not_counted_as_misses():
     """709 of Nemotron's 907 no-verdict draws carry a scavenged `agree=yes`. Folding
-    them into the miss bucket would fabricate the figure's headline finding."""
-    import inspect
-    src = inspect.getsource(CR.fig_blame_stack_unconditional)
-    assert "nv = sub[\"no_verdict\"].astype(bool)" in src
-    # the answered subset must exclude them before the flag/miss split
-    assert src.index("ans = sub[~nv]") < src.index("counts[MISS]")
+    them into the miss bucket would fabricate the figure's headline finding.
+
+    Asserted on the counts rather than on the source text: the classification moved
+    out of the figure into `_unconditional_counts` when a second figure started
+    drawing these bars, and a test anchored on where the code lived would have failed
+    for the move while a test anchored on what it does would not.
+    """
+    import numpy as np
+    from viz.consistency.sensitivity import SIGNAL_CONDITIONS
+    from viz.consistency.synth import generate
+
+    d = generate()
+    cond = SIGNAL_CONDITIONS[0]
+    base = CR._unconditional_counts(d)[cond][0]
+
+    # Every draw of one condition marked no-verdict, and every one of them carrying
+    # the scavenged "agree" that would file it as a miss if it were read as an answer.
+    d2 = d.copy()
+    mark = d2["condition"].eq(cond).to_numpy()
+    d2["no_verdict"] = mark
+    d2.loc[mark, "pred_agree"] = "yes"
+    counts, total = CR._unconditional_counts(d2)[cond]
+
+    assert counts[CR.NOVERDICT] == total
+    assert counts[CR.MISS] == 0, "no-verdict draws were filed as misses"
+    assert base[CR.MISS] > 0, "fixture cannot show the difference"
 
 
 def test_a_repo_missing_draws_is_not_treated_as_complete():

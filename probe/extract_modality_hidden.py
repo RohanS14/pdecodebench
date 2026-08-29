@@ -32,7 +32,7 @@ import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from eval.dataset_io import load_dataset  # noqa: E402
+from shared.dataset_io import load_dataset  # noqa: E402
 
 # Deliberately generic. No "PDE", no class name, no method name — the prompt must
 # not supply the answer the retrieval test is asking the representation for.

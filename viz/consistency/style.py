@@ -35,6 +35,14 @@ if not os.environ.get("MPL_INTERACTIVE"):
 TEXT_WIDTH_IN = 5.5
 MIN_FONT_PT = 8
 
+# Figures that are deliberately WIDER than the text column, and must be placed full
+# width in the paper (a `figure*`, \textwidth in a wide template, or a rotated
+# float). This is a list, not a convention: the width test reads it, so a figure can
+# only overflow the column by being named here on purpose -- and a figure that grew
+# past 5.5in by accident still fails.
+WIDE_FIGURES = {"fig8_detect_localize", "fig8_detect_localize_short"}
+MAX_WIDE_IN = 12.0
+
 # Anything a reader has to decode at 100% zoom sits at 8pt or above. Base text is
 # 9 so that the 8pt annotations still read as subordinate to it.
 BASE_PT = 9
@@ -163,19 +171,27 @@ def figsize(width_frac=1.0, height_in=2.6):
     return (TEXT_WIDTH_IN * width_frac, height_in)
 
 
-def save(fig, name, outdir="figures"):
-    """Write vector PDF and 300dpi PNG side by side. Returns both paths.
+def save(fig, name, outdir="figures", pdf=False):
+    """Write a 300dpi PNG. Vector PDF only on request. Returns (pdf_or_None, png).
 
-    Both formats every time: the PDF goes in the paper, the PNG goes in the
-    dashboard and the slide deck, and keeping them in lockstep here means the two
-    can never drift to different versions of the same figure.
+    This used to write both every time, on the reasoning that keeping the two in
+    lockstep here meant they could never drift to different versions of the same
+    figure. They cannot drift if only one exists either, and a directory carrying
+    two files per figure -- one of which nothing in the pipeline reads -- is two
+    files to keep straight and twice as much to delete when a figure is retired.
+    PNG at 300dpi is what the reports, the dashboard and the deck use.
+
+    Pass pdf=True for a figure actually going into a typeset paper, where the vector
+    is worth having. The return stays a 2-tuple so callers keep unpacking.
     """
     os.makedirs(outdir, exist_ok=True)
-    pdf = os.path.join(outdir, f"{name}.pdf")
     png = os.path.join(outdir, f"{name}.png")
-    fig.savefig(pdf, facecolor=fig.get_facecolor())
     fig.savefig(png, dpi=300, facecolor=fig.get_facecolor())
-    return pdf, png
+    out = None
+    if pdf:
+        out = os.path.join(outdir, f"{name}.pdf")
+        fig.savefig(out, facecolor=fig.get_facecolor())
+    return out, png
 
 
 def empty_axes(ax, message="no data"):

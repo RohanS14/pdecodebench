@@ -72,21 +72,51 @@ def test_font_sizes_never_drop_below_the_paper_minimum(df):
 
 
 def test_figure_width_fits_the_text_column(df):
+    """...unless the figure is on the declared full-width list.
+
+    The exemption is a named set in `style`, not a per-figure judgement call, so a
+    figure can only overflow the column by someone deciding it should. One that
+    drifts past 5.5in while adding a panel still fails here.
+    """
     from viz.consistency import style
-    for fn in F.FIGURES.values():
+    for name, fn in F.FIGURES.items():
         fig = fn(df)
-        assert fig.get_size_inches()[0] <= style.TEXT_WIDTH_IN + 1e-9
+        w, h = fig.get_size_inches()
+        if name in style.WIDE_FIGURES:
+            assert style.TEXT_WIDTH_IN < w <= style.MAX_WIDE_IN, (name, w)
+            # Wide has to buy horizontal room, not just a bigger everything.
+            assert w / h > 1.5, (name, w, h)
+        else:
+            assert w <= style.TEXT_WIDTH_IN + 1e-9, (name, w)
         plt.close(fig)
 
 
-def test_saves_both_vector_and_raster(df, tmp_path):
+def test_the_wide_figure_is_declared_and_not_merely_oversized():
+    """A name on the list that no longer names a figure is a stale exemption."""
+    from viz.consistency import style
+    assert style.WIDE_FIGURES <= set(F.FIGURES), style.WIDE_FIGURES
+
+
+def test_saves_raster_only_unless_a_vector_is_asked_for(df, tmp_path):
+    """PNG is the default and the only thing the pipeline reads; PDF is opt-in."""
     from viz.consistency import style
     fig = F.fig2_trust_scatter(df)
     pdf, png = style.save(fig, "t", outdir=str(tmp_path))
-    assert pdf.endswith(".pdf") and png.endswith(".png")
-    assert (tmp_path / "t.pdf").stat().st_size > 0
-    assert (tmp_path / "t.png").stat().st_size > 0
+    assert pdf is None
+    assert png.endswith(".png") and (tmp_path / "t.png").stat().st_size > 0
+    assert not (tmp_path / "t.pdf").exists()
+
+    pdf, png = style.save(fig, "v", outdir=str(tmp_path), pdf=True)
+    assert pdf.endswith(".pdf") and (tmp_path / "v.pdf").stat().st_size > 0
     plt.close(fig)
+
+
+def test_no_exporter_asks_for_a_pdf_by_default(df, tmp_path):
+    """The whole-package exports write rasters. A PDF appearing in figures/ again
+    should be because someone passed pdf=True, not because a default came back."""
+    F.build_all(df, outdir=str(tmp_path))
+    assert not list(tmp_path.glob("*.pdf"))
+    assert list(tmp_path.glob("*.png"))
 
 
 def test_hatch_is_lighter_than_the_text_printed_on_it_but_only_on_light():

@@ -1,7 +1,7 @@
 """Redraw path: a looped draw is replaced by a fresh sample, not a continuation."""
 import inspect
 
-from crossmodal.eval import backfill_no_verdict as BF
+from cross_modal_consistency.eval import backfill_no_verdict as BF
 
 
 def test_redraw_is_a_fresh_sample_not_a_continuation():

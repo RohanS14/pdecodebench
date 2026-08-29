@@ -52,7 +52,7 @@ COLUMN_DESCRIPTIONS = {
     "prompt_version": "Identifier of the prompt template used, so two prompt revisions never pool.",
     "dataset": "Basename of the item CSV this row was generated from.",
     "valid_conf": ("Confidence class of the model's `valid` answer — Confident / "
-                   "Hedged / Absent. Canonical rule: freegen/parse_score.py."),
+                   "Hedged / Absent. Canonical rule: freegen_static_judgments/parse_score.py."),
     "title":              "Dataset row identifier, e.g. Wave_Comm_Valid_1",
     "gt_sample":          "Base problem ID, e.g. Wave_1",
     "pde_class":          "Ground truth PDE class (wave/heat/burgers/navier-stokes)",
@@ -196,7 +196,7 @@ def main():
                              "push_dataset_to_hub as experiment_slug.")
     # Two different things used to share --experiment, and the dashboard was the
     # one that lost. hf_utility writes the manifest's experiment_id straight from
-    # metadata["experiment_id"], which nothing here set, so all eight freegen arms
+    # metadata["experiment_id"], which nothing here set, so all eight freegen_static_judgments arms
     # landed in RACA-PROJECT-MANIFEST with experiment_id=None -- and
     # import_experiments.py keeps only rows that HAVE one. The artifacts uploaded
     # fine, verified fine, and were invisible on the Artifacts tab.
@@ -243,9 +243,24 @@ def main():
     from datasets import Dataset
 
     if args.results_dir:
-        paths = sorted(glob.glob(os.path.join(args.results_dir, "*.jsonl")))
+        # RECURSIVE, and excluding the backup suffixes this repo writes beside a
+        # file it rewrites. The one-directory-per-model layout puts arms at
+        # <results_dir>/<model-slug>/<arm>.jsonl, and a flat "*.jsonl" finds nothing
+        # there -- the same non-recursive glob that already cost this project silent
+        # empty runs in aggregate_freegen.py and rescore_jsonl.py. Picking up a
+        # .prerescore or .pretruncfix would be worse than finding nothing: those are
+        # superseded copies of rows that are also present in the live file, so they
+        # would upload as duplicates that look like real extra draws.
+        paths = sorted(p for p in glob.glob(
+            os.path.join(args.results_dir, "**", "*.jsonl"), recursive=True)
+            if not p.endswith((".prerescore", ".pretruncfix", ".prenormalize")))
         rows = [r for p in paths for r in load_jsonl(p)]
-        print(f"[upload_helper] {len(rows)} rows from {len(paths)} files", flush=True)
+        models = sorted({r.get("model") for r in rows if r.get("model")})
+        print(f"[upload_helper] {len(rows)} rows from {len(paths)} files, "
+              f"{len(models)} model(s)", flush=True)
+        for m in models:
+            print(f"[upload_helper]   {m}: {sum(1 for r in rows if r.get('model')==m)} rows",
+                  flush=True)
     else:
         rows = load_jsonl(args.jsonl)
         print(f"[upload_helper] {len(rows)} rows from {args.jsonl}", flush=True)

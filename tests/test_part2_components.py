@@ -23,7 +23,7 @@ ROOT = os.path.join(os.path.dirname(__file__), "..")
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "probe"))
 sys.path.insert(0, os.path.join(ROOT, "datagen"))
-sys.path.insert(0, os.path.join(ROOT, "crossmodal", "datagen"))
+sys.path.insert(0, os.path.join(ROOT, "cross_modal_consistency", "datagen"))
 
 from cross_modal import align, retrieval, unit, word_multiset  # noqa: E402
 from geometry_battery import (  # noqa: E402

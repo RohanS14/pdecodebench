@@ -38,7 +38,7 @@ print(total)
 PYEOF
 )
     echo "== $arm  $kept valid rows -> bermaneh/pde-llm-eval-xmodal-gen-$arm"
-    "$PY" "$WORK/eval/upload_helper.py" \
+    "$PY" "$WORK/shared/upload_helper.py" \
         --results_dir "$dst" \
         --hf_dataset "bermaneh/pde-llm-eval-xmodal-gen-$arm" \
         --workspace "$WORK" --packages_dir "$PKGS" \

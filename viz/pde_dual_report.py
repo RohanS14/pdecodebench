@@ -44,9 +44,9 @@ from plotly.subplots import make_subplots
 # judgement, and a second local copy of either rule would let the two experiments
 # drift apart while still looking comparable in one document.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from freegen.parse_score import valid_intent                       # noqa: E402
-from freegen.parse_score import classify_valid_confidence_2x2      # noqa: E402
-from crossmodal.eval.parse_consistency import dprime               # noqa: E402
+from freegen_static_judgments.parse_score import valid_intent                       # noqa: E402
+from freegen_static_judgments.parse_score import classify_valid_confidence_2x2      # noqa: E402
+from cross_modal_consistency.eval.parse_consistency import dprime               # noqa: E402
 # Same reasoning as the scoring helpers above: imported, not reimplemented. This
 # file was written when Experiment 1 was k=1 and every row was one item. The
 # roster now runs k=3 to match the consistency arms, so a raw frame holds THREE
@@ -54,7 +54,7 @@ from crossmodal.eval.parse_consistency import dprime               # noqa: E402
 # point estimates unchanged, every interval about 42% too narrow, in the direction
 # that makes a result look real. pool_draws() is a no-op on k=1 input, so this is
 # safe for the older CSVs too.
-from freegen.report import pool_draws                              # noqa: E402
+from freegen_static_judgments.report import pool_draws                              # noqa: E402
 
 DARK = "#0d0f18"
 PANEL = "#12141e"
@@ -434,7 +434,7 @@ def validity_confidence_panel(df):
     if df is None or df.empty or "parsed_valid" not in df:
         return [("Validity answers by confidence and direction", "",
                  placeholder("No free-generation rows loaded.",
-                             "freegen/run_eval.py"))]
+                             "freegen_static_judgments/run_eval.py"))]
     d = df.copy()
     d["bucket"] = d["parsed_valid"].map(classify_valid_confidence_2x2)
 
@@ -572,7 +572,7 @@ def consistency_figure_panels(xmodal_rows=None):
               'Do not read them as results.</div>')
     if not synthetic:
         banner = ('<div class="realbanner"><b>Real data</b> &mdash; '
-                  f'{len(d):,} rows from <code>pde-llm-eval-xmodal-consistency</code>, '
+                  f'{len(d):,} rows from <code>pde-llm-eval-cross-modal-consistency</code>, '
                   'mapped through <code>viz/consistency/adapter.py</code>. '
                   '<b>One field is missing:</b> <code>judge_correct</code> has no '
                   'counterpart in the run &mdash; no LLM-judge pass has been made over '
@@ -651,7 +651,7 @@ def consistency_figure_panels(xmodal_rows=None):
 # ── The confidence breakdown, pooled and per model ────────────────────────────
 # Shared by the two panels below so they cannot disagree about what a bucket is.
 # NOTE the buckets come from classify_valid_confidence_2x2, NOT from the published
-# `valid_conf` column, which is what freegen/report.py's panel ② uses. That column's
+# `valid_conf` column, which is what freegen_static_judgments/report.py's panel ② uses. That column's
 # rule has an uncertain-YES bucket and no uncertain-no, so every hedged negative is
 # filed as a confident no -- an asymmetry that would sit badly next to the two
 # direction-and-confidence panels in this document, which are symmetric by
@@ -716,7 +716,7 @@ def hedge_breakdown_panel(df):
     present, d = _hedge_frame(df)
     if present is None:
         return [("Validity confidence breakdown", "",
-                 placeholder("No free-generation rows loaded.", "freegen/run_eval.py"))]
+                 placeholder("No free-generation rows loaded.", "freegen_static_judgments/run_eval.py"))]
 
     labels, split = _hedge_labels(present), _hedge_split(present)
     fig = go.Figure()
@@ -899,7 +899,7 @@ def perturbation_confidence_panel(df):
     if df is None or df.empty or "parsed_valid" not in df or "mod_type" not in df:
         return [("Validity answers by perturbation", "",
                  placeholder("No free-generation rows loaded.",
-                             "freegen/run_eval.py"))]
+                             "freegen_static_judgments/run_eval.py"))]
     d = df.copy()
     d["bucket"] = d["parsed_valid"].map(classify_valid_confidence_2x2)
 
@@ -1053,11 +1053,11 @@ def exp1_schematic(df):
          "forced into a yes/no.",
          ["*pde", "*method", "*behavior", "*valid"]),
         ("run", f"{nm or 11} models, vLLM batch",
-         "<code>freegen/run_eval.py</code> on h200 nodes. Generation length is the "
+         "<code>freegen_static_judgments/run_eval.py</code> on h200 nodes. Generation length is the "
          "model's own maximum; a truncated row is a failed row, not a datum. Every "
          "response is stored whole.", []),
         ("parse", "Deterministic field parser",
-         "<code>freegen/parse_score.py</code>. Tolerant of markdown emphasis, bullets "
+         "<code>freegen_static_judgments/parse_score.py</code>. Tolerant of markdown emphasis, bullets "
          "and numbered lists — a formatting difference must never read as a refusal. "
          "An unparsed field scores <b>null</b>, never zero.", []),
         ("score", "Four scores plus two axes",
@@ -1173,12 +1173,12 @@ def exp2_schematic(rows):
          ["*agree", "*outlier", "system_pde_class", "system_num_method",
           "*justification"]),
         ("run", "3 models × {thinking on, off}",
-         "<code>crossmodal/eval/run_cross_modal_consistency.py</code>. Context length is "
+         "<code>cross_modal_consistency/eval/run_cross_modal_consistency.py</code>. Context length is "
          "derived per model from its own config rather than assumed. Reasoning arms get "
          "32k output tokens.",
          ["Qwen3-32B on/off", "QwQ-32B", "DeepSeek-R1-Distill-32B"]),
         ("parse", "Parse route recorded, never guessed",
-         "<code>crossmodal/eval/parse_consistency.py</code>. JSON, fenced JSON, embedded "
+         "<code>cross_modal_consistency/eval/parse_consistency.py</code>. JSON, fenced JSON, embedded "
          "JSON, then a regex cascade — and the route that succeeded is stored per row. An "
          "unclosed <code>&lt;think&gt;</code> parses as a failure, not as whatever the "
          "trace ended on.", []),
@@ -1188,7 +1188,7 @@ def exp2_schematic(rows):
          "items, because items within a system are not independent.",
          ["d′ (Hautus)", "localization | detected", "degeneracy flag"]),
         ("out", f"{len(rows)} rows on HuggingFace",
-         "<code>bermaneh/pde-llm-eval-xmodal-consistency</code> — plus the rendered-view "
+         "<code>bermaneh/pde-llm-eval-cross-modal-consistency</code> — plus the rendered-view "
          "CSV, which stores each item's four view bodies and the assembled prompt "
          "verbatim.", []),
     ], "e2")
@@ -1236,7 +1236,7 @@ def exp2_headline(rows, summary):
                            "sbatch/run_cross_modal_consistency.sbatch")
     if not summary or "arms" not in summary:
         return placeholder("Rows are present but the aggregate has not been rebuilt.",
-                           "crossmodal/eval/aggregate_cross_modal.py")
+                           "cross_modal_consistency/eval/aggregate_cross_modal.py")
     body = []
     for arm, a in sorted(summary["arms"].items()):
         c = a["conditions"]
@@ -2494,10 +2494,25 @@ def build(freegen_csv, xmodal_dir, xmodal_summary, out,
         if xdf is not None:
             rows = xdf.to_dict("records")
     if not rows:
-        for p in sorted(glob.glob(os.path.join(xmodal_dir or "", "*.jsonl"))):
-            with open(p) as f:
+        # RECURSIVE: the results are one directory per model since 2026-08-25
+        # (results/cross_modal_consistency/<model-slug>/...). A flat "*.jsonl" glob
+        # matches nothing under that layout, and because every cross-modal panel
+        # degrades to a placeholder rather than raising, the report still builds --
+        # as a document whose entire second half says "no rows loaded". Skip the
+        # rescore backups so a superseded file cannot be read back in beside the
+        # file that replaced it.
+        paths = sorted(q for q in glob.glob(
+            os.path.join(xmodal_dir or "", "**", "*.jsonl"), recursive=True)
+            if not q.endswith((".prerescore", ".pretruncfix", ".prenormalize")))
+        for q in paths:
+            with open(q) as f:
                 rows += [json.loads(l) for l in f if l.strip()]
     print(f"[report] cross-modal rows: {len(rows)}")
+    if xmodal_dir and not rows and not xmodal_hf:
+        # Loud, because the panels themselves are not: they say "not run yet", which
+        # is indistinguishable from a wrong --xmodal_dir.
+        print(f"[report] WARNING: no cross-modal rows under {xmodal_dir} — "
+              f"every Experiment 2 panel will render as a placeholder")
     summary = None
     if xmodal_summary and os.path.exists(xmodal_summary):
         summary = json.load(open(xmodal_summary))
@@ -2881,5 +2896,5 @@ if __name__ == "__main__":
     ap.add_argument("--xmodal_hf", default=None,
                     help="HF repo for cross-modal rows; overrides --xmodal_dir.")
     a = ap.parse_args()
-    build(a.freegen, a.xmodal_dir, a.xmodal_summary, a.out,
+    build(a.freegen_static_judgments, a.xmodal_dir, a.xmodal_summary, a.out,
           freegen_hf=a.freegen_hf, xmodal_hf=a.xmodal_hf)

@@ -441,7 +441,7 @@ def build_cross_modal(df) -> str:
            "relative depth", "top-1 accuracy", height=380)
 
     return f"""
-<section id="crossmodal"><h2>Cross-modal alignment</h2>
+<section id="cross_modal_consistency"><h2>Cross-modal alignment</h2>
 <p class="lede">Three representations of one physical system — the symbolic
 equation, the solver code, and the executed trajectory — two of which contain no
 code at all. If the model represents the physics, a representation built from one

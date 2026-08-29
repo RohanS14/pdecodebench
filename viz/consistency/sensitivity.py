@@ -89,7 +89,7 @@ def row_caption(cond, verbose=False):
     return MODALITY_LABELS[CONDITION_OUTLIER[cond]]
 
 try:
-    from crossmodal.eval.parse_consistency import dprime as _dprime
+    from cross_modal_consistency.eval.parse_consistency import dprime as _dprime
 except Exception:                                                # pragma: no cover
     from scipy.stats import norm as _norm
 

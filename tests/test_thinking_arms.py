@@ -1,4 +1,4 @@
-"""Tests for the reasoning-arm resolution in freegen/run_eval.py.
+"""Tests for the reasoning-arm resolution in freegen_static_judgments/run_eval.py.
 
 These exist because the previous plumbing failed silently: a set named
 THINKING_MODELS was used to set `enable_thinking=False`, and MODEL_CONFIGS carried
@@ -13,11 +13,10 @@ import pytest
 
 sys.path[:0] = [
     os.path.join(os.path.dirname(__file__), ".."),
-    os.path.join(os.path.dirname(__file__), "..", "eval"),
-    os.path.join(os.path.dirname(__file__), "..", "freegen"),
+    os.path.join(os.path.dirname(__file__), "..", "freegen_static_judgments"),
 ]
 
-from freegen.run_eval import (  # noqa: E402
+from freegen_static_judgments.run_eval import (  # noqa: E402
     ALWAYS_THINKING_MODELS, MODEL_CONFIGS, TOGGLE_THINKING_MODELS,
     arm_max_tokens, get_model_config, resolve_thinking)
 
@@ -139,7 +138,7 @@ def test_phi4_budget_respects_its_32k_context():
 def test_prompt_is_the_disambiguated_v2_wording():
     """The cluster generated all 2816 published rows under v2; local had drifted to
     the compound v1, so uploading local would have reverted the prompt mid-dataset."""
-    from freegen.run_eval import PROMPT_TEMPLATE, PROMPT_VERSION
+    from freegen_static_judgments.run_eval import PROMPT_TEMPLATE, PROMPT_VERSION
     assert PROMPT_VERSION == "v2-valid-disambiguated"
     assert "does this simulation produce a physically correct solution" in PROMPT_TEMPLATE
     assert "Running without error is not sufficient." in PROMPT_TEMPLATE
@@ -149,7 +148,7 @@ def test_prompt_is_the_disambiguated_v2_wording():
 def test_symmetric_confidence_classifier_hedges_both_directions():
     """The published classifier has an uncertain-yes bucket and no uncertain-no, so
     a hedged negative is filed as a confident one. The 2x2 rule must not do that."""
-    from freegen.parse_score import (classify_valid_confidence,
+    from freegen_static_judgments.parse_score import (classify_valid_confidence,
                                      classify_valid_confidence_2x2)
     hedged_no = "no, though it might be fine for small dt"
     assert classify_valid_confidence(hedged_no) == "Confident No"   # the old asymmetry
@@ -163,7 +162,7 @@ def test_symmetric_confidence_classifier_hedges_both_directions():
 
 
 # ── method_axis: ported back from the cluster, 2026-08-20 ────────────────────
-# The refactor from eval/ to freegen/ dropped this function. rescore_jsonl.py
+# The refactor from eval/ to freegen_static_judgments/ dropped this function. rescore_jsonl.py
 # imports it under a bare `except ImportError: method_axis = None`, so its absence
 # was silent: the column simply stopped being written, and viz/pde_dual_report.py
 # reads it in four places. Pin it so a later move cannot lose it the same way.
@@ -171,14 +170,14 @@ def test_symmetric_confidence_classifier_hedges_both_directions():
 def test_method_axis_exists_and_is_importable_bare():
     """rescore_jsonl.py does `from parse_score import method_axis` unqualified."""
     from parse_score import method_axis          # noqa: F401  (bare import on purpose)
-    from freegen.parse_score import method_axis as m
+    from freegen_static_judgments.parse_score import method_axis as m
     assert callable(m)
 
 
 def test_method_axis_treats_off_axis_answers_as_abstention_not_error():
     """The ground truth labels time integration and spectral bases only. A response
     naming a spatial discretization answered a question that was never asked."""
-    from freegen.parse_score import method_axis
+    from freegen_static_judgments.parse_score import method_axis
     assert method_axis("crank-nicolson") == "on"
     assert method_axis("spectral") == "on"
     assert method_axis("finite difference method") == "off"
@@ -189,7 +188,7 @@ def test_method_axis_treats_off_axis_answers_as_abstention_not_error():
 
 def test_score_row_emits_method_axis():
     """Defining the function but not calling it would be a cosmetic port."""
-    from freegen.parse_score import score_row
+    from freegen_static_judgments.parse_score import score_row
     out = score_row({"pde": "heat", "method": "finite difference", "behavior": "diffusion",
                      "valid": "yes"},
                     {"pde_class": "Heat", "num_method": "crank-nicolson",

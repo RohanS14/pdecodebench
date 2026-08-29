@@ -190,7 +190,7 @@ print("✓ paper_fig1.png")
 #           Two separate horizontal legends: one below each panel
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# The hedge rule is canonical in freegen/parse_score.py — it used to be copy-pasted
+# The hedge rule is canonical in freegen_static_judgments/parse_score.py — it used to be copy-pasted
 # here and in two sibling viz scripts, which drifted. NOTE: the shared rule has an
 # explicit hedge lexicon the old local copy lacked ("possibly", "cannot determine",
 # "depends", ...), so bucket shares are NOT comparable to writeup.pdf Figure 1.

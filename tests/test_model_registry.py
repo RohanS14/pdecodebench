@@ -21,7 +21,7 @@ REGISTRY = os.path.join(ROOT, "data", "model_registry.csv")
 
 import sys                                                        # noqa: E402
 sys.path.insert(0, ROOT)
-from crossmodal.eval.run_cross_modal_consistency import (         # noqa: E402
+from cross_modal_consistency.eval.run_cross_modal_consistency import (         # noqa: E402
     ALWAYS_THINKING, TOGGLEABLE, supports)
 
 EXPECTED_COLUMNS = [

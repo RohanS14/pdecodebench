@@ -1,8 +1,8 @@
 """Unit tests for mc_questions.py"""
 import json, math, os, sys
 import pytest
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'eval'))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'freegen'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'mc_logprob'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'freegen_static_judgments'))
 from mc_questions import (
     normalize_gt_list,
     make_pde_question,

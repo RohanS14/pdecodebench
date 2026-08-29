@@ -14,11 +14,11 @@ import pytest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.join(HERE, "..")
-sys.path[:0] = [ROOT, os.path.join(ROOT, "eval"), os.path.join(ROOT, "freegen")]
+sys.path[:0] = [ROOT, os.path.join(ROOT, "freegen_static_judgments")]
 
-from freegen.run_eval import legacy_arm, load_checkpoint  # noqa: E402
+from freegen_static_judgments.run_eval import legacy_arm, load_checkpoint  # noqa: E402
 
-MIGRATE = os.path.join(ROOT, "freegen", "migrate_arm_filenames.py")
+MIGRATE = os.path.join(ROOT, "freegen_static_judgments", "migrate_arm_filenames.py")
 
 
 def _legacy(dirpath, slug, model, n=3, thinking=None):

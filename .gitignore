@@ -85,17 +85,36 @@ comma-separated values.csv
 
 # Result CSVs -- rebuilt from the published HF datasets by viz/refresh_report.sh
 results/*.csv
-results/xmodal/
 results/xmodal_summary.json
 results/xmodal_summary.csv
 # Raw per-model generation JSONL. Same reasoning as results/xmodal/ above: every arm
 # is published to HuggingFace (pde-llm-eval-freegen-xmodal-<slug>) and mirrored at
 # /scratch/ehb7466/projects/pde-llm-eval/outputs/, so git would be a third copy of
 # 100+ MB that nothing reads from.
-results/freegen_xmodal/
-results/xmodal_glm/
-results/xmodal_glm_summary.json
+results/freegen_static_judgments/
+results/freegen_static_judgments_v3/
+results/mc_logprob/
+# Its sibling, and the one that would actually break the push. The 2026-08-25 reorg
+# renamed results/xmodal/ -> results/cross_modal_consistency/; the ignore rule kept
+# pointing at the old name, so 666 MB across 8 arms came back into `git add -A`, two
+# of them over GitHub's 100 MB per-file hard limit (Qwen3.8 at 186 MB, Nemotron at
+# 155 MB). Same reasoning as every other raw arm here: regenerate, don't commit.
+results/cross_modal_consistency/
 
 # Generated reports: multi-MB and self-contained, republished by refresh_report.sh
 viz/pde_dual_report.html
 viz/*_report.html
+
+# Generated figures. Every one is reproducible from viz/ against results/, and they
+# churn on every re-render -- 20 were tracked while 25 sat untracked beside them, and
+# 7 of the tracked PDFs no longer existed on disk. Regenerate rather than diff them.
+figures/
+
+# Operator memory, not documentation. LAYOUT.md is an incident log -- which cluster
+# quota binds, which pgrep form matches itself, what four dead canary jobs taught us
+# about sys.path ordering. tools/README.md is the same in miniature: which one-shot
+# scripts are still live. Both are worth keeping on disk and worthless to someone
+# reading this project on GitHub, where they read as internal notes left in public.
+# The single README.md is the documentation.
+LAYOUT.md
+tools/README.md

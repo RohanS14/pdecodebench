@@ -29,13 +29,13 @@ import pytest
 ROOT = os.path.join(os.path.dirname(__file__), "..")
 sys.path.insert(0, ROOT)
 
-from crossmodal.datagen.corrupt_trajectory import (  # noqa: E402
+from cross_modal_consistency.datagen.corrupt_trajectory import (  # noqa: E402
     build_ladder, decimate_frames, make_random, make_shuffled, make_time_shuffled,
 )
-from crossmodal.datagen.render_trajectory_table import (  # noqa: E402
+from cross_modal_consistency.datagen.render_trajectory_table import (  # noqa: E402
     choose_grid, render, reconstruction_error, resample,
 )
-from crossmodal.eval.parse_consistency import (  # noqa: E402
+from cross_modal_consistency.eval.parse_consistency import (  # noqa: E402
     detection_dprime, detection_summary, dprime, parse_consistency,
     score_consistency, strip_think,
 )
@@ -312,7 +312,7 @@ def test_summary_is_none_without_both_item_kinds():
 
 # ------------------------------------------------------------------ instrumentation
 
-from crossmodal.datagen.instrument_history import (  # noqa: E402
+from cross_modal_consistency.datagen.instrument_history import (  # noqa: E402
     INSTRUMENT_SPEC, NOT_INSTRUMENTABLE, assert_write_only, find_time_loop,
     instrument, stack_history,
 )
@@ -400,7 +400,7 @@ def test_checkpoint_counts_samples_so_a_partial_item_is_rerun(tmp_path):
     would flag -- some items with 3 draws, some with 1, and a pooled rate silently
     weighting them unequally.
     """
-    from crossmodal.eval.run_cross_modal_consistency import load_checkpoint
+    from cross_modal_consistency.eval.run_cross_modal_consistency import load_checkpoint
     import json as _json
     p = tmp_path / "out.jsonl"
     rows = [{"item_id": "A", "model": "m", "thinking": "on"},
@@ -421,7 +421,7 @@ def test_sampling_params_carry_k_and_the_models_own_settings():
     emit endless repetition -- so a silently dropped temperature would reintroduce
     exactly the failure this change exists to remove."""
     pytest.importorskip("vllm")   # library-backed; runs on the cluster, skips locally
-    from crossmodal.eval.run_cross_modal_consistency import build_sampling_params
+    from cross_modal_consistency.eval.run_cross_modal_consistency import build_sampling_params
     sp = build_sampling_params("prompt_only", 32768,
                                gen={"temperature": 0.6, "top_p": 0.95, "top_k": 20},
                                n=3, seed=42)
@@ -434,7 +434,7 @@ def test_sampling_params_carry_k_and_the_models_own_settings():
 def test_top_k_zero_is_dropped_not_passed_through():
     """HF writes top_k=0 for 'disabled'; vLLM rejects 0 and wants it absent."""
     pytest.importorskip("transformers")
-    from crossmodal.eval.run_cross_modal_consistency import recommended_sampling
+    from cross_modal_consistency.eval.run_cross_modal_consistency import recommended_sampling
     import unittest.mock as _m
     class G:
         temperature, top_p, top_k = 1.0, 1.0, 0

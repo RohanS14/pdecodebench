@@ -223,3 +223,88 @@ def paired_refusal_by_condition(d, n_boot=N_BOOT, seed=SEED):
             n_solvers=len(tab), thin=min(n_real, n_obf) < MIN_N,
             significant=bool(min(n_real, n_obf) >= MIN_N and not (clo <= 0.0 <= chi))))
     return out
+
+
+def paired_localization_by_condition(d, n_boot=N_BOOT, seed=SEED):
+    """Paired obfuscated-minus-real change in naming the RIGHT view, per condition.
+
+    The quantity behind the obfuscation dumbbell: of the items carrying a given
+    corruption, the share on which the model named the view that was actually
+    corrupted. Not conditional on having flagged the item -- a model that never
+    flags anything scores zero here, which is the point.
+
+    Paired within solver and bootstrapped over solvers, like every other interval in
+    this package: there are 1,024 items but only 32 physical systems, and an
+    item-level interval would be roughly a third as wide as the data supports.
+
+    The original figure carried point estimates only, so its caption could say
+    "largest observed decrease" but not whether the ordering among the middle rows
+    was separable. It is not: four of the seven conditions have intervals covering
+    zero after correction.
+    """
+    from .constants import CONDITIONS, CONDITION_OUTLIER
+
+    signal = [c for c in CONDITIONS if CONDITION_OUTLIER[c] != NONE]
+    d = d[d["true_outlier"].ne(NONE)].copy()
+    d["_hit"] = d["pred_outlier"].eq(d["true_outlier"]).astype(float)
+    k = len(signal) + 1                     # the per-condition rows plus the pooled one
+    out = []
+
+    def one(sub, key, label, corrected):
+        tab = sub.pivot_table(index="solver_id", columns="naming", values="_hit",
+                              aggfunc="mean")
+        if not set(NAMING_LEVELS) <= set(tab.columns):
+            return None
+        tab = tab.dropna()
+        if tab.empty:
+            return None
+        real_arr = tab[NAMING_LEVELS[0]].to_numpy()
+        obf_arr = tab[NAMING_LEVELS[1]].to_numpy()
+        diff = obf_arr - real_arr
+        rng = np.random.default_rng(seed)
+        idx = rng.integers(0, len(diff), size=(n_boot, len(diff)))
+        boots = diff[idx].mean(axis=1)
+        lo, hi = np.percentile(boots, [2.5, 97.5])
+        if corrected:
+            pct = [100 * (ALPHA / k) / 2, 100 * (1 - (ALPHA / k) / 2)]
+        else:
+            pct = [2.5, 97.5]
+        clo, chi = np.percentile(boots, pct)
+        # Intervals on the two LEVELS as well as on their difference, from the SAME
+        # resample indices so the three are drawn from one bootstrap. They answer a
+        # different question and are much wider: a level carries the between-solver
+        # spread that differencing within solver removes, so the two level intervals
+        # can overlap heavily on a row whose difference is nowhere near zero. Read
+        # the difference interval for the test; these say how well each arm's rate
+        # is pinned down on its own.
+        real_lo, real_hi = np.percentile(real_arr[idx].mean(axis=1), pct)
+        obf_lo, obf_hi = np.percentile(obf_arr[idx].mean(axis=1), pct)
+        n_real = int(sub["naming"].eq(NAMING_LEVELS[0]).sum())
+        n_obf = int(sub["naming"].eq(NAMING_LEVELS[1]).sum())
+        return dict(
+            condition=key, category=key, label=label,
+            modality=CONDITION_OUTLIER.get(key, NONE),
+            real=float(real_arr.mean()),
+            obf=float(obf_arr.mean()),
+            real_lo=float(real_lo), real_hi=float(real_hi),
+            obf_lo=float(obf_lo), obf_hi=float(obf_hi),
+            diff=float(diff.mean()), lo=float(lo), hi=float(hi),
+            clo=float(clo), chi=float(chi), n=int(len(sub)),
+            n_real=n_real, n_obf=n_obf, n_solvers=len(tab),
+            thin=min(n_real, n_obf) < MIN_N,
+            significant=bool(min(n_real, n_obf) >= MIN_N and not (clo <= 0.0 <= chi)))
+
+    # Pooled first, and NOT Bonferroni-corrected: it is one pre-specified quantity,
+    # not one of eight comparisons, and correcting it would widen the interval on the
+    # headline to pay for tests it does not depend on.
+    pooled = one(d, "ALL", "all corrupted items", corrected=False)
+    if pooled:
+        out.append(pooled)
+    for cond in signal:
+        sub = d[d["condition"].eq(cond)]
+        if sub.empty:
+            continue
+        r = one(sub, cond, cond, corrected=True)
+        if r:
+            out.append(r)
+    return out

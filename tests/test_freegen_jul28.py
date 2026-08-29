@@ -15,8 +15,8 @@ import types
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.join(HERE, "..")
-sys.path.insert(0, os.path.join(ROOT, "eval"))
-sys.path.insert(0, os.path.join(ROOT, "freegen"))
+sys.path.insert(0, ROOT)
+sys.path.insert(0, os.path.join(ROOT, "freegen_static_judgments"))
 
 PASS = "\033[92mPASS\033[0m"
 FAIL = "\033[91mFAIL\033[0m"

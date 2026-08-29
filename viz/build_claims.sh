@@ -12,7 +12,7 @@ from viz.consistency import claim_report as CR
 # pooled panel of consistency_claims.html and then copy that over the notes-folder
 # copy two lines below -- silently rewriting the published report. The generational
 # roster has its own figure and must never enter this one.
-d = load_real(repo="bermaneh/pde-llm-eval-xmodal-consistency")
+d = load_real(repo="bermaneh/pde-llm-eval-xmodal-consistency-frozen-v1")
 items = pd.read_csv("data/multimodal_items_v1.csv").drop_duplicates("gt_sample")
 defects = dict(zip(items["gt_sample"].astype(str), items["invalidity_note"].astype(str)))
 CR.build(d, out="viz/consistency_claims.html", defects=defects)

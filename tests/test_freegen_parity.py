@@ -10,7 +10,7 @@ import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
-sys.path.insert(0, os.path.join(ROOT, "freegen"))
+sys.path.insert(0, os.path.join(ROOT, "freegen_static_judgments"))
 
 
 def _load(path, name):
@@ -23,8 +23,8 @@ def _load(path, name):
     return mod
 
 
-RE = _load("freegen/run_eval.py", "freegen_run_eval")
-XM = _load("crossmodal/eval/run_cross_modal_consistency.py", "xmodal_runner")
+RE = _load("freegen_static_judgments/run_eval.py", "freegen_run_eval")
+XM = _load("cross_modal_consistency/eval/run_cross_modal_consistency.py", "xmodal_runner")
 
 def _consistency_roster():
     """Derived from the consistency runner, not typed out here.
@@ -77,7 +77,7 @@ def test_token_budgets_mirror_the_consistency_runner():
     for m in CONSISTENCY_ROSTER:
         theirs = XM.gen_budget(m, "on")
         ours = RE.arm_max_tokens(m, "on")
-        assert ours == theirs, f"{m}: freegen {ours} vs consistency {theirs}"
+        assert ours == theirs, f"{m}: freegen_static_judgments {ours} vs consistency {theirs}"
 
 
 def test_k_draws_matches():
@@ -98,7 +98,7 @@ def test_no_verdict_detection(text, finish, expected):
 
 def test_no_verdict_is_actually_wired_into_the_runner():
     """It was defined and never called once already. The output row must carry it."""
-    src = open(os.path.join(ROOT, "freegen/run_eval.py")).read()
+    src = open(os.path.join(ROOT, "freegen_static_judgments/run_eval.py")).read()
     assert "is_no_verdict(text, finish_reason)" in src
     assert '"no_verdict":' in src
     assert '"sample_idx":' in src
@@ -120,7 +120,7 @@ def test_sampling_seed_matches_the_consistency_default():
     theirs = getattr(XM, "SAMPLING_SEED", None) or getattr(XM, "DEFAULT_SEED", None)
     if theirs is None:
         import re
-        src = open(os.path.join(ROOT, "crossmodal/eval/run_cross_modal_consistency.py")).read()
+        src = open(os.path.join(ROOT, "cross_modal_consistency/eval/run_cross_modal_consistency.py")).read()
         # The default is wrapped in an env lookup:
         #   default=int(os.environ.get("SAMPLING_SEED", "20260821"))
         # so the digits are inside the quoted fallback, not bare after `default=`.
@@ -134,16 +134,16 @@ def test_sampling_seed_matches_the_consistency_default():
 def test_k_actually_reaches_sampling_params():
     """C1's lesson: a constant that exists and is never wired is not a fix. K_DRAWS
     being 3 says nothing unless n=K_DRAWS reaches the engine."""
-    src = open(os.path.join(ROOT, "freegen/run_eval.py")).read()
+    src = open(os.path.join(ROOT, "freegen_static_judgments/run_eval.py")).read()
     assert "n=K_DRAWS" in src
     assert "**UNIFORM_SAMPLING" in src
 
 
 def test_no_verdict_rows_are_excluded_downstream_not_merely_flagged():
     """The column existing is not the fix; something has to read it."""
-    rpt = open(os.path.join(ROOT, "freegen/report.py")).read()
+    rpt = open(os.path.join(ROOT, "freegen_static_judgments/report.py")).read()
     assert "no_verdict" in rpt and "~nv" in rpt
-    agg = open(os.path.join(ROOT, "freegen/aggregate_freegen.py")).read()
+    agg = open(os.path.join(ROOT, "freegen_static_judgments/aggregate_freegen.py")).read()
     assert "no_verdict" in agg
 
 
@@ -167,7 +167,7 @@ def _dual_report_source():
 
 def test_dual_report_imports_the_one_pooler():
     src = _dual_report_source()
-    assert "from freegen.report import pool_draws" in src, (
+    assert "from freegen_static_judgments.report import pool_draws" in src, (
         "pde_dual_report.py must import pool_draws rather than reimplement it -- a "
         "second copy lets Experiment 1 and the free-gen report drift apart while "
         "still looking comparable in one document")
@@ -175,7 +175,7 @@ def test_dual_report_imports_the_one_pooler():
 
 
 def test_pooling_collapses_k_draws_and_preserves_the_mean():
-    from freegen.report import pool_draws
+    from freegen_static_judgments.report import pool_draws
     rows = []
     for item in range(4):
         for draw, score in enumerate((1.0, 0.0, 1.0)):
@@ -190,7 +190,7 @@ def test_pooling_collapses_k_draws_and_preserves_the_mean():
 
 
 def test_pooling_is_a_noop_on_k1_so_older_csvs_still_work():
-    from freegen.report import pool_draws
+    from freegen_static_judgments.report import pool_draws
     df = pd.DataFrame([{"model": "m", "thinking": "on", "mod_type": "Comm_Valid",
                         "title": f"t{i}", "valid_match": 1.0} for i in range(5)])
     assert len(pool_draws(df)) == 5

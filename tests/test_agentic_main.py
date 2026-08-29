@@ -6,8 +6,8 @@ real API key is involved.
 """
 import shutil
 import sys, os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'eval'))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'freegen'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'freegen_static_judgments'))
 
 from google.genai import types
 

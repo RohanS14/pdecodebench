@@ -423,12 +423,47 @@ CAPTIONED_FIGURES = {
     "fig5_obfuscation_contrast": None,      # bound below, after the defs
 }
 
+def fig8_detect_localize(df):
+    """Paper figure: detection and localization on one shared row axis.
+
+    Lives in claim_report because that is where both of its halves are drawn and
+    where the shared category bookkeeping is; re-exported here so it travels with
+    the other paper figures through export_consistency_figures.py rather than
+    existing only inside an HTML report.
+
+    Imported inside the function, not at module scope: claim_report imports claims,
+    which imports this module.
+    """
+    from .claim_report import fig_detection_blame_pair
+    return fig_detection_blame_pair(df, d_all=None, verbose=True)
+
+
+def fig8_detect_localize_short(df):
+    """The same paper figure, about a third shorter. Separate entry, not a flag.
+
+    fig8 is a wide float and at its published pitch it is nearly half a page tall,
+    which is fine for a `figure*` at the top of a page and wrong for a float that has
+    to share one with body text. The short geometry takes that height out of the
+    white space between rows -- the type scale, the panel widths and every bar label
+    are identical -- so the two are the same figure, not a figure and a thumbnail.
+
+    It is a SECOND export rather than a parameter on the first because both get
+    written on every run: the paper picks per placement without anyone having to
+    rerun the export with a different flag, and the published figure can never be
+    overwritten by the compact one.
+    """
+    from .claim_report import fig_detection_blame_pair
+    return fig_detection_blame_pair(df, d_all=None, verbose=True, geometry="short")
+
+
 FIGURES = {
     "fig1_blame_matrix": fig1_blame_matrix,
     "fig2_trust_scatter": fig2_trust_scatter,
     "fig3_outcome_stack": fig3_outcome_stack,
     "fig4_justification_gap": fig4_justification_gap,
     "fig6_generational_trend": fig_generational_trend,
+    "fig8_detect_localize": fig8_detect_localize,
+    "fig8_detect_localize_short": fig8_detect_localize_short,
 }
 
 
@@ -795,46 +830,60 @@ def fig7b_prior_weakening_split(df, n_boot=None):
     for m in ("C", "T", "D", "M"):
         if m == "T":
             for x in rungs:
-                body.append((x, f"trajectory \u2014 {TRAJ_SHORT[x.name]}", "T"))
+                body.append((x, f"trajectory — {TRAJ_SHORT[x.name]}", "T"))
         elif m in by_name:
             body.append((by_name[m], f"{ML.get(m, m)} was corrupted", m))
 
     rows = [(r.overall, f"ALL corrupted items", None)] + body
-    ypos = [float(len(rows) - 1) + 0.9] + [float(len(rows) - 1 - i)
-                                           for i in range(len(rows) - 1)]
+    # Wide and short rather than narrow and tall. The rows are a single list and stay
+    # one -- splitting them across two panels breaks the one-column read the figure
+    # is for -- so the height comes off the row pitch and off the fixed overhead
+    # instead: 0.21 per row against 0.30, the head row 0.6 of a pitch clear of the
+    # separator against 0.9 of the old, larger one, and margins set here rather
+    # than left to tight_layout,
+    # which reserved for a legend and an axis label that need about half what it gave
+    # them. The extra width is what pays for the tighter pitch: at 5.5in the labels
+    # took 40% of the panel, so the dots had 2.7in to spread over and rows that close
+    # together read as a block; at 7.4in they have nearly 5in.
+    ypos = [float(len(rows) - 1) + 0.85] + [float(len(rows) - 1 - i)
+                                            for i in range(len(rows) - 1)]
 
-    fig, ax = plt.subplots(figsize=style.figsize(1.0, 0.30 * len(rows) + 1.0))
+    fig, ax = plt.subplots(
+        figsize=style.figsize(1.35, 0.21 * len(rows) + 0.62))
+    fig.subplots_adjust(left=0.30, right=0.90, top=0.90, bottom=0.20)
     for yi, (cst, _, key) in zip(ypos, rows):
         head = key is None
         col = c["bar"] if head else MODALITY_COLORS.get(key, c["muted"])
         ax.plot([100 * cst.real, 100 * cst.obf], [yi, yi], color=col,
                 linewidth=1.5, alpha=0.9, zorder=2)
-        ax.scatter([100 * cst.real], [yi], s=76 if head else 56, color=col, zorder=4)
-        ax.scatter([100 * cst.obf], [yi], s=76 if head else 56,
-                   facecolor=c["panel"], edgecolor=col, linewidth=1.8, zorder=4)
+        ax.scatter([100 * cst.real], [yi], s=64 if head else 46, color=col, zorder=4)
+        ax.scatter([100 * cst.obf], [yi], s=64 if head else 46,
+                   facecolor=c["panel"], edgecolor=col, linewidth=1.6, zorder=4)
         ax.annotate(f"{100 * cst.diff:+.1f} pp", (1.02, yi),
                     xycoords=("axes fraction", "data"), va="center", ha="left",
                     fontsize=style.ANNOT_PT + (1 if head else 0), color=c["fg"],
                     weight="bold" if head else "normal")
 
-    ax.axhline(len(rows) - 1 + 0.45, color=c["muted"], linewidth=0.6)
+    ax.axhline(len(rows) - 1 + 0.42, color=c["muted"], linewidth=0.6)
     ax.set_yticks(ypos)
     ax.set_yticklabels([f"{lab} (n={cst.n_items:,})" for cst, lab, _ in rows])
     lo = min(100 * min(x[0].real, x[0].obf) for x in rows)
     hi = max(100 * max(x[0].real, x[0].obf) for x in rows)
     ax.set_xlim(max(0.0, np.floor((lo - 8) / 10) * 10),
                 min(100.0, np.ceil((hi + 8) / 10) * 10))
-    ax.set_ylim(min(ypos) - 0.6, max(ypos) + 0.6)
+    ax.set_ylim(min(ypos) - 0.5, max(ypos) + 0.5)
     ax.set_xlabel("% of these items where the model named the right view")
     ax.grid(True, axis="x", linewidth=0.4, color=c["faint"])
     ax.set_axisbelow(True)
     handles = [
         plt.Line2D([], [], marker="o", linestyle="", markerfacecolor=c["muted"],
-                   markeredgecolor=c["muted"], markersize=8, label="real names"),
+                   markeredgecolor=c["muted"], markersize=7, label="real names"),
         plt.Line2D([], [], marker="o", linestyle="", markerfacecolor=c["panel"],
-                   markeredgecolor=c["muted"], markeredgewidth=1.8, markersize=8,
+                   markeredgecolor=c["muted"], markeredgewidth=1.6, markersize=7,
                    label="obfuscated names"),
     ]
+    # Above the axes, not inside it: an in-axes legend needs an empty corner, and on
+    # a panel this short there is no corner the dumbbells do not reach.
     ax.legend(handles=handles, loc="lower right", bbox_to_anchor=(1.0, 1.0),
               ncol=2, frameon=False, fontsize=style.TICK_PT,
               borderaxespad=0.0, handletextpad=0.4, columnspacing=1.2)
@@ -937,3 +986,179 @@ def interaction_statement(r):
                  f"effect of {100 * it.mde:.1f}pp or larger, so it does not settle "
                  f"the question either way.")
     return body, resolved
+
+
+# ── fig 5b: the obfuscation dumbbell ─────────────────────────────
+def fig5_obfuscation_dumbbell(df, n_boot=None, ci=False):
+    """Naming the corrupted view, real identifiers vs obfuscated. (Figure, stats, caption).
+
+    Written because this figure had NO generator: figures/fig5_obfuscation_dumbbell.png
+    was drawn by hand in 2026-08 and shipped as the paper's Figure 3, so nothing in the
+    repo could redraw it and nothing on it said which roster it came from. This
+    reproduces the published figure exactly -- same rows, same order, same compact
+    geometry, same delta column -- from paired_localization_by_condition(), which is
+    also what table_obfuscation_accuracy reads, so the two cannot disagree.
+
+    Both legend entries carry "no comments", and that is not redundancy. The arms are
+    NoComm_Valid and NoComm_CorrVar -- verified by diffing the code strings, 0 comment
+    lines in each -- so comment removal is a property of BOTH arms, not part of the
+    treatment. Writing it on the obfuscated entry alone would state a comment contrast
+    the design never ran, and the Comm_* variants that would support one are unused
+    here. The contrast this figure draws is identifiers, holding comments out of both.
+
+    ci=True adds an interval to each DOT: the bootstrap interval on that arm's rate,
+    upper bar for real names, lower bar for obfuscated. These are LEVEL intervals and
+    are much wider than the paired difference, which is the quantity actually tested
+    -- the level carries between-solver spread that differencing within solver removes,
+    so two heavily overlapping bars are entirely consistent with the delta printed
+    beside them clearing zero. Off by default because the published figure carries
+    no intervals at all.
+    """
+    from .constants import CONDITION_OUTLIER, NONE_COLOR
+    from . import obfuscation as OB
+    from .sensitivity import TRAJ_SHORT
+    style.apply(style.theme())
+    c = style.colors()
+
+    kw = {"n_boot": n_boot} if n_boot else {}
+    rows = OB.paired_localization_by_condition(df, **kw)
+    fig, ax = plt.subplots(figsize=style.figsize(1.0, 1.75))
+    if not rows:
+        style.empty_axes(ax, "no paired observations")
+        return fig, {"rows": []}, "No paired observations."
+
+    pooled = next((r for r in rows if r["condition"] == "ALL"), None)
+    per_cond = [r for r in rows if r["condition"] != "ALL"]
+
+    # Pooled on top, the seven conditions beneath it in the order the analysis
+    # returns them, and a rule between: the pooled row is a different denominator.
+    ordered = ([pooled] if pooled else []) + per_cond
+    ys = [float(len(ordered) - 1 - i) for i in range(len(ordered))]
+
+    REAL = "#3A3A3A"
+
+    for yi, r in zip(ys, ordered):
+        emph = r["condition"] == "ALL"
+        # The pooled row has no modality of its own; NONE_COLOR is the mid grey the
+        # blame figures use for "no view", and at this dot size it reads as a
+        # de-emphasised row rather than the headline. Dark, like the legend swatch.
+        col = REAL if emph else MODALITY_COLORS.get(r["modality"], NONE_COLOR)
+        a, b = 100 * r["real"], 100 * r["obf"]
+        if ci:
+            # One interval per DOT -- the rate of that arm -- not one interval on the
+            # gap between them. The bars are offset off the row's centre line so each
+            # belongs visibly to its own endpoint: at these widths the two overlap on
+            # every row, and drawn on the same line they would read as a single bar
+            # spanning both dots.
+            for lo_k, hi_k, dy in (("real_lo", "real_hi", 0.20),
+                                   ("obf_lo", "obf_hi", -0.20)):
+                lo, hi = r.get(lo_k, np.nan), r.get(hi_k, np.nan)
+                if not (np.isfinite(lo) and np.isfinite(hi)):
+                    continue
+                lo, hi = 100 * lo, 100 * hi
+                yb = yi + dy
+                ax.plot([lo, hi], [yb, yb], color=col, linewidth=0.8, alpha=0.5,
+                        zorder=1)
+                for xv in (lo, hi):
+                    ax.plot([xv, xv], [yb - 0.09, yb + 0.09], color=col,
+                            linewidth=0.8, alpha=0.5, zorder=1)
+        ax.plot([a, b], [yi, yi], color=col, linewidth=1.6, solid_capstyle="round",
+                zorder=3)
+        ax.scatter([b], [yi], s=30, facecolor=c["panel"], edgecolor=col,
+                   linewidth=1.4, zorder=5)
+        ax.scatter([a], [yi], s=30, color=col, zorder=5)
+        ax.annotate(f"{100 * r['diff']:+.1f} pp", (1.015, yi),
+                    xycoords=("axes fraction", "data"), va="center", ha="left",
+                    fontsize=style.ANNOT_PT, color=c["fg"],
+                    weight="bold" if emph else "normal")
+
+    if pooled:
+        ax.axhline(ys[0] - 0.5, color=c["fg"], linewidth=0.8)
+
+    def _label(r):
+        cond = r["condition"]
+        if cond == "ALL":
+            return f"ALL corrupted items (n={r['n']:,})"
+        if cond.startswith("A-T-"):
+            head = "trajectory \u2014 " + TRAJ_SHORT[cond.rsplit("-", 1)[1]]
+        else:
+            head = MODALITY_LABELS[CONDITION_OUTLIER[cond]] + " was corrupted"
+        return f"{head} (n={r['n']:,})"
+
+    ax.set_yticks(ys)
+    ax.set_yticklabels([_label(r) for r in ordered], fontsize=style.TICK_PT)
+    ax.set_ylim(min(ys) - 0.6, max(ys) + 0.6)
+    # The published range is 30-90, which the point estimates fit. The level intervals
+    # do not -- the thinnest rows reach into the teens -- and an axis that silently
+    # clips a whisker end draws a bar shorter than the data, so the ci variant widens
+    # to whatever the bars need instead of cropping them.
+    x_lo, x_hi = 30.0, 90.0
+    if ci:
+        ends = [100 * r[k] for r in ordered
+                for k in ("real_lo", "real_hi", "obf_lo", "obf_hi")
+                if np.isfinite(r.get(k, np.nan))]
+        if ends:
+            x_lo = min(x_lo, 10 * np.floor(min(ends) / 10 - 0.2))
+            x_hi = max(x_hi, 10 * np.ceil(max(ends) / 10 + 0.2))
+    ax.set_xlim(x_lo, x_hi)
+    ax.set_xticks(np.arange(x_lo, x_hi + 1, 10))
+    ax.set_xlabel("% of these items where the model named the right view")
+    ax.tick_params(axis="both", length=3)
+
+    handles = [
+        plt.Line2D([], [], marker="o", linestyle="none", markersize=5,
+                   markerfacecolor=REAL, markeredgecolor=REAL,
+                   label="real names/no comments"),
+        plt.Line2D([], [], marker="o", linestyle="none", markersize=5,
+                   markerfacecolor=c["panel"], markeredgecolor=c["fg"],
+                   markeredgewidth=1.4, label="obfuscated names/no comments"),
+    ]
+    ax.legend(handles=handles, loc="lower right", bbox_to_anchor=(1.0, 1.01),
+              ncol=2, frameon=False, fontsize=style.TICK_PT,
+              handletextpad=0.4, columnspacing=1.6, borderpad=0.0)
+    return fig, {"rows": rows}, obfuscation_accuracy_statement({"rows": rows})
+
+
+def obfuscation_accuracy_statement(st):
+    """The dumbbell's headline, generated rather than typed. Returns (text, ok)."""
+    from .sensitivity import row_caption_corrupted
+    rows = st.get("rows") or []
+    pooled = next((r for r in rows if r["condition"] == "ALL"), None)
+    if not pooled:
+        return ("The obfuscation localization contrast could not be computed.", False)
+    per = [r for r in rows if r["condition"] != "ALL"]
+    sig = [r for r in per if r["significant"]]
+    worst = min(sig, key=lambda r: r["diff"]) if sig else None
+    txt = (f"Obfuscating identifiers lowers correct localization from "
+           f"{100 * pooled['real']:.1f}% to {100 * pooled['obf']:.1f}% "
+           f"({100 * pooled['diff']:+.1f}pp, {100 * pooled['clo']:+.1f} to "
+           f"{100 * pooled['chi']:+.1f} CI). Comments are absent from both arms, so "
+           f"this is the effect of identifiers alone. ")
+    if worst:
+        txt += (f"{len(sig)} of {len(per)} conditions clear zero after correction, "
+                f"the largest being {row_caption_corrupted(worst['condition'])} "
+                f"({100 * worst['diff']:+.1f}pp); the remaining "
+                f"{len(per) - len(sig)} are null, not small.")
+    else:
+        txt += "No individual condition clears zero after correction."
+    return (txt, True)
+
+
+CAPTIONED_FIGURES["fig5_obfuscation_dumbbell"] = (
+    lambda d: fig5_obfuscation_dumbbell(d)[::2])
+# The interval variant is EXPORTED, not left as a REPL artifact -- an unreproducible
+# PNG on disk is the exact thing this module's export script was written to end.
+# Separate entry rather than a flag so the published figure can never be overwritten
+# by it: the paper's Figure 3 is the plain one.
+def fig5_obfuscation_dumbbell_ci(df, n_boot=None):
+    """Figure 3 with a bootstrap interval on each dot. Returns (Figure, stats, caption).
+
+    A named module function, not a lambda in the registry: export_consistency_figures
+    resolves every entry with getattr(F, name), so a dict-only entry exports as an
+    AttributeError.
+    """
+    return fig5_obfuscation_dumbbell(df, n_boot=n_boot, ci=True)
+
+
+CAPTIONED_FIGURES["fig5_obfuscation_dumbbell_ci"] = (
+    lambda d: fig5_obfuscation_dumbbell_ci(d)[::2])

@@ -152,24 +152,22 @@ def from_xmodal(df, items_csv="data/multimodal_items_v1.csv",
 # uploads and the artifact could shrink mid-run. Per-model repos let all six run at
 # once with partial uploads intact and zero contention. Missing repos are skipped, so
 # this list can name models that have not been run yet.
-FROZEN_REPO = "bermaneh/pde-llm-eval-xmodal-consistency"
+# The ORIGINAL 4,096-row, 28-column artifact backing viz/consistency_claims.html:
+# 3 models (Qwen3-32B think-on and think-off, QwQ-32B, R1-Distill-32B). Renamed
+# 2026-08-25 with an explicit -frozen-v1 suffix, because the unsuffixed name was
+# indistinguishable from the 8-model consolidated roster and a blanket rename
+# silently repointed this constant at that roster -- exactly the substitution the
+# GENERATIONAL_REPOS comment below warns against.
+FROZEN_REPO = "bermaneh/pde-llm-eval-xmodal-consistency-frozen-v1"
 
+# The generational roster, CONSOLIDATED 2026-08-25 into a single repo carrying `model`
+# as a column. It was ten per-model repos while the campaign ran, because concurrent
+# jobs each uploaded their own arm and push_dataset_to_hub REPLACES a split; those ten
+# have been deleted and every row they held is in the repo below. It still does NOT
+# replace the frozen artifact -- build_claims.sh stays pinned to FROZEN_REPO, and
+# folding these eight models into that report would rewrite published pooled panels.
 GENERATIONAL_REPOS = (
-    "bermaneh/pde-llm-eval-xmodal-gen-qwen3-5-27b",
-    "bermaneh/pde-llm-eval-xmodal-gen-qwen3-6-27b",
-    "bermaneh/pde-llm-eval-xmodal-gen-qwen3-8-27b",
-    "bermaneh/pde-llm-eval-xmodal-gen-nemotron-3-nano-30b",
-    "bermaneh/pde-llm-eval-xmodal-gen-olmo-3-1-32b-think",
-    "bermaneh/pde-llm-eval-xmodal-gen-glm-4-7-flash",
-    # The three original models RE-RUN under the uniform protocol (2026-08-21), so
-    # all eight points share one decoding regime. These do NOT replace the frozen
-    # repo -- that stays published and untouched, and build_claims.sh stays pinned
-    # to it. Their remaining asymmetry is architectural, not protocol: QwQ-32B and
-    # Qwen3-32B declare only 40960 context, so max_model_len clamps there and the
-    # worst-case item leaves them 7863 generation tokens against max_tokens=32768.
-    "bermaneh/pde-llm-eval-xmodal-gen-qwq-32b",
-    "bermaneh/pde-llm-eval-xmodal-gen-r1-distill-qwen-32b",
-    "bermaneh/pde-llm-eval-xmodal-gen-qwen3-32b",
+    "bermaneh/pde-llm-eval-cross-modal-consistency",
 )
 
 # The frozen 4096 rows plus whatever generational arms exist. build_claims.sh must

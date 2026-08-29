@@ -10,7 +10,7 @@ cd "$REPO_DIR"
 
 # The d' panel needs the clustered bootstrap; skip it silently if no rows yet.
 if compgen -G "results/xmodal/*.jsonl" > /dev/null; then
-    "$PY" crossmodal/eval/aggregate_cross_modal.py --results_dir results/xmodal \
+    "$PY" cross_modal_consistency/eval/aggregate_cross_modal.py --results_dir results/xmodal \
         --out results/xmodal_summary.json --csv_out results/xmodal_summary.csv || \
         echo "[refresh] aggregate failed; report will show the d' panel as pending"
 fi
@@ -25,13 +25,13 @@ fi
 # published as one repo PER MODEL -- the launcher does that so concurrent jobs cannot
 # clobber each other's uploads, since push_dataset_to_hub replaces the split. Rebuild
 # the aggregate first if the arms have moved:
-#   python freegen/aggregate_freegen.py --results_dir results/freegen_xmodal \
-#          --out results/freegen_xmodal.csv --expect_items 256
-FREEGEN_CSV="${FREEGEN_CSV:-results/freegen_xmodal.csv}"
+#   python freegen_static_judgments/aggregate_freegen.py --results_dir results/freegen_static_judgments \
+#          --out results/freegen_static_judgments.csv --expect_items 256
+FREEGEN_CSV="${FREEGEN_CSV:-results/freegen_static_judgments.csv}"
 
 "$PY" viz/pde_dual_report.py \
     --freegen    "$FREEGEN_CSV" \
-    --xmodal_hf  bermaneh/pde-llm-eval-xmodal-consistency \
+    --xmodal_hf  bermaneh/pde-llm-eval-cross-modal-consistency \
     --xmodal_summary results/xmodal_summary.json \
     --out viz/pde_dual_report.html
 

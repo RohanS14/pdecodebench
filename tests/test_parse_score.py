@@ -3,11 +3,12 @@ Unit tests for parse_score.py — runs locally, no GPU, no model.
 Tests parser robustness and scorer correctness against known cases.
 """
 import sys, os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'eval'))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'freegen'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'freegen_static_judgments'))
 
 from parse_score import (parse_response, score_pde, score_multival, score_valid, score_row,
-                         classify_valid_confidence, valid_intent, VALID_CONF_CLASSES)
+                         classify_valid_confidence, valid_intent, VALID_CONF_CLASSES,
+                         is_no_verdict, recovered_loop_verdict)
 
 PASS = "\033[92mPASS\033[0m"
 FAIL = "\033[91mFAIL\033[0m"
@@ -186,7 +187,7 @@ check("row all-wrong valid=0",        s["valid_match"] == 0, str(s))
 
 
 # ── Hedge / validity-confidence classifier ──────────────────────────────────
-# Canonical rule lives in parse_score.py; viz/ and eval/frontier/ both import it.
+# Canonical rule lives in parse_score.py; viz/ and frontier/ both import it.
 # The cases marked "strict" are the ones that separate this rule from the older
 # viz copies, which had no hedge lexicon and bucketed them into a catch-all.
 
@@ -330,3 +331,41 @@ def test_values_containing_equations_and_punctuation_survive():
                 "Burgers (u_t + u u_x = 0), viscous"):
         got = parse_response(f"pde: {pde}\nmethod: FTCS\nvalid: yes")["pde"]
         assert got == pde, f"{pde!r} came back as {got!r}"
+
+
+def test_looped_but_committed_verdict_is_recovered():
+    """A truncated draw that ANSWERED and then failed to stop is not a lost row.
+
+    63 of this roster's 68 ceiling-truncated draws are repetition loops, so raising
+    the budget cannot rescue them -- they would loop to any cap. 34 of them repeat a
+    single verdict in the answer section, which is a model that converged and got
+    stuck, not one that never answered.
+    """
+    looped = ("<think>deliberating</think>\n"
+              + "pde: Burgers\nmethod: upwind\nvalid: yes\n" * 4)
+    assert recovered_loop_verdict(looped, "length") == "yes"
+    assert is_no_verdict(looped, "length") is False
+
+
+def test_recovery_refuses_the_three_cases_that_made_scavenging_wrong():
+    """Each condition exists because dropping it reintroduces a measured failure."""
+    # Inside the reasoning block: this is the exact pattern that invented verdicts
+    # for 907 Nemotron consistency rows. 3 of this roster's looped draws match it.
+    inside = "<think>valid: yes\nvalid: yes\nvalid: yes\nstill thinking"
+    assert recovered_loop_verdict(inside, "length") is None
+    assert is_no_verdict(inside, "length") is True
+
+    # Cycling through alternatives rather than repeating a conclusion.
+    conflicting = "<think>x</think>\nvalid: yes\nvalid: no\nvalid: yes\n"
+    assert recovered_loop_verdict(conflicting, "length") is None
+
+    # A single answer may still have been revised had the model kept going.
+    once = "<think>x</think>\nvalid: yes\n"
+    assert recovered_loop_verdict(once, "length") is None
+
+
+def test_recovery_only_applies_to_truncated_rows():
+    """A cleanly terminated row is judged by the ordinary parser, not this path."""
+    clean = "<think>x</think>\npde: heat\nvalid: yes\n"
+    assert recovered_loop_verdict(clean, "stop") is None
+    assert is_no_verdict(clean, "stop") is False

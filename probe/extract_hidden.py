@@ -30,9 +30,9 @@ import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from eval.dataset_io import DEFAULT_MOD_DATASET, load_dataset  # noqa: E402
+from shared.dataset_io import DEFAULT_MOD_DATASET, load_dataset  # noqa: E402
 
-# Same prompt as eval/run_eval.py — kept verbatim for consistency
+# Same prompt as freegen_static_judgments/run_eval.py — kept verbatim for consistency
 PROMPT_TEMPLATE = """\
 You are analyzing a numerical simulation written in Python.
 

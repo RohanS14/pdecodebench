@@ -494,7 +494,7 @@ add("Enhanced", "E8. Code length quartile vs accuracy", fig_e8,
     "Accuracy averaged across all models and question types per cell.")
 
 # ── E9. Validity prediction confidence (4-way, with bootstrap CI) ─────────────
-# The hedge rule is canonical in freegen/parse_score.py — it used to be copy-pasted
+# The hedge rule is canonical in freegen_static_judgments/parse_score.py — it used to be copy-pasted
 # here and in two sibling viz scripts, which drifted. NOTE: the shared rule has an
 # explicit hedge lexicon the old local copy lacked ("possibly", "cannot determine",
 # "depends", ...), so bucket shares are NOT comparable to writeup.pdf Figure 1.

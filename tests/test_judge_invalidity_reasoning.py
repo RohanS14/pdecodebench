@@ -5,8 +5,8 @@ against the REAL dataset (not a fake), since the whole point of this mapping
 is to be correct against the dataset's actual (irregular) mod_type naming.
 """
 import sys, os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'eval'))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'freegen'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'freegen_static_judgments'))
 
 import pandas as pd
 
@@ -19,7 +19,7 @@ from frontier.judge_invalidity_reasoning import (
     find_valid_counterpart_code,
     map_to_valid_mod_type,
 )
-from dataset_io import DEFAULT_MOD_DATASET
+from shared.dataset_io import DEFAULT_MOD_DATASET
 
 PASS = "\033[92mPASS\033[0m"
 FAIL = "\033[91mFAIL\033[0m"

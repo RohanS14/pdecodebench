@@ -4,8 +4,8 @@ three tool schemas actually construct real google.genai FunctionDeclaration
 objects (catches shape drift early) and checks the Stage-2 prompt text.
 """
 import sys, os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'eval'))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'freegen'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'freegen_static_judgments'))
 
 from frontier.agentic_prompts import (
     ALL_TOOL_DECLS,

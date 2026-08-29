@@ -23,6 +23,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
+from matplotlib.lines import Line2D
 
 from . import claims as C
 from . import metrics as M
@@ -32,7 +33,9 @@ from .constants import (CONDITIONS, MODALITIES, MODALITY_LABELS, NAMING_LEVELS,
 
 SEED = 20260820
 SAMPLES_PER_CELL = 5
-HF_URL = "https://huggingface.co/datasets/bermaneh/pde-llm-eval-xmodal-consistency"
+# The FROZEN artifact this report is built from, not the 8-model consolidated
+# roster. consistency_claims.html reports the original three models only.
+HF_URL = "https://huggingface.co/datasets/bermaneh/pde-llm-eval-xmodal-consistency-frozen-v1"
 
 
 def _svg(fig):
@@ -398,6 +401,88 @@ def fig_sensitivity_matched(d):
         f"{common[0]}.")
 
 
+# ── shared blame-category bookkeeping ────────────────────────────────────────
+# Named at module scope rather than inside the figure that first used them,
+# because two figures now draw these bars and a category whose definition lives
+# in one of them is a category the other can silently redefine.
+MISS = "__miss__"            # flagged nothing: said the representations agree
+UNCLEAR = "__unclear__"      # flagged it, but named no view we can read
+NOVERDICT = "__noverdict__"  # never finished: budget truncation or a decode loop
+
+
+def _blame_order_labels():
+    order = list(MODALITIES) + [NONE, UNCLEAR, MISS, NOVERDICT]
+    label = {**MODALITY_LABELS, NONE: "named none",
+             UNCLEAR: "flagged, view unreadable",
+             MISS: "does not identify disagreement",
+             NOVERDICT: "no verdict \u2014 truncated or looping"}
+    return order, label
+
+
+def _blame_frame(src):
+    """`prepare` plus the no-verdict flag, which the schema does not carry."""
+    p = M.prepare(src)
+    p["no_verdict"] = (src["no_verdict"].to_numpy()
+                       if "no_verdict" in src.columns else False)
+    return p
+
+
+def _classify_blame(sub):
+    """(counts_by_category, total) for one already-selected set of draws."""
+    total = int(len(sub))
+    if total == 0:
+        return {}, 0
+    # Order matters. A no-verdict draw is classified BEFORE the flag/miss split:
+    # most of them carry an `agree=yes` the regex scavenged out of reasoning the
+    # model never finished, so treating them as answers would file them under
+    # "does not identify disagreement" and manufacture that finding.
+    nv = sub["no_verdict"].astype(bool)
+    counts = {NOVERDICT: int(nv.sum())}
+    ans = sub[~nv]
+    det = ans["detected"]
+    named = ans["pred_outlier"].where(det)
+    for m in MODALITIES:
+        counts[m] = int(named.eq(m).sum())
+    counts[NONE] = int(named.eq(NONE).sum())
+    counts[MISS] = int((~det).sum())
+    # Whatever is left is a flagged row whose named view we could not read. Derived
+    # by subtraction rather than by a parse predicate so the segments are guaranteed
+    # to sum to the row total -- a stacked bar that silently drops rows is worse than
+    # one that shows an unexplained sliver.
+    counts[UNCLEAR] = total - sum(counts.values())
+    return counts, total
+
+
+def _unconditional_counts(src):
+    """{condition: (counts_by_category, row_total)} over EVERY corrupted draw.
+
+    The arithmetic behind the unconditional blame bars, lifted out of the figure
+    that used to own it so the paired figure draws the same numbers rather than a
+    second implementation of them.
+    """
+    from .sensitivity import SIGNAL_CONDITIONS
+    p = _blame_frame(src)
+    corrupted = p[p["is_corrupted"]]
+    return {cond: _classify_blame(corrupted[corrupted["condition"].eq(cond)])
+            for cond in SIGNAL_CONDITIONS}
+
+
+def _clean_counts(src):
+    """The same categories over the CONTROL items, where nothing was corrupted.
+
+    The unconditional figure leaves this row out because there is no outlier to
+    localize on it. But the model still answers: on roughly half these items it says
+    the four representations disagree and then names one. Those names are the only
+    place in the data where its blame prior is visible with NO signal to respond to
+    -- whatever it points at here, it points at without evidence. On this row the
+    correct answer is the "says all four agree" segment, which is why the paired
+    figure marks correctness with a caret under the segment rather than by outlining
+    it: the meaning of a category flips between this row and the seven above it.
+    """
+    p = _blame_frame(src)
+    return _classify_blame(p[~p["is_corrupted"]])
+
+
 def fig_blame_stack_unconditional(d, d_all=None, verbose=False):
     """The blame figure with EVERY corrupted item in the denominator.
 
@@ -429,28 +514,18 @@ def fig_blame_stack_unconditional(d, d_all=None, verbose=False):
     # -- and the shares rest on a denominator that quietly lost the model's longest
     # deliberations.
     src = d if d_all is None else d_all
-    p = M.prepare(src)
-    p["no_verdict"] = (src["no_verdict"].to_numpy()
-                       if "no_verdict" in src.columns else False)
-    corrupted = p[p["is_corrupted"]]
+    tally = _unconditional_counts(src)
     # Same treatment as the conditional figure above: height from the row count, and
     # the legend beside the axes rather than under them. This one had the worse of
     # the two layouts -- a seven-entry legend in three columns at y=-0.42, which is
     # nearly three data rows of height spent naming the segments.
     fig, ax = plt.subplots(figsize=style.figsize(1.0, 0.235 * len(SIGNAL_CONDITIONS)
                                                  + 0.95))
-    if corrupted.empty:
+    if not any(t for _, t in tally.values()):
         style.empty_axes(ax, "no corrupted items")
         return _svg(fig)
 
-    MISS = "__miss__"          # flagged nothing: said the representations agree
-    UNCLEAR = "__unclear__"    # flagged it, but named no view we can read
-    NOVERDICT = "__noverdict__"  # never finished: budget truncation or a decode loop
-    order = list(MODALITIES) + [NONE, UNCLEAR, MISS, NOVERDICT]
-    label = {**ML, NONE: "named none",
-             UNCLEAR: "flagged, view unreadable",
-             MISS: "does not identify disagreement",
-             NOVERDICT: "no verdict \u2014 truncated or looping"}
+    order, label = _blame_order_labels()
 
     # No pooled row. Pooling across conditions averages corruptions that differ by
     # orders of magnitude in detectability (trajectory-rand vs code), so the summary
@@ -467,31 +542,11 @@ def fig_blame_stack_unconditional(d, d_all=None, verbose=False):
     share_max = {}          # biggest share any single row gives each category
     for row_i, cond in enumerate(rows):
         yi = ypos[row_i]
-        sub = corrupted[corrupted["condition"].eq(cond)]
-        total = int(len(sub))
+        counts, total = tally.get(cond, ({}, 0))
         if total == 0:
             ax.annotate("no corrupted rows", (0.01, yi), va="center",
                         fontsize=style.ANNOT_PT, color=c["muted"])
             continue
-        # Order matters. A no-verdict draw is classified BEFORE the flag/miss split:
-        # 709 of Nemotron's 907 carry an `agree=yes` the regex scavenged out of
-        # reasoning the model never finished, so treating them as answers would file
-        # 78% of them under "does not identify disagreement" and manufacture the very
-        # finding this figure reports.
-        nv = sub["no_verdict"].astype(bool)
-        counts = {NOVERDICT: int(nv.sum())}
-        ans = sub[~nv]
-        det = ans["detected"]
-        named = ans["pred_outlier"].where(det)
-        for m in MODALITIES:
-            counts[m] = int(named.eq(m).sum())
-        counts[NONE] = int(named.eq(NONE).sum())
-        counts[MISS] = int((~det).sum())
-        # Whatever is left is a flagged row whose named view we could not read. It is
-        # derived by subtraction rather than by a parse predicate so the segments are
-        # guaranteed to sum to the row total -- a stacked bar that silently drops
-        # rows is worse than one that shows an unexplained sliver.
-        counts[UNCLEAR] = total - sum(counts.values())
 
         left = 0.0
         true_m = CONDITION_OUTLIER[cond]
@@ -590,6 +645,324 @@ def fig_blame_stack_unconditional(d, d_all=None, verbose=False):
               borderaxespad=0.0)
     return _svg(fig)
 
+
+# The paired figure is the one figure in this package that does NOT fit the 5.5in
+# text column, and is meant not to. Two panels of seven rows each, with the row
+# captions carried on a shared axis, is a landscape object: squeezed into the column
+# its bars are shorter than their own labels and panel B's small segments close up.
+# It is drawn to be placed full width (\textwidth in a wide template, a `figure*`,
+# or a rotated float), so the type is scaled by LESS than the width -- the extra
+# space goes to the data, not to bigger letters.
+PAIR_WIDTH_IN = 10.6
+PAIR_TYPE_SCALE = 1.35
+
+# Two geometries for the same figure, same data and same arithmetic. "short" spends
+# about a third less height for a float that has to share a page with body text, and
+# it buys that back out of WHITE SPACE only -- the type scale, the panel widths and
+# the bar labels are identical in both, so the compact one is not a shrunken figure,
+# it is the same figure with the air taken out.
+#
+# The floor on `pitch` is not the bar: it is the caret, which lives in the gap
+# BETWEEN rows and cannot be allowed to touch the bar above or below it. So `bar_h`
+# rises as `pitch` falls -- the gap gives up proportionally more than the bar does --
+# and `caret_ms` comes down with it. `span_pad` is the figsize formula's old `+ 2.0`,
+# the allowance for the block gap, the control row and the axis padding, which all
+# shrink together with the row pitch or the rows would spread back out to fill the
+# box they were just given less of.
+PAIR_GEOMETRY = {
+    "default": dict(pitch=0.245, furniture=1.20, span_pad=2.00, block_gap=0.60,
+                    y_base=-0.62, pad_lo=0.50, pad_hi=0.55, bar_h=0.62,
+                    caret_dy=0.44, caret_ms=4.6, legend_dy=-0.02, note_dy=-0.135),
+    "short": dict(pitch=0.170, furniture=1.02, span_pad=1.55, block_gap=0.42,
+                  y_base=-0.56, pad_lo=0.62, pad_hi=0.46, bar_h=0.70,
+                  caret_dy=0.47, caret_ms=3.9, legend_dy=-0.015, note_dy=-0.115),
+}
+
+def fig_detection_blame_pair(d, d_all=None, verbose=True,
+                             width_in=PAIR_WIDTH_IN,
+                             type_scale=PAIR_TYPE_SCALE,
+                             geometry="default"):
+    """Detection and localization on ONE shared row axis. Returns a Figure.
+
+    The two questions this report answers in separate sections are the same
+    measurement split by denominator, and separating them lets a reader carry the
+    wrong impression from the first to the second. Panel A is "does the model
+    notice at all" -- the flag rate for each corruption against the rate at which the model
+    flags items where nothing is wrong. Panel B is "and which view does it blame" over
+    the SAME denominator, every corrupted item, so the hatched segment is exactly
+    the mass that never reached panel B's question.
+
+    That identity is the reason for the shared y-axis: read across a row and the
+    dot in A sits at the right-hand edge of the hatch in B. It only holds while no
+    draw is missing a verdict -- those are counted in B (a consumed opportunity)
+    and dropped from A (scoring a run that produced no verdict as if it had produced
+    a wrong one invents an answer) -- so the residual is measured below and stated
+    on the figure whenever it is not zero.
+
+    Rows are ordered by detectability within two blocks, matching `fig_sensitivity`:
+    trajectory's four generation methods are comparable with each other and the
+    three single-method views with each other, but the two blocks are not
+    severity-matched, so there is no global ranking to draw.
+
+    The control row is drawn in both panels, which the standalone blame figure does
+    not do. On the items where nothing was corrupted the model still says the four
+    views disagree about half the time and then names one, and that distribution is
+    its blame prior with no signal present -- the thing every row above it should be
+    read against. Correctness is marked with a caret under the correct segment rather
+    than by outlining it, because on that row the correct answer is "says all four
+    agree" and an outline convention would have to invert.
+
+    Not clickable, for the same reason the standalone unconditional figure is not:
+    the drill-down is keyed on the conditional denominators.
+
+    `geometry` picks a row pitch out of PAIR_GEOMETRY: "default" is the published
+    figure, "short" is the same figure at about two thirds the height for a float
+    that has to share a page. Nothing but white space differs between them.
+    """
+    from .sensitivity import detection_sensitivity, row_caption
+    from .constants import CONDITION_OUTLIER
+    style.apply(style.theme())
+    c = style.colors()
+    g = PAIR_GEOMETRY[geometry]
+    # Every point size in this figure is derived, so the whole thing rescales from
+    # `type_scale` alone rather than from fourteen literals that would drift apart.
+    pt_a = style.ANNOT_PT * type_scale
+    pt_b = style.BASE_PT * type_scale
+    pt_t = style.TICK_PT * type_scale
+    lw = type_scale                      # line weights track the type, not the width
+
+    r = detection_sensitivity(d)
+    tally = _unconditional_counts(d if d_all is None else d_all)
+    rows = [x for x in r.rows if not x["empty"]]
+
+    # Same two-block grouping as fig_sensitivity, and deliberately a copy of it
+    # rather than a call into it: that function draws the frozen report's Q1 figure
+    # and has to keep reproducing it byte for byte, so it is not refactored to serve
+    # a second caller. The ARITHMETIC is shared (detection_sensitivity,
+    # _unconditional_counts); only the ~20 lines of layout are duplicated.
+    traj = sorted([x for x in rows if x["condition"].startswith("A-T-")],
+                  key=lambda x: -x["hit_rate"])
+    other = sorted([x for x in rows if not x["condition"].startswith("A-T-")],
+                   key=lambda x: -x["hit_rate"])
+    groups = [g for g in (traj, other) if g]
+    ordered, ypos = [], []
+    y = 0.0
+    for members in reversed(groups):
+        for x in reversed(members):          # highest rate at the TOP of its block
+            y += 1.0
+            ordered.append(x)
+            ypos.append(y)
+        y += g["block_gap"]
+    rows = ordered
+    # Closer to the block than a full row gap. The baseline is a reference row, not
+    # an eighth corruption, but panel B leaves it empty and a wide gap there reads as
+    # a missing row rather than as a rule.
+    y_base = g["y_base"]
+
+    fig, (axa, axb) = plt.subplots(
+        1, 2, sharey=True,
+        # Row pitch grows with the TYPE, not with the width -- that is what makes
+        # this a landscape figure rather than a scaled-up square one. The trailing
+        # constant is the axis furniture (tick labels, x-label), a fixed number of
+        # text lines however many rows there are.
+        figsize=(width_in,
+                 g["pitch"] * type_scale * (len(rows) + g["span_pad"])
+                 + g["furniture"] * type_scale),
+        gridspec_kw=dict(width_ratios=[1.0, 1.12], wspace=0.09))
+    axa.tick_params(labelsize=pt_t)
+    axb.tick_params(labelsize=pt_t)
+    if not rows or not np.isfinite(r.fa_rate):
+        style.empty_axes(axa, "no rows")
+        style.empty_axes(axb, "no rows")
+        return fig
+
+    # ── panel A: did it notice ────────────────────────────────────────────────
+    lo_v = min([x["lo_rate"] for x in rows] + [r.fa_rate])
+    hi_v = max([x["hi_rate"] for x in rows] + [r.fa_rate])
+    xlo = max(0.0, np.floor((lo_v - 0.05) / 0.05) * 0.05)
+    xhi = min(1.0, np.ceil((hi_v + 0.05) / 0.05) * 0.05)
+    axa.axvspan(xlo, r.fa_rate, color=c["muted"], alpha=0.10, zorder=0)
+    axa.axvline(r.fa_rate, color=c["muted"], linewidth=1.0 * lw,
+                linestyle=(0, (4, 3)), zorder=1)
+    for yi, x in zip(ypos, rows):
+        col = MODALITY_COLORS[x["modality"]] if not x["thin"] else c["muted"]
+        axa.plot([x["lo_rate"], x["hi_rate"]], [yi, yi], color=col,
+                 linewidth=1.3 * lw, solid_capstyle="round", zorder=3)
+        axa.scatter([x["hit_rate"]], [yi], s=42 * lw ** 2, color=col, zorder=4)
+    axa.plot([r.fa_lo, r.fa_hi], [y_base, y_base], color=c["muted"],
+             linewidth=1.3 * lw, solid_capstyle="round", zorder=3)
+    axa.scatter([r.fa_rate], [y_base], s=42 * lw ** 2, color=c["muted"], zorder=4)
+    axa.axhline(0.15, color=c["muted"], linewidth=0.6)
+    axa.set_xlim(xlo, xhi)
+    # Tick density from the panel's own range AND from how much room it got. At
+    # text-column width a 5-point grid over a 60-point range put "100%" hard against
+    # panel B's "0"; at full width there is room for the finer grid again.
+    span = xhi - xlo
+    fine = width_in >= 8.0
+    step = ((0.10 if span > 0.45 else 0.05) if fine
+            else (0.20 if span > 0.45 else (0.10 if span > 0.20 else 0.05)))
+    ticks = np.arange(xlo, xhi + 1e-9, step)
+    axa.set_xticks(ticks)
+    axa.set_xticklabels([f"{100 * t:.0f}%" for t in ticks])
+    axa.set_xlabel("% of items flagged as disagreeing", fontsize=pt_b)
+    axa.grid(True, axis="x", linewidth=0.4, color=c["faint"])
+    axa.set_axisbelow(True)
+    # "at all" is dropped, not lost: panel A's x-label ("items flagged as
+    # disagreeing") already says the question is detection rather than
+    # localization, and with it the title overran panel A and collided with B's.
+    axa.set_title("A   Does the model notice a disagreement?", loc="left",
+                  fontsize=pt_b, color=c["fg"], pad=7 * lw)
+
+    axa.set_yticks(list(ypos) + [y_base])
+    axa.set_yticklabels([row_caption(x["condition"], verbose) for x in rows]
+                        + ["nothing corrupted"])
+    axa.get_yticklabels()[-1].set_color(c["muted"])
+    axa.set_ylim(y_base - g["pad_lo"], max(ypos) + g["pad_hi"])
+    if verbose:
+        # The rows are causes, not blame targets. Panel B's x-label says "by the view
+        # the model blamed" and panel A's says "flagged"; without this the shared
+        # captions down the left read as the answer rather than as the manipulation.
+        axa.set_ylabel("which view was corrupted", fontsize=pt_b, labelpad=6 * lw)
+
+    # ── panel B: and which view does it blame ─────────────────────────────────
+    order, label = _blame_order_labels()
+    # "does not identify disagreement" is a MISS on the seven corrupted rows and the
+    # CORRECT answer on the control row, so in this figure the category is named for
+    # what the model did rather than for whether it was right. Correctness is carried
+    # by the caret instead, which can point at a different category row by row.
+    label = {**label, MISS: "says all four agree"}
+    seen, share_max = set(), {}
+    residual = 0.0
+
+    # The control row is drawn, not left blank. On ~47% of items where nothing was
+    # corrupted the model still names a view, and that distribution is its blame
+    # prior with no signal present -- the baseline every row above should be read
+    # against, and the reason trajectory dominance there is a finding rather than an
+    # artefact of the corruptions.
+    clean_counts, clean_total = _clean_counts(d if d_all is None else d_all)
+    brows = [(yi, tally.get(x["condition"], ({}, 0)), CONDITION_OUTLIER[x["condition"]],
+              x["hit_rate"]) for yi, x in zip(ypos, rows)]
+    if clean_total:
+        brows.append((y_base, (clean_counts, clean_total), MISS, None))
+
+    for yi, (counts, total), correct_cat, hit_rate in brows:
+        if total == 0:
+            axb.annotate("no corrupted rows", (0.01, yi), va="center",
+                         fontsize=pt_a, color=c["muted"])
+            continue
+        left = 0.0
+        for cat in order:
+            n_here = counts.get(cat, 0)
+            if n_here <= 0:
+                continue
+            seen.add(cat)
+            w = n_here / total
+            share_max[cat] = max(share_max.get(cat, 0.0), w)
+            if cat == MISS:
+                axb.barh(yi, w, left=left, height=g["bar_h"], facecolor=c["panel"],
+                         hatch="///", edgecolor=c["muted"], linewidth=1.0 * lw,
+                         **style.hatch_kw())
+            elif cat == NOVERDICT:
+                axb.barh(yi, w, left=left, height=g["bar_h"], facecolor=c["faint"],
+                         hatch="xxx", edgecolor=c["muted"], linewidth=1.0 * lw,
+                         **style.hatch_kw())
+            elif cat == UNCLEAR:
+                axb.barh(yi, w, left=left, height=g["bar_h"], facecolor=NONE_COLOR,
+                         alpha=0.35, edgecolor=c["panel"], linewidth=1.5 * lw)
+            else:
+                axb.barh(yi, w, left=left, height=g["bar_h"],
+                         color=MODALITY_COLORS.get(cat, NONE_COLOR),
+                         edgecolor=c["panel"], linewidth=1.5 * lw)
+            # The width threshold falls with the panel: at full width a 5%
+            # segment is wide enough to hold its own label, and those small
+            # segments are exactly what the extra width was spent on.
+            if w >= (0.05 if fine else 0.08):
+                axb.text(left + w / 2, yi, f"{100 * w:.0f}%", ha="center",
+                         va="center", fontsize=pt_a,
+                         color=c["muted"] if cat == MISS else c["bg"], zorder=5)
+            # A caret under the correct segment, not a second box around it. The
+            # outline this replaces was `fg` at 1.5pt sitting immediately beside the
+            # hatched segment's `muted` border at 1.2pt: two dark rectangles of
+            # similar weight, one meaning "right answer" and the other meaning
+            # nothing, close enough that a reader could not tell at a glance which
+            # segment was being endorsed. A marker outside the bar cannot be confused
+            # with a bar edge at all, and it can point at the hatch on the control
+            # row -- which the outline convention could not do without inverting.
+            if cat == correct_cat:
+                axb.plot([left + w / 2], [yi - g["caret_dy"]], marker="^",
+                         markersize=g["caret_ms"] * lw, color=c["fg"], clip_on=False,
+                         zorder=6, linestyle="none")
+            left += w
+        # The cross-panel identity, measured rather than asserted: the "says all four
+        # agree" segment should begin exactly where panel A's dot sits.
+        if hit_rate is not None:
+            residual = max(residual,
+                           abs((1.0 - counts.get(MISS, 0) / total) - hit_rate))
+    axb.axhline(0.15, color=c["muted"], linewidth=0.6)
+    axb.set_xlim(0, 1.02)
+    axb.set_xticks([0, 0.25, 0.5, 0.75, 1.0])
+    axb.set_xticklabels(["0", "25%", "50%", "75%", "100%"])
+    axb.set_xlabel("% blamed, of items with this corruption", fontsize=pt_b)
+    axb.set_title("B   And which view does the model blame?", loc="left",
+                  fontsize=pt_b, color=c["fg"], pad=7 * lw)
+    for side in ("top", "right", "left"):
+        axb.spines[side].set_visible(False)
+    axa.spines["top"].set_visible(False)
+    axa.spines["right"].set_visible(False)
+    # sharey leaves B with A's tick MARKS but none of its labels, which reads as a
+    # row of unexplained dashes floating to the left of the bars.
+    axb.tick_params(axis="y", left=False)
+
+    handles = [Patch(facecolor=MODALITY_COLORS[m], label=label[m])
+               for m in MODALITIES if m in seen]
+    if NONE in seen:
+        handles.append(Patch(facecolor=NONE_COLOR, label=label[NONE]))
+    if UNCLEAR in seen and share_max.get(UNCLEAR, 0.0) >= 0.005:
+        handles.append(Patch(facecolor=NONE_COLOR, alpha=0.35, label=label[UNCLEAR]))
+    if MISS in seen:
+        handles.append(Patch(facecolor=c["panel"], hatch="///",
+                             edgecolor=c["muted"], label=label[MISS],
+                             **style.hatch_kw()))
+    if NOVERDICT in seen:
+        handles.append(Patch(facecolor=c["faint"], hatch="xxx",
+                             edgecolor=c["muted"], label=label[NOVERDICT],
+                             **style.hatch_kw()))
+    handles.append(Line2D([], [], marker="^", markersize=g["caret_ms"] * lw, color=c["fg"],
+                          linestyle="none", label="correct answer for this row"))
+    # Under both panels, not beside B. A right-hand legend would have to come out of
+    # panel B's width, and B is the panel carrying seven segments across a full
+    # 0-100% range; the row pitch and the segment widths are what have to stay
+    # legible at column width.
+    #
+    # Anchored BELOW the figure box (negative y) rather than inside a reserved
+    # margin: these figures are saved with bbox_inches="tight", which grows the
+    # canvas to include any artist hanging off it, so an explicit bottom margin
+    # would be added to -- not consumed by -- the legend, and the fixed reservation
+    # would have to be retuned every time the row count changes.
+    # One row of entries when the width allows it: wrapping six short labels onto
+    # two rows at full width buys nothing and costs a line of height.
+    fig.legend(handles=handles, loc="upper center",
+               bbox_to_anchor=(0.5, g["legend_dy"] * type_scale),
+               bbox_transform=fig.transFigure, ncol=len(handles) if fine else 3,
+               frameon=False, fontsize=pt_a, handlelength=1.1,
+               handletextpad=0.5, columnspacing=1.6)
+
+    # Line breaks written out, not left to `wrap=True`: wrap measures against the
+    # FIGURE width, so on the wide layout it produced a last line of two words that
+    # then collided with the legend.
+    # The descriptive note is gone -- it restated the caption, and at full width two
+    # centred lines under the axes read as a second figure. What stays is the GUARD:
+    # A's flag rate and B's "says all four agree" share are the same denominator seen
+    # from two sides, so they must sum to 1 exactly. If they ever do not, the figure
+    # has to say so on its face rather than in a docstring.
+    if residual > 0.005:
+        fig.text(0.5, g["note_dy"] * type_scale,
+                 f"The panels part company by up to {100 * residual:.1f} points: B "
+                 f"also counts draws that ended without a verdict, which A drops.",
+                 ha="center", va="top", fontsize=pt_a, color=c["muted"],
+                 linespacing=1.5)
+    fig._pair_residual = residual        # for tests and for the report caption
+    return fig
 
 def fig_blame_stack(d, annotate=False, hide_empty=False, verbose=False):
     """Four true-outlier rows plus the pooled marginal reference. Segments clickable.
@@ -1087,6 +1460,53 @@ def build(d, out="viz/consistency_claims.html", defects=None, theme="dark",
                 "draws carry an &ldquo;agree&rdquo; the parser scavenged out of "
                 "reasoning the model never finished, so folding them into &ldquo;does "
                 "not identify disagreement&rdquo; would manufacture that finding.")
+            # The paper figure: the two questions this report answers in separate
+            # sections, on one row axis. It comes AFTER both of its halves rather
+            # than replacing them, because each half still carries its own verdict,
+            # details table and -- for the conditional figure -- the drill-down.
+            _pair = fig_detection_blame_pair(d, d_all=d_all, verbose=verbose_labels)
+            _resid = getattr(_pair, "_pair_residual", 0.0)
+            # A ruled heading, not just another SVG appended to the same <figure>.
+            # Three stacked figures inside one bordered box ran together -- the
+            # paired figure's panel titles sat directly under the previous figure's
+            # legend with nothing between them, so it read as a fourth row of that
+            # figure rather than as a separate one.
+            svg = (svg + '<h4 class="subfig">Both questions on one row axis</h4>'
+                   + _svg(_pair))
+            caption += (
+                "<br><br><b>Below: both questions on one row axis.</b> This is the "
+                "figure for the paper. Panel A is the detection question from the "
+                "section above &mdash; how often each corruption is flagged, against "
+                "the rate at which the model flags items where nothing is wrong "
+                "(dashed line, shaded region). Panel B is the blame figure "
+                "immediately above it, over the same denominator. They are drawn on "
+                "a shared row axis because they are one measurement split two ways: "
+                "read across a row and panel A&rsquo;s dot sits at the right-hand "
+                "edge of panel B&rsquo;s hatch"
+                + (" &mdash; here to within "
+                   f"{100 * _resid:.1f} percentage points, the draws that ended "
+                   "without a verdict, which B counts and A drops."
+                   if _resid > 0.005 else
+                   " &mdash; here exactly, because no draw in this roster ended "
+                   "without a verdict.")
+                + " Rows are ordered by detectability within two blocks: "
+                "trajectory&rsquo;s four generation methods are comparable with each "
+                "other and the three single-method views with each other, but the "
+                "two blocks are not severity-matched, so there is no global ranking "
+                "to draw."
+                "<br><br><b>The control row is drawn here, which the figure above "
+                "omits.</b> On the items where nothing was corrupted the model still "
+                "says the four views disagree about half the time and then names "
+                "one, and that distribution is its blame prior with no signal to "
+                "respond to \u2014 whatever it points at there, it points at without "
+                "evidence, and every row above should be read against it. That is "
+                "also why correctness is marked with a caret <b>under</b> the correct "
+                "segment rather than by outlining it: on the control row the correct "
+                "answer is <i>says all four agree</i>, so the marker has to be able "
+                "to move to a different category, and an outline sitting beside the "
+                "hatched segment&rsquo;s own border was two dark rectangles of "
+                "similar weight where only one meant anything. Not clickable, for "
+                "the same reason the figure above it is not.")
         if svg is None:
             figblock = ("<div class='pending'><b>No figure.</b> "
                         f"{_esc(v.detail or 'This question has no measured data.')}"

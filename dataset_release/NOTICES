@@ -1,0 +1,61 @@
+THIRD-PARTY NOTICES
+===================
+
+The datasets in this directory contain PDE solver implementations derived from the
+third-party projects listed below. Per-row provenance is given in PROVENANCE.csv and in
+the upstream_* columns of each dataset. Full license texts are in LICENSES/.
+
+STATEMENT OF MODIFICATIONS
+--------------------------
+All third-party code in these datasets has been modified from its original form. The
+modifications applied, in the order performed, are:
+
+  1. Reduction to a self-contained Python script containing the core numerical
+     simulation logic. Plotting, I/O, notebook scaffolding, and module-level
+     docstrings were removed.
+  2. Creation of a physically invalid variant, in which a single change (typically a
+     sign flip or an altered term) causes the solver to implement incorrect physics
+     while still executing successfully.
+  3. Lexical perturbation into eight conditions: comments retained, comments removed,
+     comments replaced with comments drawn from a solver for a different PDE class,
+     and descriptive identifiers replaced with meaningless placeholders
+     (foobar1, function1, ...), crossed with the valid/invalid axis.
+
+Because six of the eight conditions remove or overwrite all comments, per-file
+copyright headers cannot be preserved inside the code fields themselves. The notices
+below, together with the per-row upstream_* columns, serve that purpose instead.
+
+Rows marked origin == "synthetic" contain no third-party code. Those solvers were
+generated for this project and are covered by the MIT license in LICENSE.
+
+NOTICES
+-------
+
+Partial Differential Equations -- Gilbert Francois Duivesteijn
+  https://github.com/gilbertfrancois/partial-differential-equations
+  Commit c3d2bb0. Licensed under the Apache License, Version 2.0.
+  See LICENSES/Apache-2.0.txt.
+  Samples: Burgers_1, Burgers_2, Burgers_3, Burgers_4, Heat_1, Heat_2, Heat_3,
+           Heat_4, Wave_3.
+
+JAX-CFD -- Copyright 2021 Google LLC
+  https://github.com/google/jax-cfd
+  Commit f5c7792. Licensed under the Apache License, Version 2.0.
+  See LICENSES/Apache-2.0.txt.
+  Samples: NavierStokes_4.
+
+CFD Python -- Copyright (c) 2013 Lorena A. Barba, Gilbert F. Forsyth
+  https://github.com/barbagroup/CFDPython
+  Commit 92c8220. Software under BSD-3-Clause; instructional text under
+  CC-BY-3.0. See LICENSES/CFDPython-LICENSE.txt.
+  Cite: Barba and Forsyth, Journal of Open Source Education 2(16):21, 2019.
+        https://doi.org/10.21105/jose.00021
+  Samples: NavierStokes_1, NavierStokes_2.
+
+mpi4py-fft -- Copyright (c) 2017 Lisandro Dalcin and Mikael Mortensen
+  https://github.com/mpi4py/mpi4py-fft
+  Commit fc451ac. Licensed under the BSD 2-Clause License.
+  See LICENSES/BSD-2-Clause-mpi4py-fft.txt.
+  Cite: Mortensen, Dalcin and Keyes, Journal of Open Source Software
+        4(36):1340, 2019. https://doi.org/10.21105/joss.01340
+  Samples: NavierStokes_3.

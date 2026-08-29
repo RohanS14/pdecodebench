@@ -7,9 +7,9 @@ the template itself adds tokens. Weights are never downloaded -- tokenizer only.
 import sys, numpy as np
 sys.path.insert(0, "/home/ehb7466/pde-llm-eval")
 
-from eval.consistency_prompts import (ViewSources, build_messages, load_items,
+from cross_modal_consistency.eval.consistency_prompts import (ViewSources, build_messages, load_items,
                                       load_exec_trajectories)
-from eval.run_cross_modal_consistency import TOGGLEABLE
+from cross_modal_consistency.eval.run_cross_modal_consistency import TOGGLEABLE
 
 MODELS = ["Qwen/Qwen3.5-27B", "Qwen/Qwen3.6-27B", "Qwen/Qwen3.8-27B",
           "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",

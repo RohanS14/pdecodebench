@@ -10,7 +10,7 @@ import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
-sys.path.insert(0, os.path.join(ROOT, "freegen"))
+sys.path.insert(0, os.path.join(ROOT, "freegen_static_judgments"))
 
 
 def _load(rel, name):
@@ -23,7 +23,7 @@ def _load(rel, name):
     return mod
 
 
-RPT = _load("freegen/report.py", "freegen_report")
+RPT = _load("freegen_static_judgments/report.py", "freegen_report")
 
 
 def _draws(n_items=40, k=3, seed=0):
@@ -98,12 +98,12 @@ def test_no_verdict_rows_are_dropped_by_load_not_scored(tmp_path):
 
 def test_aggregate_dedup_key_includes_sample_idx():
     """The k=3 regression that made every legitimate draw look like a duplicate."""
-    src = open(os.path.join(ROOT, "freegen/aggregate_freegen.py")).read()
+    src = open(os.path.join(ROOT, "freegen_static_judgments/aggregate_freegen.py")).read()
     assert '"sample_idx"' in src
     i = src.index("dedup_keys")
     assert "sample_idx" in src[i:i + 400]
 
 
 def test_aggregate_reads_k_from_the_data_rather_than_assuming_one():
-    src = open(os.path.join(ROOT, "freegen/aggregate_freegen.py")).read()
+    src = open(os.path.join(ROOT, "freegen_static_judgments/aggregate_freegen.py")).read()
     assert "nunique()" in src and "expect_items" in src

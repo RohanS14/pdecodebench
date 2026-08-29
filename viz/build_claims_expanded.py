@@ -1,9 +1,10 @@
 """Build consistency_claims_expanded.html — the same report, on the new sampled runs.
 
 This is a SIBLING of viz/build_claims.sh, not a replacement. That script stays pinned
-to the frozen repo and keeps producing viz/consistency_claims.html untouched; this one
-reads the generational per-model repos and writes a separate file. Nothing here can
-overwrite the published report.
+to the frozen repo (bermaneh/pde-llm-eval-xmodal-consistency-frozen-v1) and keeps
+producing viz/consistency_claims.html untouched; this one reads the consolidated
+generational repo and writes a separate file. Nothing here can overwrite the published
+report.
 
 The roster is DECLARED (see ROSTER), not discovered from whichever repos happen to
 exist. A run that has not started yet has no repo, so a discovery-based list would
@@ -35,6 +36,12 @@ Two differences from the frozen run drive the filtering below:
    an answer, and scoring them as failures counts a run that produced no verdict as
    if it had produced a wrong one.
 
+   As of 2026-08-25 every arm reads ZERO here -- the budget draws were continued at a
+   larger cap and the looping ones redrawn, and all 24,576 draws carry a verdict the
+   model actually gave. The filter stays in place because it is the guard, not the
+   fix: a future re-run at a smaller cap would silently reintroduce scavenged
+   verdicts, and this is what would catch it.
+
 Usage:
     .tools-venv/bin/python viz/build_claims_expanded.py            # complete models only
     .tools-venv/bin/python viz/build_claims_expanded.py --partial  # include in-flight runs
@@ -58,69 +65,30 @@ K_DRAWS = 3        # every arm samples k=3, so a complete arm is 1024 x 3 rows
 OUT = "viz/consistency_claims_expanded.html"
 REGISTRY = "data/model_registry.csv"
 
+# The single CONSOLIDATED results repo. Until 2026-08-25 this was ~40 per-model repos
+# -- one per arm plus a chain of `-backfill`/`-128k`/shard repos -- because concurrent
+# jobs each uploaded their own arm and push_dataset_to_hub REPLACES a split, so two
+# arms could not share one repo while they were running. That campaign is finished:
+# every repair pass has been merged back into its arm, the arms carry `model` as a
+# column, and the per-model repos have been deleted. The preference/union/repair
+# machinery that used to pick between them is gone with them -- there is nothing left
+# to prefer, and a rule that silently picks among repos is exactly what produced the
+# stale-arm bugs recorded below.
+SOURCE_REPO = "bermaneh/pde-llm-eval-cross-modal-consistency"
+
 # The intended roster, in release order -- which is the axis this expansion exists to
-# create. The repo name is spelled out per model rather than derived from the model id:
-# the slugs are irregular (DeepSeek-R1-Distill-Qwen-32B -> r1-distill-qwen-32b,
-# NVIDIA-Nemotron-3-Nano-30B-A3B-BF16 -> nemotron-3-nano-30b), so a rule would be a
-# guess and a wrong guess reads as "not started" for a model that has finished.
-_R = "bermaneh/pde-llm-eval-xmodal-gen-"
-
-
-class Shards(tuple):
-    """Repos to CONCATENATE, as opposed to the plain tuple's "prefer the first
-    complete one".
-
-    Qwen3.8 is generated as four disjoint solver-system slices on four GPUs because
-    serially it costs 27 GPU-h: its median trace is 17,747 output tokens, 3x any
-    other model here, at the roster's lowest concurrency (6.92x). Each shard uploads
-    to its own repo, so the model's rows live in four places at once and the
-    preference rule would show whichever single shard happened to be furthest along
-    -- reporting a quarter of the arm as though it were all of it.
-
-    Shard 1 was seeded with the 256 items the cancelled serial job had already
-    written, so its repo overlaps the original arm; the union is deduplicated on
-    (item_id, sample_idx), which is the row identity the eval itself checkpoints on.
-    """
-
-
+# create. It is DECLARED, not read off the data: a model whose rows are missing must
+# show up as an empty row in the report rather than vanishing from it, and a roster
+# derived from `df.model.unique()` cannot tell "not run" from "not in the study".
 ROSTER = [
-    ("R1-Distill-32B",      "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B",   (_R + "r1-distill-qwen-32b-final", _R + "r1-distill-qwen-32b-backfill2", _R + "r1-distill-qwen-32b-backfill", _R + "r1-distill-qwen-32b")),
-    ("QwQ-32B",             "Qwen/QwQ-32B",                               (_R + "qwq-32b-final", _R + "qwq-32b-backfill3", _R + "qwq-32b-backfill2", _R + "qwq-32b-backfill", _R + "qwq-32b")),
-    ("Qwen3-32B",           "Qwen/Qwen3-32B",                             (_R + "qwen3-32b-final", _R + "qwen3-32b-backfill2", _R + "qwen3-32b-backfill", _R + "qwen3-32b")),
-    # Two repos, in preference order. The 64k re-run raises this model's generation
-    # budget from 32768 to 65536 because 908 of its 3072 draws stopped at exactly the
-    # old cap; survey() switches to it as soon as it is complete and falls back to the
-    # original until then, so this file never has to be edited by hand mid-run.
-    ("Nemotron-3-Nano-30B", "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
-     # Preference order, best budget first. survey() takes the first COMPLETE repo, so
-     # each re-run supersedes its predecessor automatically as it lands. 32k truncated
-     # 29.6% of draws and 64k still truncated 24.9%, both at exactly the cap; 128k is
-     # the budget the researcher approved on 2026-08-22.
-     (_R + "nemotron-3-nano-30b-final", _R + "nemotron-3-nano-30b-backfill2", _R + "nemotron-3-nano-30b-backfill", _R + "nemotron-3-nano-30b-128k",
-      _R + "nemotron-3-nano-30b-64k", _R + "nemotron-3-nano-30b")),
-    # Preference order, best budget first, same mechanism as Nemotron below: survey()
-    # takes the first COMPLETE repo, so the 128k re-run supersedes the 32k arm the
-    # moment it lands and this file needs no hand edit mid-run. GLM lost 374 draws at
-    # 32768, of which 328 were budget and only 46 were decode loops -- so unlike
-    # Nemotron, context actually buys this model its answers back.
-    ("GLM-4.7-Flash",       "zai-org/GLM-4.7-Flash",
-     (_R + "glm-4-7-flash-final", _R + "glm-4-7-flash-backfill3", _R + "glm-4-7-flash-backfill2", _R + "glm-4-7-flash-backfill", _R + "glm-4-7-flash-128k",
-      _R + "glm-4-7-flash")),
-    ("Qwen3.5-27B",         "Qwen/Qwen3.5-27B",                           (_R + "qwen3-5-27b-final", _R + "qwen3-5-27b-backfill2", _R + "qwen3-5-27b-backfill", _R + "qwen3-5-27b")),
-    # 128k re-run, same supersede-when-complete mechanism as GLM and Nemotron. At a 3.0%
-    # cap-hit rate this was the last arm whose budget was doing measurable work; the
-    # models still at 32768 hit their cap 0.0-1.2% of the time.
-    ("Qwen3.6-27B",         "Qwen/Qwen3.6-27B",
-     (_R + "qwen3-6-27b-final", _R + "qwen3-6-27b-backfill3", _R + "qwen3-6-27b-backfill2", _R + "qwen3-6-27b-backfill", _R + "qwen3-6-27b-128k", _R + "qwen3-6-27b")),
-    # Four system-disjoint shards plus the original arm they were seeded from. Once
-    # merge_qwen38_shards.sh concatenates them into qwen3-8-27b/ and that repo is
-    # pushed complete, this can go back to a plain string -- the union will simply
-    # agree with it.
-    # The four shards merged into qwen3-8-27b on 2026-08-23 (3,072 draws / 32 systems,
-    # verified disjoint), and consolidate_arms.py then folded the repair passes in, so
-    # the union is no longer needed: -final IS the whole arm.
-    ("Qwen3.8-27B",         "Qwen/Qwen3.8-27B",
-     (_R + "qwen3-8-27b-final", _R + "qwen3-8-27b")),
+    ("R1-Distill-32B",      "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B"),
+    ("QwQ-32B",             "Qwen/QwQ-32B"),
+    ("Qwen3-32B",           "Qwen/Qwen3-32B"),
+    ("Nemotron-3-Nano-30B", "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"),
+    ("GLM-4.7-Flash",       "zai-org/GLM-4.7-Flash"),
+    ("Qwen3.5-27B",         "Qwen/Qwen3.5-27B"),
+    ("Qwen3.6-27B",         "Qwen/Qwen3.6-27B"),
+    ("Qwen3.8-27B",         "Qwen/Qwen3.8-27B"),
 ]
 
 
@@ -136,39 +104,34 @@ def check_roster_matches_registry():
     except (FileNotFoundError, KeyError, ValueError):
         print(f"[expanded] WARNING: cannot read {REGISTRY}; roster unchecked")
         return
-    mine = {m for _, m, _ in ROSTER}
+    mine = {m for _, m in ROSTER}
     if mine - reg:
         print(f"[expanded] WARNING: in roster but not {REGISTRY}: {sorted(mine - reg)}")
     if reg - mine:
         print(f"[expanded] WARNING: in {REGISTRY} but not roster: {sorted(reg - mine)}")
 
 
-def load_raw(repos):
-    """Raw rows per repo. A repo that does not exist yet maps to None, not absent:
-    the caller must be able to tell "queued" from "finished with no rows".
+def load_raw(repo=SOURCE_REPO):
+    """The consolidated results frame, or None if the repo is not readable.
 
     Existence is checked against the Hub BEFORE loading, because load_dataset falls
     back to the local cache when a repo 404s and only says so on stdout. On
-    2026-08-22 that silently resurrected an abandoned run: qwen3-8-27b's 32k-budget
-    rows had been deleted from the Hub, and the report rebuilt with all 384 of them
-    -- 169 unusable -- as though the arm were live. A cached copy of a repo that no
-    longer exists is not evidence about the run; it is a stale artifact.
+    2026-08-22 that silently resurrected an abandoned run: a deleted arm's 384 stale
+    rows -- 169 of them unusable -- rebuilt the report as though the run were live. A
+    cached copy of a repo that no longer exists is not evidence about the run; it is
+    a stale artifact, and this check is the only thing that tells the two apart.
     """
     from datasets import load_dataset
     from huggingface_hub import HfApi
-    api = HfApi()
-    out = {}
-    for r in repos:
-        try:
-            api.dataset_info(r)                      # 404s here => genuinely absent
-        except Exception:                                             # noqa: BLE001
-            out[r] = None
-            continue
-        try:
-            out[r] = load_dataset(r, split="train").to_pandas()
-        except Exception:                                             # noqa: BLE001
-            out[r] = None
-    return out
+    try:
+        HfApi().dataset_info(repo)               # 404s here => genuinely absent
+    except Exception as exc:                                          # noqa: BLE001
+        print(f"[expanded] {repo} not readable: {type(exc).__name__}: {exc}")
+        return None
+    df = load_dataset(repo, split="train").to_pandas()
+    print(f"[expanded] {repo}: {len(df):,} draws / "
+          f"{df['model'].nunique()} model(s) / {df['item_id'].nunique():,} items")
+    return df
 
 
 def has_real_verdict(df):
@@ -207,65 +170,18 @@ def sampling_of(df):
 
 
 def survey(raw, include_partial):
-    """One status record per ROSTER entry, in release order."""
+    """One status record per ROSTER entry, in release order.
+
+    Sliced out of the one consolidated frame by `model`. A roster entry with no rows
+    reports "queued" rather than being dropped, which is the whole reason ROSTER is
+    declared rather than read off the data.
+    """
+    by_model = ({m: g for m, g in raw.groupby("model")}
+                if raw is not None and len(raw) else {})
     rows = []
-    for short, model_id, repos in ROSTER:
-        if isinstance(repos, Shards):
-            # Union, not preference: every shard holds a different slice of the arm.
-            parts = [raw.get(r) for r in repos]
-            live = [(r, d) for r, d in zip(repos, parts) if d is not None and len(d)]
-            if live:
-                df = pd.concat([d for _, d in live], ignore_index=True)
-                before = len(df)
-                if {"item_id", "sample_idx"} <= set(df.columns):
-                    df = df.drop_duplicates(subset=["item_id", "sample_idx"],
-                                            keep="last")
-                dupes = before - len(df)
-                repo = "{} (+{} shard{})".format(
-                    live[0][0].rsplit("/", 1)[-1], len(live) - 1,
-                    "" if len(live) == 2 else "s")
-                print(f"[expanded] {short}: unioned {len(live)} shard repo(s) -> "
-                      f"{len(df):,} draws / {df['item_id'].nunique():,} items"
-                      + (f" (dropped {dupes:,} duplicate draw(s))" if dupes else ""))
-            else:
-                repo, df = repos[0], None
-            repair = None
-        else:
-            repos = (repos,) if isinstance(repos, str) else tuple(repos)
-            # First complete repo wins; otherwise the first with any rows; otherwise
-            # the preferred one, so a model that has not started still reports under
-            # the repo it will eventually fill.
-            have = [(r, raw.get(r)) for r in repos]
-            pick = next((rd for rd in have if _is_complete(rd[1])), None)
-            if pick is None:
-                pick = next((rd for rd in have if rd[1] is not None and len(rd[1])),
-                            None)
-            repo, df = pick if pick else (repos[0], None)
-            # A repair pass still on the GPU produces an arm that is strictly BETTER
-            # on no-verdict but short on draws, so _is_complete rightly refuses to
-            # promote it -- and the table then reports the stale source count while
-            # the job is actively fixing those very rows. GLM read 374 here on
-            # 2026-08-22 with 28 actually left. Report the in-flight arm beside the
-            # scored one: the figures stay on the complete arm, which is the whole
-            # point of the guard, and the reader still sees what is left.
-            repair = None
-            pick_idx = repos.index(repo) if repo in repos else len(repos)
-            for i, (r_, d_) in enumerate(have):
-                if i >= pick_idx or d_ is None or not len(d_):
-                    continue          # only arms PREFERRED over the scored one
-                # Count the draws MISSING from the repair arm as still-corrupted, not as
-                # absent. A repair arm copies good rows through and appends fixes as it
-                # goes, so a draw it has not reached yet is in neither group -- and
-                # counting only what is present reported Nemotron as "689 -> 0" when
-                # 520 of those 689 had never been attempted. The denominator is the
-                # full arm, so anything short of it is outstanding work.
-                pending_ = max(0, N_ITEMS * K_DRAWS - int(len(d_)))
-                nv_ = int((~has_real_verdict(d_)).sum()) + pending_
-                if repair is None or nv_ < repair["no_verdict"]:
-                    repair = {"repo": r_, "df": d_, "no_verdict": nv_,
-                              "draws": int(len(d_)),
-                              "items": int(d_["item_id"].nunique())}
-        rec = {"short": short, "model": model_id, "repo": repo, "df": None,
+    for short, model_id in ROSTER:
+        df = by_model.get(model_id)
+        rec = {"short": short, "model": model_id, "repo": SOURCE_REPO, "df": None,
                "df_all": None, "good_mask": None, "repair": None,
                "items": 0, "draws": 0, "dropped": 0, "dropped_loop": 0,
                "dropped_budget": 0, "sampling": "",
@@ -275,20 +191,13 @@ def survey(raw, include_partial):
             # The two ways a draw ends without a verdict are not the same defect and
             # do not have the same remedy: a budget-limited draw can be finished by
             # giving it more tokens, a looping one cannot. Reporting them in one
-            # column hid that Nemotron's 907 are 650 loops while GLM's 374 are 328
-            # budget -- opposite problems presented as the same number.
-            from crossmodal.eval.parse_consistency import is_looping
+            # column hid that Nemotron's 907 were 650 loops while GLM's 374 were 328
+            # budget -- opposite problems presented as the same number. Both are
+            # repaired as of 2026-08-25 and every arm now reads zero, but the split
+            # stays: it is what a future re-run needs to see if one regresses.
+            from cross_modal_consistency.eval.parse_consistency import is_looping
             lost = df[~good]
             loops = int(sum(1 for t in lost["response"] if is_looping(t))) if len(lost) else 0
-            if repair is not None and repair["no_verdict"] < int((~good).sum()):
-                rlost = repair["df"][~has_real_verdict(repair["df"])]
-                rloop = int(sum(1 for t in rlost["response"] if is_looping(t))) if len(rlost) else 0
-                # Pending draws cannot be classified until they are drawn, so they
-                # are carried in the budget column rather than invented as loops.
-                repair.update(loop=rloop,
-                              budget=repair["no_verdict"] - rloop)
-                repair.pop("df", None)
-                rec["repair"] = repair
             rec.update(items=int(df["item_id"].nunique()), draws=int(good.sum()),
                        dropped=int((~good).sum()), dropped_loop=loops,
                        dropped_budget=int((~good).sum()) - loops,
@@ -297,10 +206,12 @@ def survey(raw, include_partial):
                        # included, plus the mask that separates them. The
                        # unconditional blame figure needs these: dropping them is
                        # what makes its row totals unequal, and the drop is not
-                       # uniform across conditions (8.0% for corrupted code vs 4.2%
-                       # for trajectory-rand), so the exclusion is not ignorable.
+                       # uniform across conditions, so the exclusion is not
+                       # ignorable. With every arm now at zero drops the mask is
+                       # all-True and the two figures coincide -- which is the
+                       # result, not a reason to stop computing it.
                        df_all=df, good_mask=good)
-            complete = rec["items"] >= N_ITEMS
+            complete = _is_complete(df)
             rec["state"] = "complete" if complete else "in progress"
             rec["used"] = complete or include_partial
         rows.append(rec)
@@ -481,7 +392,7 @@ def inject_provenance(path, rows):
 
     # The stock subtitle links the frozen dataset; these results do not come from it.
     doc = doc.replace(
-        '<a href="https://huggingface.co/datasets/bermaneh/pde-llm-eval-xmodal-consistency" '
+        '<a href="https://huggingface.co/datasets/bermaneh/pde-llm-eval-cross-modal-consistency" '
         'style="color:var(--accent)">source dataset</a>',
         '<b style="color:var(--accent)">sampled runs &mdash; see roster below</b>')
 
@@ -979,8 +890,8 @@ def _false_alarm_block(raw):
     per = false_alarm_stats(raw)
     if not per:
         return ""
-    short = {m: sh for sh, m, _ in ROSTER}
-    order = [m for _, m, _ in ROSTER if m in per]
+    short = {m: sh for sh, m in ROSTER}
+    order = [m for _, m in ROSTER if m in per]
     tr = []
     for m in order:
         d = per[m]
@@ -1127,10 +1038,8 @@ def main():
     args = ap.parse_args()
 
     check_roster_matches_registry()
-    print("[expanded] loading generational repos")
-    every = [r for _, _, rr in ROSTER
-             for r in ((rr,) if isinstance(rr, str) else rr)]
-    rows = survey(load_raw(every), args.partial)
+    print(f"[expanded] loading {SOURCE_REPO}")
+    rows = survey(load_raw(), args.partial)
 
     print(f"\n[expanded] {'model':<22} {'items':>6} {'draws':>7} {'no-verdict':>11}  status")
     for r in rows:

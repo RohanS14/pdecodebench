@@ -456,6 +456,17 @@ def fig_obfuscation_facets(res, models):
         for yi, (cst, key) in zip(ypos, rows):
             head = key is None
             col = c["bar"] if head else MODALITY_COLORS.get(key, c["muted"])
+            # The interval belongs to the PAIRED difference and is anchored at the
+            # real-names dot, so its far end is where the obfuscated dot could sit.
+            # Marginal intervals on the two dots would be the wrong quantity twice
+            # over: both arms are the same solvers, and the reader would compare two
+            # overlapping bars instead of asking whether the GAP clears zero.
+            # Without it this panel printed a signed delta per row with nothing to
+            # say which were separable -- and per model, at 32 solvers, most are not.
+            if np.isfinite(cst.lo) and np.isfinite(cst.hi):
+                a = 100 * cst.real
+                ax.plot([a + 100 * cst.lo, a + 100 * cst.hi], [yi, yi], color=col,
+                        linewidth=0.7, alpha=0.5, zorder=1)
             ax.plot([100 * cst.real, 100 * cst.obf], [yi, yi], color=col,
                     linewidth=1.3, alpha=0.9, zorder=2)
             ax.scatter([100 * cst.real], [yi], s=34 if head else 24, color=col,
@@ -464,7 +475,13 @@ def fig_obfuscation_facets(res, models):
                        facecolor=c["panel"], edgecolor=col, linewidth=1.3, zorder=4)
             # The gap is the quantity; printing it per row means the four
             # exploratory rows are readable without measuring against the axis.
-            ax.annotate(f"{100 * cst.diff:+.1f}", (1.02, yi),
+            # The head row says whether it cleared zero. The four below it do NOT
+            # get a significance mark: analyse() flags them exploratory, and a mark
+            # would promote an underpowered per-representation split to a result.
+            txt = f"{100 * cst.diff:+.1f}"
+            if head and not cst.significant:
+                txt += " n.s."
+            ax.annotate(txt, (1.02, yi),
                         xycoords=("axes fraction", "data"), va="center", ha="left",
                         fontsize=style.TICK_PT - 2.5,
                         color=c["fg"] if head else c["muted"],
@@ -488,12 +505,15 @@ def fig_obfuscation_facets(res, models):
             ax.set_xlabel("% naming the right view", fontsize=style.TICK_PT)
     handles = [
         plt.Line2D([], [], marker="o", linestyle="", markerfacecolor=c["muted"],
-                   markeredgecolor=c["muted"], markersize=7, label="real names"),
+                   markeredgecolor=c["muted"], markersize=7,
+                   label="real identifiers (comments removed in both arms)"),
         plt.Line2D([], [], marker="o", linestyle="", markerfacecolor=c["panel"],
                    markeredgecolor=c["muted"], markeredgewidth=1.3, markersize=7,
-                   label="obfuscated names"),
+                   label="obfuscated identifiers"),
+        plt.Line2D([], [], color=c["muted"], linewidth=0.7, alpha=0.6,
+                   label="95% CI on the paired difference"),
     ]
-    fig.legend(handles=handles, loc="lower center", ncol=2, frameon=False,
+    fig.legend(handles=handles, loc="lower center", ncol=3, frameon=False,
                fontsize=style.TICK_PT, bbox_to_anchor=(0.5, -0.02))
     fig.tight_layout(w_pad=2.4, h_pad=1.1, rect=(0, 0.06, 1, 1))
     return fig

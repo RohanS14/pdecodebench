@@ -5,8 +5,8 @@ the log text contains the expected sections/fields. Zero network calls.
 import shutil
 import sys, os
 from pathlib import Path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'eval'))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'freegen'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'freegen_static_judgments'))
 
 from frontier.episode_log import render_episode_log, write_episode_log
 

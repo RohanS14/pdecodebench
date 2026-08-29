@@ -23,9 +23,24 @@ the invalid half almost perfectly and the valid half barely better than chance; 
 older ones do the reverse. Averaging two opposite biases produces a bar that reads as
 moderate competence at both, which is the one thing these figures must not say.
 
+Error bars
+----------
+EVERY figure in this file carries 95% intervals, from cluster_ci(): a percentile
+bootstrap over the 32 base SYSTEMS, not over rows. Eight conditions, eight models
+and k=3 draws all share each base solver, so rows within a system are not
+independent and a row bootstrap would narrow every interval here by roughly the
+square root of that clustering. The estimand is always a proportion of 0/1 draws,
+so a percentile interval cannot leave [0, 100] and none of these is drawn
+symmetric -- both of which the NeurIPS checklist asks about explicitly.
+
+On the STACKED figures (fig_pooled, fig_by_model) the interval sits on the
+cumulative boundary between segments rather than on each segment's own share; see
+the comment in fig_pooled for why the share's interval belongs at a different
+height than the segment is drawn at.
+
 Usage:
     python viz/paper_freegen_figures.py
-    PDE_FREEGEN_CSV=results/freegen_xmodal.csv OUT_DIR=figures python viz/paper_freegen_figures.py
+    PDE_FREEGEN_CSV=results/freegen_static_judgments.csv OUT_DIR=figures python viz/paper_freegen_figures.py
 """
 import os
 import sys
@@ -36,9 +51,15 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from freegen.parse_score import classify_valid_confidence_2x2   # noqa: E402
+from freegen_static_judgments.parse_score import classify_valid_confidence_2x2   # noqa: E402
 
-CSV = os.environ.get("PDE_FREEGEN_CSV", "results/freegen_xmodal.csv")
+CSV = os.environ.get("PDE_FREEGEN_CSV", "results/freegen_static_judgments.csv")
+# The paper refers to the by-model validity panel as validity_static. It was kept in
+# sync by copying the file by hand, which lasted exactly as long as someone remembered
+# to: regenerating paper_hedge_by_model.png left validity_static.png behind at the
+# previous roster, and nothing about the stale file said so. Written from the same
+# Figure object here, so the two cannot disagree.
+ALIASES = {"paper_hedge_by_model": ["validity_static"]}
 OUT_DIR = os.environ.get("OUT_DIR", "figures")
 SCALE = int(os.environ.get("SCALE", "2"))
 
@@ -115,14 +136,73 @@ def cluster_ci(sub, col, n_boot=2000, seed=20260820):
     vals = sub[col].dropna()
     if vals.empty:
         return float("nan"), float("nan"), float("nan")
-    groups = [g[col].dropna().to_numpy() for _, g in sub.groupby("gt_sample")]
-    groups = [g for g in groups if len(g)]
-    if len(groups) < 2:
+    g = sub[["gt_sample", col]].dropna(subset=[col]).groupby("gt_sample")[col]
+    sums = g.sum().to_numpy(dtype=float)
+    counts = g.size().to_numpy(dtype=float)
+    keep = counts > 0
+    sums, counts = sums[keep], counts[keep]
+    if len(counts) < 2:
         return float(vals.mean()), float("nan"), float("nan")
     rng = np.random.default_rng(seed)
-    idx = rng.integers(0, len(groups), size=(n_boot, len(groups)))
-    boots = np.array([np.concatenate([groups[j] for j in row]).mean() for row in idx])
+    idx = rng.integers(0, len(counts), size=(n_boot, len(counts)))
+    # The mean of the concatenated resampled clusters is sum-of-sums over
+    # sum-of-counts. Written that way rather than as 2000 np.concatenate calls
+    # because this is now called once per figure CELL (~170 times per run, against
+    # 16 when only the two pooled figures used it) and the loop form took minutes.
+    # Identical arithmetic and identical rng draws, so the intervals do not move.
+    boots = sums[idx].sum(axis=1) / counts[idx].sum(axis=1)
     return float(vals.mean()), float(np.percentile(boots, 2.5)), float(np.percentile(boots, 97.5))
+
+
+def ci_err(sub, col, scale=100.0):
+    """cluster_ci as (plus, minus) error-bar lengths, ready for plotly `error_*`.
+
+    Returns 0.0 rather than nan for a cell too small to bootstrap: plotly draws a
+    nan-length bar as a full-height spike, which reads as a huge interval when the
+    truth is that there is no interval to report.
+    """
+    mn, lo, hi = cluster_ci(sub, col)
+    if not (mn == mn and lo == lo and hi == hi):
+        return 0.0, 0.0
+    return (hi - mn) * scale, (mn - lo) * scale
+
+
+ERR_STYLE = dict(color="rgba(0,0,0,0.55)", thickness=1.2, width=4)
+
+
+def paired_delta_ci(a_sub, b_sub, col, n_boot=2000, seed=20260820, scale=100.0):
+    """95% interval on (mean b - mean a) when a and b are the SAME 32 systems.
+
+    The two arms of every contrast in this file are the same base solvers seen under
+    different perturbations, so their errors are strongly correlated and the marginal
+    intervals are much wider than the interval on the difference. Reading "the two
+    error bars overlap, so nothing happened" off a pair of marginal intervals is the
+    standard way to miss a real within-subject effect, and on the annotation contrast
+    it would reverse the paper's conclusion: the marginal bars overlap heavily for
+    every model while the paired delta clears zero for half the roster.
+
+    Systems are resampled ONCE and both arms are recomputed on that same resample --
+    resampling the arms independently would throw the pairing away and reproduce the
+    marginal width.
+    """
+    def agg(sub):
+        g = sub[["gt_sample", col]].dropna(subset=[col]).groupby("gt_sample")[col]
+        return g.sum(), g.size()
+
+    a_s, a_n = agg(a_sub)
+    b_s, b_n = agg(b_sub)
+    systems = a_s.index.intersection(b_s.index)
+    if len(systems) < 2:
+        return float("nan"), float("nan"), float("nan")
+    a_s, a_n = a_s.loc[systems].to_numpy(float), a_n.loc[systems].to_numpy(float)
+    b_s, b_n = b_s.loc[systems].to_numpy(float), b_n.loc[systems].to_numpy(float)
+    obs = b_s.sum() / b_n.sum() - a_s.sum() / a_n.sum()
+    rng = np.random.default_rng(seed)
+    idx = rng.integers(0, len(systems), size=(n_boot, len(systems)))
+    boots = (b_s[idx].sum(axis=1) / b_n[idx].sum(axis=1)
+             - a_s[idx].sum(axis=1) / a_n[idx].sum(axis=1))
+    return (obs * scale, float(np.percentile(boots, 2.5)) * scale,
+            float(np.percentile(boots, 97.5)) * scale)
 
 
 def present_conds(df):
@@ -199,13 +279,26 @@ def fig_by_model(df):
     for i, model in enumerate(models):
         r, c = i // ncols + 1, i % ncols + 1
         g = df[df["model"].eq(model)]
-        for bucket in ORDER:
-            ys = []
+        # Intervals on the CUMULATIVE BOUNDARY, exactly as in fig_pooled: a segment
+        # is drawn at the running total, so its own share's interval would sit at
+        # the wrong height and push the top bar past 100 on bars that sum to 100.
+        # The last boundary is 100% by construction and carries none.
+        for j, bucket in enumerate(ORDER):
+            ys, hi_err, lo_err = [], [], []
+            upto = ORDER[:j + 1]
             for code, _, _ in present:
-                sub = g[g["mod_type"].eq(code)]
+                sub = g[g["mod_type"].eq(code)].copy()
                 ys.append(100 * (sub["direction"] == bucket).mean() if len(sub) else 0.0)
+                if j == len(ORDER) - 1 or not len(sub):
+                    hi_err.append(0.0); lo_err.append(0.0)
+                    continue
+                sub["_cum"] = sub["direction"].isin(upto).astype(float)
+                p, m = ci_err(sub, "_cum")
+                hi_err.append(p); lo_err.append(m)
             fig.add_bar(x=labels, y=ys, name=bucket, marker_color=COLOR[bucket],
                         marker_line=dict(color="white", width=0.4),
+                        error_y=dict(type="data", symmetric=False, array=hi_err,
+                                     arrayminus=lo_err, **ERR_STYLE),
                         legendgroup=bucket, showlegend=(i == 0), row=r, col=c)
         fig.add_vrect(x0=split - 0.5, x1=len(present) - 0.5, fillcolor=INVALID_BAND,
                       line_width=0, layer="below", row=r, col=c)
@@ -272,7 +365,7 @@ def item_frame(df):
     Restricted to items with all three draws present, so "the draws disagree" is
     always a statement about the same number of draws.
     """
-    from freegen.parse_score import valid_intent
+    from freegen_static_judgments.parse_score import valid_intent
     d = df.copy()
     d["lean"] = d["parsed_valid"].map(valid_intent)
     d["conf"] = d["bucket"].str.startswith("Confident")
@@ -402,25 +495,49 @@ def fig_pde_naming(df):
 
     fig = make_subplots(
         rows=1, cols=2, horizontal_spacing=0.13, shared_yaxes=True,
-        subplot_titles=("Naming accuracy by PDE class",
+        subplot_titles=("Naming accuracy by PDE class<br>"
+                        "<sup>95% CI, clustered on the 32 base systems; "
+                        "a class bar rests on 8 of them</sup>",
                         "Cost of perturbing the annotation alone<br>"
                         "<sup>clean → corrupted comment or obfuscated identifiers;"
-                        " the physics is unchanged</sup>"))
+                        " the physics is unchanged<br>"
+                        "bar is the 95% CI on the PAIRED delta, not on the endpoint"
+                        "</sup>"))
 
     for cls in PDE_CLASSES:
-        xs = []
+        xs, hi_err, lo_err = [], [], []
         for m in models:
             sub = d[d["model"].eq(m) & d["pde_class"].eq(cls)]
             xs.append(100 * sub["pde_match"].mean() if len(sub) else float("nan"))
+            # A class bar rests on eight of the 32 systems, so these are the widest
+            # intervals in the file -- which is the point. The partial rosters marked
+            # in _pde_label are the same warning stated as a number.
+            p, m_ = ci_err(sub, "pde_match") if len(sub) else (0.0, 0.0)
+            hi_err.append(p); lo_err.append(m_)
         fig.add_bar(y=names, x=xs, orientation="h", name=cls,
                     marker_color=PDE_CLASS_COLOR[cls],
+                    error_x=dict(type="data", symmetric=False, array=hi_err,
+                                 arrayminus=lo_err, **ERR_STYLE),
                     marker_line=dict(color="white", width=0.4), row=1, col=1)
 
     # Right panel: one row per model, clean and annotation-perturbed joined.
     for i, m in enumerate(models):
         g = d[d["model"].eq(m)]
-        a = g[g["mod_type"].isin(CLEAN_CONDS)]["pde_match"].mean() * 100
-        b = g[g["mod_type"].isin(ANNOT_CONDS)]["pde_match"].mean() * 100
+        clean, annot = g[g["mod_type"].isin(CLEAN_CONDS)], g[g["mod_type"].isin(ANNOT_CONDS)]
+        a = clean["pde_match"].mean() * 100
+        b = annot["pde_match"].mean() * 100
+        # The connecting line is a DELTA claim -- perturbing the annotation alone
+        # costs this much -- so the interval that belongs on this panel is the
+        # interval on the DELTA, drawn at the perturbed endpoint. Marginal intervals
+        # on both ends were the first thing tried here and they are actively
+        # misleading: both arms are the same 32 systems, so the marginals are roughly
+        # twice the width of the paired interval and they overlap for every model on
+        # the roster, which renders a contrast the paper reports as real as a picture
+        # of nothing happening. The clean endpoint carries no bar; it is the
+        # reference the delta is measured from.
+        _, d_lo, d_hi = paired_delta_ci(clean, annot, "pde_match")
+        b_hi = (d_hi - (b - a)) if d_hi == d_hi else 0.0
+        b_lo = ((b - a) - d_lo) if d_lo == d_lo else 0.0
         fig.add_scatter(x=[a, b], y=[names[i], names[i]], mode="lines",
                         line=dict(color="#95a5a6", width=2), showlegend=False,
                         hoverinfo="skip", row=1, col=2)
@@ -432,13 +549,15 @@ def fig_pde_naming(df):
                         name="annotation corrupted",
                         marker=dict(color="#c0392b", size=11, symbol="circle-open",
                                     line=dict(width=2.5, color="#c0392b")),
+                        error_x=dict(type="data", symmetric=False, array=[b_hi],
+                                     arrayminus=[b_lo], **ERR_STYLE),
                         showlegend=(i == 0), legendgroup="annot",
                         hovertemplate="annotation corrupted: %{x:.1f}%<extra></extra>",
                         row=1, col=2)
 
     fig.update_layout(
         template="plotly_white", barmode="group", bargap=0.25,
-        width=1500, height=520, margin=dict(l=215, r=50, t=95, b=105),
+        width=1500, height=520, margin=dict(l=215, r=50, t=115, b=105),
         legend=dict(orientation="h", y=-0.14, x=0.5, xanchor="center",
                     yanchor="top", title=""),
         font=dict(size=13))
@@ -505,13 +624,21 @@ def fig_pde_by_perturbation(df):
     for i, m in enumerate(models):
         r, c = i // ncols + 1, i % ncols + 1
         g = d[d["model"].eq(m)]
-        ys, cols = [], []
+        ys, cols, hi_err, lo_err = [], [], [], []
         for code, _, _ in present:
             sub = g[g["mod_type"].eq(code)]
             ys.append(100 * sub["pde_match"].mean() if len(sub) else 0.0)
             cols.append(ANNOTATION_COLOR[ANNOTATION_STATE[code]])
+            # This figure's claim is about the SPREAD across the eight bars within a
+            # panel -- "flat at 3-5 points" against "swings 21-24". Without intervals
+            # a reader cannot tell either apart from 96 draws of noise, and the flat
+            # models are the ones where that distinction is the whole result.
+            p, m = ci_err(sub, "pde_match") if len(sub) else (0.0, 0.0)
+            hi_err.append(p); lo_err.append(m)
         fig.add_bar(x=labels, y=ys, marker_color=cols, showlegend=False,
                     marker_line=dict(color="white", width=0.4),
+                    error_y=dict(type="data", symmetric=False, array=hi_err,
+                                 arrayminus=lo_err, **ERR_STYLE),
                     hovertemplate="%{x}: %{y:.1f}%<extra></extra>", row=r, col=c)
         # No baseline rule. The two Clean bars ARE the reference and they are right
         # there at the left of every panel, so a line drawn through their mean added
@@ -526,10 +653,24 @@ def fig_pde_by_perturbation(df):
         fig.add_bar(x=[None], y=[None], name=name,
                     marker_color=ANNOTATION_COLOR[name])
 
+    # The bars are MARGINAL intervals, and every comparison a reader will make in
+    # this figure is between two bars of the SAME panel -- i.e. the same 32 systems
+    # under two perturbations. Those marginals are about twice the width of the
+    # paired interval on the difference, so eyeballing their overlap understates
+    # every within-panel effect. On the clean/annotation contrast the marginals
+    # overlap for all eight models while the paired delta clears zero for four of
+    # them. Said on the figure because that is where the mistake gets made.
+    fig.add_annotation(
+        text="95% CI, bootstrap over the 32 base systems. Intervals are marginal — "
+             "within-panel comparisons are paired, so overlap here does not mean "
+             "no difference (see paired deltas in text).",
+        xref="paper", yref="paper", x=0.5, y=-0.30, xanchor="center", yanchor="top",
+        showarrow=False, font=dict(size=11, color="#5a6270"))
+
     fig.update_layout(
         template="plotly_white", barmode="group", bargap=0.25,
-        width=1500, height=380 * nrows + 150,
-        margin=dict(l=75, r=40, t=42, b=215),
+        width=1500, height=380 * nrows + 190,
+        margin=dict(l=75, r=40, t=42, b=255),
         legend=dict(orientation="h", y=-0.235, x=0.5, xanchor="center",
                     yanchor="top", title=""),
         font=dict(size=12))
@@ -559,9 +700,10 @@ def main():
         # PNG only. The HTML twins were never opened -- these go into a paper, and
         # an interactive copy beside every figure is just another file to keep in
         # sync with the PNG that is actually used.
-        png = os.path.join(OUT_DIR, f"{name}.png")
-        fig.write_image(png, scale=SCALE)
-        print(f"[paper] wrote {png}")
+        for out in [name] + ALIASES.get(name, []):
+            png = os.path.join(OUT_DIR, f"{out}.png")
+            fig.write_image(png, scale=SCALE)
+            print(f"[paper] wrote {png}")
 
 
 if __name__ == "__main__":

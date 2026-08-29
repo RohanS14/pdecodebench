@@ -513,7 +513,7 @@ add("A · LLM Eval", "⑧ Code length quartile vs accuracy", fig_a7,
 # ── A9. Validity confidence breakdown (4-way, single figure) ─────────────────
 # All 8 conditions on one x-axis; left half = valid code (correct = Yes),
 # right half = invalid code (correct = No).  Shaded region separates them.
-# The hedge rule is canonical in freegen/parse_score.py — it used to be copy-pasted
+# The hedge rule is canonical in freegen_static_judgments/parse_score.py — it used to be copy-pasted
 # here and in two sibling viz scripts, which drifted. NOTE: the shared rule has an
 # explicit hedge lexicon the old local copy lacked ("possibly", "cannot determine",
 # "depends", ...), so bucket shares are NOT comparable to writeup.pdf Figure 1.

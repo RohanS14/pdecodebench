@@ -36,7 +36,7 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from eval.dataset_io import DEFAULT_MOD_DATASET, load_dataset  # noqa: E402
+from shared.dataset_io import DEFAULT_MOD_DATASET, load_dataset  # noqa: E402
 
 # Runs inside the child process. Records snapshots of every evolving float array
 # by wrapping the module namespace after execution AND sampling during the run via
