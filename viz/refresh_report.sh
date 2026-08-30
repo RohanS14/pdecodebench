@@ -9,9 +9,9 @@ NOTES_DIR="${NOTES_DIR:-/Users/bermaneh/Desktop/raca/notes/experiments/pde-llm-e
 cd "$REPO_DIR"
 
 # The d' panel needs the clustered bootstrap; skip it silently if no rows yet.
-if compgen -G "results/xmodal/*.jsonl" > /dev/null; then
-    "$PY" cross_modal_consistency/eval/aggregate_cross_modal.py --results_dir results/xmodal \
-        --out results/xmodal_summary.json --csv_out results/xmodal_summary.csv || \
+if compgen -G "results/cross_modal_consistency/*/*.jsonl" > /dev/null; then
+    "$PY" cross_modal_consistency/eval/aggregate_cross_modal.py --results_dir results/cross_modal_consistency \
+        --out results/cross_modal_summary.json --csv_out results/cross_modal_summary.csv || \
         echo "[refresh] aggregate failed; report will show the d' panel as pending"
 fi
 
@@ -29,11 +29,11 @@ fi
 #          --out results/freegen_static_judgments.csv --expect_items 256
 FREEGEN_CSV="${FREEGEN_CSV:-results/freegen_static_judgments.csv}"
 
-"$PY" viz/pde_dual_report.py \
+"$PY" viz/report_freegen_and_cross_modal.py \
     --freegen    "$FREEGEN_CSV" \
     --xmodal_hf  bermaneh/pde-llm-eval-cross-modal-consistency \
-    --xmodal_summary results/xmodal_summary.json \
-    --out viz/pde_dual_report.html
+    --xmodal_summary results/cross_modal_summary.json \
+    --out viz/report_freegen_and_cross_modal.html
 
-cp viz/pde_dual_report.html "$NOTES_DIR/pde_dual_report.html"
+cp viz/report_freegen_and_cross_modal.html "$NOTES_DIR/report_freegen_and_cross_modal.html"
 echo "[refresh] report rebuilt and copied to the experiment folder"

@@ -17,8 +17,8 @@ eight-model versions that answer a different question.
     figures/consistency_roster/   8 models, k=3      -- the generational run
 
 Usage:
-    python viz/export_consistency_figures.py                  # both rosters
-    python viz/export_consistency_figures.py --roster full    # just the eight
+    python viz/figures_cross_modal.py                  # both rosters
+    python viz/figures_cross_modal.py --roster full    # just the eight
 """
 import argparse
 import os

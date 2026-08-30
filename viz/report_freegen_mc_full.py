@@ -1241,7 +1241,7 @@ function show(i) {{
 </body>
 </html>"""
 
-out = "results_v3_enhanced.html"
+out = "report_freegen_mc_full.html"
 with open(out, "w") as f:
     f.write(html)
 print(f"✓ Written: {out}  ({idx} charts + tables)")

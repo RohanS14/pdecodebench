@@ -1,7 +1,7 @@
 """
 Enhanced visualizations for PDE eval — adds baselines, error bars, correlations, NeurIPS compact formatting.
 
-Extends visualize_v3.py with:
+Extends report_freegen_mc_full.py with:
 - Baseline accuracy overlays (random baseline + heuristic baseline if applicable)
 - 95% confidence intervals on all accuracy metrics
 - Model-to-model correlation matrix (Spearman)
@@ -674,7 +674,7 @@ function show(i) {{
 </body>
 </html>"""
 
-out = "results_v4_enhanced.html"
+out = "report_freegen_mc_compact.html"
 with open(out, "w") as f:
     f.write(html)
 

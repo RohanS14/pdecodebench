@@ -159,7 +159,7 @@ def test_a_repo_missing_draws_is_not_treated_as_complete():
     reported ZERO no-verdict rows. An items-only completeness test promotes that
     over the intact source arm and shows a truncated arm as a flawless one."""
     import pandas as pd
-    import viz.build_claims_expanded as B
+    import viz.report_cross_modal_claims_roster as B
     full = pd.DataFrame({"item_id": [i // 3 for i in range(B.N_ITEMS * 3)]})
     short = pd.DataFrame({"item_id": list(range(B.N_ITEMS))
                           + [i // 2 for i in range(B.N_ITEMS)]})

@@ -164,13 +164,13 @@ FROZEN_REPO = "bermaneh/pde-llm-eval-xmodal-consistency-frozen-v1"
 # as a column. It was ten per-model repos while the campaign ran, because concurrent
 # jobs each uploaded their own arm and push_dataset_to_hub REPLACES a split; those ten
 # have been deleted and every row they held is in the repo below. It still does NOT
-# replace the frozen artifact -- build_claims.sh stays pinned to FROZEN_REPO, and
+# replace the frozen artifact -- build_cross_modal_claims_frozen.sh stays pinned to FROZEN_REPO, and
 # folding these eight models into that report would rewrite published pooled panels.
 GENERATIONAL_REPOS = (
     "bermaneh/pde-llm-eval-cross-modal-consistency",
 )
 
-# The frozen 4096 rows plus whatever generational arms exist. build_claims.sh must
+# The frozen 4096 rows plus whatever generational arms exist. build_cross_modal_claims_frozen.sh must
 # NOT use this default -- it is pinned to FROZEN_REPO alone, or the new models would
 # be folded into the published report.
 DEFAULT_REPOS = (FROZEN_REPO,) + GENERATIONAL_REPOS

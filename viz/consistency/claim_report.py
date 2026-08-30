@@ -1545,7 +1545,7 @@ def build(d, out="viz/consistency_claims.html", defects=None, theme="dark",
 
 # One palette per ground. The page and the figures must agree: a white raster
 # dropped into a dark report reads as a foreign object, and the reverse is worse.
-# Dark is the default so build_claims.sh keeps reproducing the frozen
+# Dark is the default so build_cross_modal_claims_frozen.sh keeps reproducing the frozen
 # consistency_claims.html byte for byte; the expanded report opts into light.
 CSS_THEMES = {
     "dark":  "--accent:#7eb8ff; --bg:#0d0f18; --blue2:#cfe0ff; --deep:#0a0c14; --dim:#5a6274; --dim2:#6b7a99; --drawer:#0f1119; --fg:#e0e0e0; --green:#8fd694; --hi:#2a3450; --line:#1e2130; --link2:#8fa6c9; --muted:#8592ae; --ok:#4fa96a; --orange:#f2a97e; --panel:#12141e; --panel2:#141826; --panel3:#1b2032; --raised:#171d30; --sunk:#12182a; --tagbg:#1d2540; --tagline:#26304a; --text2:#cfd8e8; --text3:#b8c2d6; --text4:#c8cddb; --warn:#c9a227; --warn2:#e0c88f",

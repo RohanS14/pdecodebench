@@ -9,7 +9,7 @@ one, on meeting that layout, returned an EMPTY list rather than raising:
 
   * shared/upload_helper.py         uploaded nothing and reported success
   * cross_modal_consistency/eval/aggregate_cross_modal.py  wrote a summary over zero rows
-  * viz/pde_dual_report.py          built a 5.8MB report whose entire Experiment 2
+  * viz/report_freegen_and_cross_modal.py          built a 5.8MB report whose entire Experiment 2
                                     half rendered as "no rows loaded" placeholders
 
 The last one is the reason this file exists. Every cross-modal panel is written to
@@ -83,12 +83,12 @@ def test_dual_report_finds_nested_cross_modal_rows(nested, tmp_path, capsys):
 
     # And the source really does use a recursive glob, rather than this test asserting
     # a property of a pattern the report does not share.
-    src = open(os.path.join(ROOT, "viz", "pde_dual_report.py"), encoding="utf-8").read()
+    src = open(os.path.join(ROOT, "viz", "report_freegen_and_cross_modal.py"), encoding="utf-8").read()
     # Anchored on the load site itself. "if not rows:" also appears in exp2_headline,
     # where it guards the placeholder rather than the glob.
     i = src.index('xmodal_dir or ""')
     assert "recursive=True" in src[i - 400:i + 400], (
-        "viz/pde_dual_report.py globs the cross-modal dir non-recursively; every "
+        "viz/report_freegen_and_cross_modal.py globs the cross-modal dir non-recursively; every "
         "Experiment 2 panel will silently render as a placeholder")
 
 

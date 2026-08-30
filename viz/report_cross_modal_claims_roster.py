@@ -1,6 +1,6 @@
 """Build consistency_claims_expanded.html — the same report, on the new sampled runs.
 
-This is a SIBLING of viz/build_claims.sh, not a replacement. That script stays pinned
+This is a SIBLING of viz/build_cross_modal_claims_frozen.sh, not a replacement. That script stays pinned
 to the frozen repo (bermaneh/pde-llm-eval-xmodal-consistency-frozen-v1) and keeps
 producing viz/consistency_claims.html untouched; this one reads the consolidated
 generational repo and writes a separate file. Nothing here can overwrite the published
@@ -43,8 +43,8 @@ Two differences from the frozen run drive the filtering below:
    verdicts, and this is what would catch it.
 
 Usage:
-    .tools-venv/bin/python viz/build_claims_expanded.py            # complete models only
-    .tools-venv/bin/python viz/build_claims_expanded.py --partial  # include in-flight runs
+    .tools-venv/bin/python viz/report_cross_modal_claims_roster.py            # complete models only
+    .tools-venv/bin/python viz/report_cross_modal_claims_roster.py --partial  # include in-flight runs
 """
 import argparse
 import pathlib
@@ -952,7 +952,7 @@ def inject_raw_browser(path, raw):
     function also produces the PUBLISHED viz/consistency_claims.html, which is
     frozen. Anything added there would change the frozen report as a side effect.
     """
-    from viz.pde_dual_report import response_browser
+    from viz.report_freegen_and_cross_modal import response_browser
 
     rows = []
     for r in sample_raw(raw):
@@ -1064,7 +1064,7 @@ def main():
 
     print(f"\n[expanded] building on {len(d):,} draws from {len(used)} model(s)")
     # annotate=True is opt-in here only: the shared figure helper defaults to the
-    # unlabelled form so viz/build_claims.sh keeps reproducing the published report
+    # unlabelled form so viz/build_cross_modal_claims_frozen.sh keeps reproducing the published report
     # byte for byte.
     # The same frame WITH the no-verdict draws, for the unconditional blame figure
     # only. Every other figure keeps dropping them -- scoring a run that produced no

@@ -1,8 +1,8 @@
 """
-paper_figures.py — Generate paper-ready static PNG figures.
+figures_mc_logprob.py — Generate paper-ready static PNG figures.
 
 Run from the viz/ directory:
-    python paper_figures.py
+    python figures_mc_logprob.py
 
 Produces:
     paper_fig1.png  — MC: Δ confidence and Δ entropy, two panels side by side

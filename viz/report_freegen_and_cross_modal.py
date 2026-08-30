@@ -1,5 +1,5 @@
 """
-pde_dual_report.py — one HTML report covering both live PDE experiments.
+report_freegen_and_cross_modal.py — one HTML report covering both live PDE experiments.
 
 Experiment 1 (free generation): given a solver, name the PDE, the numerical method,
 the dominant behaviour, and whether it is physically valid.
@@ -17,11 +17,11 @@ being silently absent -- an empty section is a fact about the run, not a formatt
 problem.
 
 Usage:
-    python viz/pde_dual_report.py \
+    python viz/report_freegen_and_cross_modal.py \
         --freegen results/pde_llm_eval_jul28.csv \
-        --xmodal_dir results/xmodal \
-        --xmodal_summary results/xmodal_summary.json \
-        --out viz/pde_dual_report.html
+        --xmodal_dir results/cross_modal_consistency \
+        --xmodal_summary results/cross_modal_summary.json \
+        --out viz/report_freegen_and_cross_modal.html
 """
 import argparse
 import csv
@@ -2888,13 +2888,13 @@ function show(i) {{
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--freegen", default="results/pde_llm_eval_jul28.csv")
-    ap.add_argument("--xmodal_dir", default="results/xmodal")
-    ap.add_argument("--xmodal_summary", default="results/xmodal_summary.json")
-    ap.add_argument("--out", default="viz/pde_dual_report.html")
+    ap.add_argument("--xmodal_dir", default="results/cross_modal_consistency")
+    ap.add_argument("--xmodal_summary", default="results/cross_modal_summary.json")
+    ap.add_argument("--out", default="viz/report_freegen_and_cross_modal.html")
     ap.add_argument("--freegen_hf", default=None,
                     help="HF repo for free-generation rows; overrides --freegen.")
     ap.add_argument("--xmodal_hf", default=None,
                     help="HF repo for cross-modal rows; overrides --xmodal_dir.")
     a = ap.parse_args()
-    build(a.freegen_static_judgments, a.xmodal_dir, a.xmodal_summary, a.out,
+    build(a.freegen, a.xmodal_dir, a.xmodal_summary, a.out,
           freegen_hf=a.freegen_hf, xmodal_hf=a.xmodal_hf)

@@ -164,7 +164,7 @@ def test_symmetric_confidence_classifier_hedges_both_directions():
 # ── method_axis: ported back from the cluster, 2026-08-20 ────────────────────
 # The refactor from eval/ to freegen_static_judgments/ dropped this function. rescore_jsonl.py
 # imports it under a bare `except ImportError: method_axis = None`, so its absence
-# was silent: the column simply stopped being written, and viz/pde_dual_report.py
+# was silent: the column simply stopped being written, and viz/report_freegen_and_cross_modal.py
 # reads it in four places. Pin it so a later move cannot lose it the same way.
 
 def test_method_axis_exists_and_is_importable_bare():

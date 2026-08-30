@@ -1,5 +1,5 @@
 """
-visualize_frontier.py — Belief revision experiment visualizations.
+report_belief_revision.py — Belief revision experiment visualizations.
 
 Reads: results/frontier/<slug>__belief_revision.jsonl
 Produces 5 figures (saved as HTML + PNG):
@@ -10,8 +10,8 @@ Produces 5 figures (saved as HTML + PNG):
   V5  — traj_signal stratified transition table
 
 Usage:
-  python viz/visualize_frontier.py                        # auto-detect latest result
-  python viz/visualize_frontier.py --input results/frontier/gemini25flashpreview0417__belief_revision.jsonl
+  python viz/report_belief_revision.py                        # auto-detect latest result
+  python viz/report_belief_revision.py --input results/frontier/gemini25flashpreview0417__belief_revision.jsonl
 """
 
 import argparse

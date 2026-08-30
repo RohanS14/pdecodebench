@@ -618,7 +618,7 @@ def main():
     p.add_argument("--items", default=os.environ.get("ITEMS", DEFAULT_ITEMS))
     p.add_argument("--multimodal", default=os.environ.get("MULTIMODAL", MULTIMODAL_CSV))
     p.add_argument("--dataset", default=os.environ.get("DATASET", MOD_DATASET))
-    p.add_argument("--output_dir", default=os.environ.get("OUTPUT_DIR", "results/xmodal"))
+    p.add_argument("--output_dir", default=os.environ.get("OUTPUT_DIR", "results/cross_modal_consistency"))
     p.add_argument("--tp", type=int, default=int(os.environ.get("TP", "1")))
     p.add_argument("--batch_size", type=int, default=int(os.environ.get("BATCH_SIZE", "64")))
     p.add_argument("--limit", type=int, default=int(os.environ.get("LIMIT", "0")))

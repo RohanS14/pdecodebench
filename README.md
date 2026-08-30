@@ -37,7 +37,7 @@ cross-experiment join is a directory name rather than a lookup table.
 | `data/` | the jul28 release + `descriptions/`; large derived files are gitignored and published to HF |
 | `datagen/` | dataset construction — corruption ladder, obfuscation, equations, audits |
 | `shared/` | cross-experiment utilities: `dataset_io.py`, `upload_helper.py`, `extract_code.py`, `verify_simulations.py` |
-| `viz/` | report builders; `viz/consistency/` is the cross-modal half |
+| `viz/` | report and figure builders — see [Figures and reports](#figures-and-reports) |
 | `sbatch/` | cluster job scripts |
 | `tools/` | token measurement and one-off utilities |
 | `tests/` | pytest suites, all on synthetic ground truth so they run before any GPU time |
@@ -72,6 +72,36 @@ paths = sorted(p for p in glob.glob(os.path.join(d, "**", "*.jsonl"), recursive=
 Raw per-model JSONL is gitignored — it runs to hundreds of MB per arm and two files exceed
 GitHub's 100 MB per-file limit. It lives on HuggingFace; the CSVs regenerate via
 `viz/refresh_report.sh`.
+
+## Figures and reports
+
+Two families, and the prefix tells you which: `report_*` builds an interactive HTML
+dashboard, `figures_*` writes static PNG/PDF for the paper. The suffix names the
+experiment, so a filename answers "what is this for" without opening it.
+
+| script | experiment | writes |
+|---|---|---|
+| `report_freegen_and_cross_modal.py` | static judgments + cross-modal | the joint report — the two experiments share 32 base solvers, which is the point of putting them in one document |
+| `report_cross_modal_claims_roster.py` | cross-modal | claim-by-claim report on the current (generational) roster |
+| `build_cross_modal_claims_frozen.sh` | cross-modal | the same report **pinned to the frozen 3-model repo**; it backs published claims and must never fold in the new models |
+| `figures_cross_modal.py` | cross-modal | the blame-matrix/trust/obfuscation figures, frozen and roster rosters to separate directories |
+| `figures_freegen.py` | static judgments | resampling + PDE-identification paper figures |
+| `figures_mc_logprob.py` | MC / logprob | `paper_fig1-3.png` — Δconfidence, Δentropy, reasoning vs non-reasoning |
+| `report_var_logprob.py` | variable logprob | 7 charts of token probability vs `code_fraction`, read from HF |
+| `report_belief_revision.py` | belief revision | single-turn, 5 figures |
+| `report_belief_revision_agentic.py` | belief revision | multi-turn stratified-64 run |
+| `figures_belief_revision.py` | belief revision | the horizontal transition figure for the paper |
+| `report_freegen_mc_full.py` | static judgments + MC, **old 10-model roster** | 19-chart dashboard with CIs and baselines |
+| `report_freegen_mc_compact.py` | same | NeurIPS-compact variant; `report_freegen_mc_full.py` now covers everything it does except the Spearman correlation matrix |
+| `report_freegen_mc_alias_confidence.py` | same | answer-alias distribution + confidence under corruption |
+
+The last three read `results/pde_llm_eval.csv` and `results/pde_mc_logprob.csv` — the
+**old 10-model roster**, not the 8 checkpoints the live experiments use. They are kept
+because that roster covers seven models nothing else does (Gemma, both Llamas, Phi-4,
+Mistral-Nemo, both Qwen2.5-Coders). Nothing in the current pipeline calls them.
+
+`viz/consistency/` is a library, not an entrypoint: the 18 modules behind the cross-modal
+reports. HTML and PNG output is gitignored — regenerate with `viz/refresh_report.sh`.
 
 ## Running it
 

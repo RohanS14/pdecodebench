@@ -148,7 +148,7 @@ def test_no_verdict_rows_are_excluded_downstream_not_merely_flagged():
 
 
 # ── Experiment 1 in the dual report must pool k draws ─────────────────────────
-# pde_dual_report.py was written when Experiment 1 was k=1, so every row was one
+# report_freegen_and_cross_modal.py was written when Experiment 1 was k=1, so every row was one
 # item and n was just len(df). The roster now runs k=3 to match the consistency
 # arms. Handing that frame to the old code triples every n: the point estimates
 # are unchanged and every interval narrows by about sqrt(3), which is 42% in the
@@ -161,14 +161,14 @@ _VIZ_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def _dual_report_source():
-    with open(os.path.join(_VIZ_ROOT, "viz", "pde_dual_report.py")) as f:
+    with open(os.path.join(_VIZ_ROOT, "viz", "report_freegen_and_cross_modal.py")) as f:
         return f.read()
 
 
 def test_dual_report_imports_the_one_pooler():
     src = _dual_report_source()
     assert "from freegen_static_judgments.report import pool_draws" in src, (
-        "pde_dual_report.py must import pool_draws rather than reimplement it -- a "
+        "report_freegen_and_cross_modal.py must import pool_draws rather than reimplement it -- a "
         "second copy lets Experiment 1 and the free-gen report drift apart while "
         "still looking comparable in one document")
     assert "pool_draws(df)" in src, "pool_draws is imported but never applied"

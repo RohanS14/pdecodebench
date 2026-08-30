@@ -9,7 +9,7 @@ paper's figure directory for five days holding fabricated numbers under a captio
 that read as a real result -- including a judge-confirmed column for an LLM-judge pass
 that has never been run.
 
-For the real thing use viz/export_consistency_figures.py, which loads the published
+For the real thing use viz/figures_cross_modal.py, which loads the published
 repos and writes figures/consistency_frozen/ and figures/consistency_roster/.
 """
 import argparse
@@ -30,7 +30,7 @@ def main():
     if set(df.get("model", [])) <= {"model-a", "model-b", "model-c"}:
         print(f"[build] *** SYNTHETIC INPUT *** {a.csv} holds placeholder models. "
               f"Nothing written to {a.outdir} is a result. Use "
-              f"viz/export_consistency_figures.py for the real rosters.")
+              f"viz/figures_cross_modal.py for the real rosters.")
     for name, (pdf, png) in figures.build_all(df, outdir=a.outdir).items():
         print(f"[build] {name}: {pdf}, {png}")
     print(f"[build] table: {tables.write_main_results(df, f'{a.outdir}/table_main.tex')}")

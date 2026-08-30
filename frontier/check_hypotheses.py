@@ -3,7 +3,7 @@ check_hypotheses.py — automated pass/fail/skip checker for the standing
 hypotheses in agent_docs/hypotheses.md, per the precise criteria spelled out
 in agent_docs/hypothesis_sanity_checks.md.
 
-Reuses viz/visualize_agentic.py's data loaders and rate-computation helpers
+Reuses viz/report_belief_revision_agentic.py's data loaders and rate-computation helpers
 directly rather than duplicating any eval/viz logic -- this script only
 computes hypothesis-level comparisons over data that already exists on disk.
 It does NOT run the sweep, the judge, or the HTML report; run those first.
@@ -15,7 +15,7 @@ Usage:
       --judge results/frontier/stratified_256/judge/judge_results.jsonl
 
 Note: needs pandas, which lives in system python3's environment in this repo
-(same consideration as viz/visualize_agentic.py), not eval/.venv.
+(same consideration as viz/report_belief_revision_agentic.py), not eval/.venv.
 """
 import argparse
 import sys
@@ -24,7 +24,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(REPO_ROOT / "viz"))
 
-from visualize_agentic import (  # noqa: E402
+from report_belief_revision_agentic import (  # noqa: E402
     INVALID_MOD_TYPES,
     VALID_MOD_TYPES,
     _rate,

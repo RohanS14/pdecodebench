@@ -136,7 +136,7 @@ def test_pair_survives_an_empty_frame():
     plt.close(fig)
 
 
-def test_pair_is_exported_with_the_other_paper_figures():
+def test_pair_is_exported_with_the_other_figures_mc_logprob():
     assert "fig8_detect_localize" in F.FIGURES
 
 

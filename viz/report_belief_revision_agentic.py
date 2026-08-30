@@ -1,5 +1,5 @@
 """
-visualize_agentic.py — Agentic belief-revision experiment visualizations.
+report_belief_revision_agentic.py — Agentic belief-revision experiment visualizations.
 
 Reads:
   results/frontier/stratified_64/nothink/<slug>__belief_revision_agentic.jsonl
@@ -16,19 +16,19 @@ inspection, not part of this script):
   Result 10 — recall vs specificity, aggregate and by mod_type, for S1 and
               both S2 thinking conditions (see agent_docs/hypotheses.md H1)
 
-Reuses viz/visualize_frontier.py's bootstrap_ci/save/write_combined_html and
+Reuses viz/report_belief_revision.py's bootstrap_ci/save/write_combined_html and
 its MOD_ORDER/MOD_SHORT/PDE_ORDER/PDE_LABEL/FONT/LEGEND/MARGIN constants
 directly rather than duplicating them.
 
 Usage (both conditions):
-  python viz/visualize_agentic.py \\
+  python viz/report_belief_revision_agentic.py \\
       --nothink results/frontier/stratified_64/nothink/gemini25flash__belief_revision_agentic.jsonl \\
       --think results/frontier/stratified_64/think/gemini25flash__belief_revision_agentic.jsonl \\
       --judge results/frontier/stratified_64/judge/judge_results.jsonl
 
 Usage (nothink-only, e.g. before the think-condition sweep has run -- --think
 and --judge are both optional; the report renders whatever's available):
-  python viz/visualize_agentic.py \\
+  python viz/report_belief_revision_agentic.py \\
       --nothink results/frontier/stratified_64/nothink/gemini25flash__belief_revision_agentic.jsonl
 """
 import argparse
@@ -43,8 +43,8 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-import visualize_frontier as _vf  # noqa: E402 -- needed for the _VIZ_IDX rewind in v0_architecture_diagram
-from visualize_frontier import (  # noqa: E402
+import report_belief_revision as _vf  # noqa: E402 -- needed for the _VIZ_IDX rewind in v0_architecture_diagram
+from report_belief_revision import (  # noqa: E402
     FONT,
     LEGEND,
     MARGIN,
@@ -80,7 +80,7 @@ def load_judge_results(path: Path) -> pd.DataFrame:
 # ── Result 0: system architecture schematic ──────────────────────────────────
 # Hand-drawn SVG, not a Plotly chart -- box-and-arrow diagrams are precise
 # layout problems Plotly's shapes/annotations API fights rather than helps
-# with. Passed to save() as extra_html with fig=None (see visualize_frontier.py
+# with. Passed to save() as extra_html with fig=None (see report_belief_revision.py
 # save()/write_combined_html(), extended to tolerate a figure-less section).
 # Content approved in chat before drawing; see docs/superpowers/specs/
 # 2026-08-16-agentic-belief-revision-design-v4.md for the full written design

@@ -332,7 +332,7 @@ def score_row(parsed: dict, row: dict, embed_model=None) -> dict:
 
 # ── Hedge / validity-confidence classifier ────────────────────────────────────
 # Canonical home for the rule that was previously duplicated in four places:
-# viz/visualize_v3.py, viz/visualize_v4_enhanced.py, viz/paper_figures.py, and
+# viz/report_freegen_mc_full.py, viz/report_freegen_mc_compact.py, viz/figures_mc_logprob.py, and
 # frontier/parse_frontier.py. The body is the frontier version verbatim —
 # it is strictly more specific than the three viz copies (it has an explicit
 # hedge lexicon), and keeping it byte-identical makes this consolidation a no-op

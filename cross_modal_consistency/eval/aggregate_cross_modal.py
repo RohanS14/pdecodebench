@@ -15,8 +15,8 @@ term and the seven values are therefore dependent.
 Outputs a JSON report and a flat CSV, one row per (model, thinking, condition).
 
 Usage:
-    python cross_modal_consistency/eval/aggregate_cross_modal.py --results_dir results/xmodal \
-        --items data/multimodal_items_v1.csv --out results/xmodal_summary.json
+    python cross_modal_consistency/eval/aggregate_cross_modal.py --results_dir results/cross_modal_consistency \
+        --items data/multimodal_items_v1.csv --out results/cross_modal_summary.json
 """
 import argparse
 import csv
@@ -107,8 +107,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--results_dir", default="results/cross_modal_consistency")
     ap.add_argument("--items", default="data/multimodal_items_v1.csv")
-    ap.add_argument("--out", default="results/xmodal_summary.json")
-    ap.add_argument("--csv_out", default="results/xmodal_summary.csv")
+    ap.add_argument("--out", default="results/cross_modal_summary.json")
+    ap.add_argument("--csv_out", default="results/cross_modal_summary.csv")
     ap.add_argument("--n_boot", type=int, default=N_BOOT)
     args = ap.parse_args()
 

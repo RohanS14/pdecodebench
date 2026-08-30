@@ -118,3 +118,5 @@ figures/
 # The single README.md is the documentation.
 LAYOUT.md
 tools/README.md
+.retired/
+.pytest_cache/

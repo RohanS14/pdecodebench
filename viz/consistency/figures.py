@@ -428,7 +428,7 @@ def fig8_detect_localize(df):
 
     Lives in claim_report because that is where both of its halves are drawn and
     where the shared category bookkeeping is; re-exported here so it travels with
-    the other paper figures through export_consistency_figures.py rather than
+    the other paper figures through figures_cross_modal.py rather than
     existing only inside an HTML report.
 
     Imported inside the function, not at module scope: claim_report imports claims,
@@ -1153,7 +1153,7 @@ CAPTIONED_FIGURES["fig5_obfuscation_dumbbell"] = (
 def fig5_obfuscation_dumbbell_ci(df, n_boot=None):
     """Figure 3 with a bootstrap interval on each dot. Returns (Figure, stats, caption).
 
-    A named module function, not a lambda in the registry: export_consistency_figures
+    A named module function, not a lambda in the registry: figures_cross_modal
     resolves every entry with getattr(F, name), so a dict-only entry exports as an
     AttributeError.
     """

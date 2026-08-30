@@ -1,11 +1,11 @@
 """
-paper_freegen_figures.py — free-generation paper figures, as light PNGs.
+figures_freegen.py — free-generation paper figures, as light PNGs.
 
 Renamed from paper_hedge_figures.py: it outgrew the name once the confident/hedged
 split was dropped from the breakdowns and the file picked up the resampling and
 PDE-identification figures.
 
-Separate from paper_figures.py because that script loads the MC logprob data and
+Separate from figures_mc_logprob.py because that script loads the MC logprob data and
 resolves its inputs relative to viz/; these two figures need only the free-generation
 aggregate. Light background (plotly_white) and scale=2 PNG, so the output goes into a
 paper without a screenshot.
@@ -39,8 +39,8 @@ the comment in fig_pooled for why the share's interval belongs at a different
 height than the segment is drawn at.
 
 Usage:
-    python viz/paper_freegen_figures.py
-    PDE_FREEGEN_CSV=results/freegen_static_judgments.csv OUT_DIR=figures python viz/paper_freegen_figures.py
+    python viz/figures_freegen.py
+    PDE_FREEGEN_CSV=results/freegen_static_judgments.csv OUT_DIR=figures python viz/figures_freegen.py
 """
 import os
 import sys
