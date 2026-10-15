@@ -120,3 +120,9 @@ LAYOUT.md
 tools/README.md
 .retired/
 .pytest_cache/
+
+# Paper PDF -- not distributed from this repo.
+76_Solver_to_System_LLM_Reason.pdf
+
+# Anonymized review copy of dataset_release/ -- its own repo (elizaberman/pde-code-understanding-datasets).
+anon-pde-datasets/

@@ -2,8 +2,8 @@ THIRD-PARTY NOTICES
 ===================
 
 The datasets in this directory contain PDE solver implementations derived from the
-third-party projects listed below. Per-row provenance is given in PROVENANCE.csv and in
-the upstream_* columns of each dataset. Full license texts are in LICENSES/.
+third-party projects listed below. Per-system provenance is given in PROVENANCE.csv,
+keyed on the `gt_sample` column of either dataset. Full license texts are in LICENSES/.
 
 STATEMENT OF MODIFICATIONS
 --------------------------
@@ -23,9 +23,10 @@ modifications applied, in the order performed, are:
 
 Because six of the eight conditions remove or overwrite all comments, per-file
 copyright headers cannot be preserved inside the code fields themselves. The notices
-below, together with the per-row upstream_* columns, serve that purpose instead.
+below, together with the upstream_* columns of PROVENANCE.csv, serve that purpose instead.
 
-Rows marked origin == "synthetic" contain no third-party code. Those solvers were
+Rows with source == "synthetic" (origin == "synthetic" in PROVENANCE.csv) contain no
+third-party code. Those solvers were
 generated for this project and are covered by the MIT license in LICENSE.
 
 NOTICES

@@ -989,7 +989,7 @@ def interaction_statement(r):
 
 
 # ── fig 5b: the obfuscation dumbbell ─────────────────────────────
-def fig5_obfuscation_dumbbell(df, n_boot=None, ci=False):
+def fig5_obfuscation_dumbbell(df, n_boot=None, ci=False, delta_ci=False):
     """Naming the corrupted view, real identifiers vs obfuscated. (Figure, stats, caption).
 
     Written because this figure had NO generator: figures/fig5_obfuscation_dumbbell.png
@@ -1013,6 +1013,14 @@ def fig5_obfuscation_dumbbell(df, n_boot=None, ci=False):
     so two heavily overlapping bars are entirely consistent with the delta printed
     beside them clearing zero. Off by default because the published figure carries
     no intervals at all.
+
+    delta_ci=True prints the PAIRED interval beside each delta instead -- the
+    within-solver obfuscated-minus-real difference, bootstrapped over the 32 solvers.
+    That is the quantity a reviewer asked for (2026-09), and the one the test is
+    actually on. The pooled row's interval is uncorrected (one pre-specified
+    quantity); each condition row's is Bonferroni-corrected across the seven
+    conditions plus the pooled row, and a dagger marks a condition row whose
+    corrected interval covers zero.
     """
     from .constants import CONDITION_OUTLIER, NONE_COLOR
     from . import obfuscation as OB
@@ -1067,7 +1075,15 @@ def fig5_obfuscation_dumbbell(df, n_boot=None, ci=False):
         ax.scatter([b], [yi], s=30, facecolor=c["panel"], edgecolor=col,
                    linewidth=1.4, zorder=5)
         ax.scatter([a], [yi], s=30, color=col, zorder=5)
-        ax.annotate(f"{100 * r['diff']:+.1f} pp", (1.015, yi),
+        label = f"{100 * r['diff']:+.1f} pp"
+        if delta_ci:
+            # clo/chi, not lo/hi: for condition rows these are the Bonferroni-corrected
+            # bounds that `significant` is judged on, so the printed interval and the
+            # dagger cannot disagree. For the pooled row the two are identical.
+            label += f" [{100 * r['clo']:+.1f}, {100 * r['chi']:+.1f}]"
+            if not r["significant"]:
+                label += "†"
+        ax.annotate(label, (1.015, yi),
                     xycoords=("axes fraction", "data"), va="center", ha="left",
                     fontsize=style.ANNOT_PT, color=c["fg"],
                     weight="bold" if emph else "normal")
@@ -1162,3 +1178,17 @@ def fig5_obfuscation_dumbbell_ci(df, n_boot=None):
 
 CAPTIONED_FIGURES["fig5_obfuscation_dumbbell_ci"] = (
     lambda d: fig5_obfuscation_dumbbell_ci(d)[::2])
+
+
+def fig5_obfuscation_dumbbell_paired(df, n_boot=None):
+    """Figure 3 with the paired, solver-clustered interval on each delta.
+
+    The revision candidate for the paper's Figure 3: same dots as the published
+    figure, with the tested quantity's uncertainty printed in the delta column.
+    Returns (Figure, stats, caption).
+    """
+    return fig5_obfuscation_dumbbell(df, n_boot=n_boot, delta_ci=True)
+
+
+CAPTIONED_FIGURES["fig5_obfuscation_dumbbell_paired"] = (
+    lambda d: fig5_obfuscation_dumbbell_paired(d)[::2])
