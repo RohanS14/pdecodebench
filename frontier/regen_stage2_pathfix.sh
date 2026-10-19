@@ -14,24 +14,26 @@
 # Every generation parameter below matches the original run so the regeneration
 # isolates the path fix. Don't change one without re-fingerprinting the prompts.
 
-cd /Users/rohansubramanian/raca-torch/private_projects/mlproj
+cd "$(dirname "$0")/.."   # repo root
 
 NEW=results/frontier/score_256_37_pathfix
 OLD=results/frontier/score_256_37
-SP=/private/tmp/claude-501/-Users-rohansubramanian-raca-torch-private-projects-mlproj/cf3d9890-b5c4-4bb1-8c56-5411611a7a1c/scratchpad
+# The 256-row balanced sample the original run used (identical across all four
+# score_256_* arms). Override to point at your copy.
+DATASET_CSV=${DATASET_CSV:-results/frontier/score_256_25_tb0/dataset256_balanced.csv}
 
-# --- setup: fresh root, reuse Stage-1 cache, save the dataset out of the scratchpad
+# --- setup: fresh root, reuse Stage-1 cache, copy the dataset into the run root
 mkdir -p $NEW/gemini37flash/tl_high/stage1_cache
 cp $OLD/gemini37flash/tl_high/stage1_cache/gemini37flash__stage1_cache.jsonl \
    $NEW/gemini37flash/tl_high/stage1_cache/
-cp $SP/dataset256_balanced.csv $NEW/dataset256_balanced.csv
+cp "$DATASET_CSV" $NEW/dataset256_balanced.csv
 
 # expect 256, and no Stage-2 file yet
 wc -l < $NEW/gemini37flash/tl_high/stage1_cache/gemini37flash__stage1_cache.jsonl
 ls $NEW/gemini37flash/tl_high/
 
 # --- run Stage 2 (background; resumable by re-issuing -- checkpoint is keyed by title)
-eval/.venv/bin/python eval/frontier/run_stratified_sweep.py \
+.venv/bin/python frontier/run_stratified_sweep.py \
   --model gemini-3.7-flash \
   --thinking_settings high \
   --dataset $NEW/dataset256_balanced.csv \

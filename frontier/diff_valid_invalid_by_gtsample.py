@@ -13,7 +13,7 @@ heuristic attempts both proved unreliable on real examples, so this just
 prints the raw, comment-filtered diff plus a plain differing-line count, for
 direct manual review rather than a false-confidence label.
 
-Usage: python3 eval/frontier/diff_valid_invalid_by_gtsample.py
+Usage: python3 frontier/diff_valid_invalid_by_gtsample.py
 Output: agent_docs/valid_invalid_diffs_by_gtsample.txt
 """
 import difflib
@@ -22,7 +22,7 @@ from pathlib import Path
 
 import pandas as pd
 
-REPO_ROOT = Path(__file__).parent.parent.parent
+REPO_ROOT = Path(__file__).parent.parent
 
 
 def differing_line_count(diff_lines: list[str]) -> str:

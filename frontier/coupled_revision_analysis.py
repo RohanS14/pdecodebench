@@ -14,7 +14,7 @@ guesses directly. This is the same matching rule score_pde() itself uses,
 just applied against all 4 candidate classes instead of only the row's
 ground-truth class.
 
-Usage: python3 eval/frontier/coupled_revision_analysis.py
+Usage: python3 frontier/coupled_revision_analysis.py
 Output: agent_docs/coupled_revision_analysis.txt
 """
 import argparse
@@ -22,8 +22,9 @@ import json
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(REPO_ROOT / "eval"))
+REPO_ROOT = Path(__file__).parent.parent
+sys.path.insert(0, str(REPO_ROOT))
+sys.path.insert(0, str(REPO_ROOT / "freegen_static_judgments"))
 
 from parse_score import ALIASES, _any_alias_match  # noqa: E402
 
@@ -151,7 +152,7 @@ def main() -> None:
         "stated PDE class between Stage 1 (read-only) and Stage 2 (agentic), and in\n"
         "which directions? PDE-class revision is detected by comparing which of the 4\n"
         "canonical classes (if any) each stage's raw text keyword-matches to (same\n"
-        "alias rule eval/parse_score.py's score_pde() uses), not just match/mismatch\n"
+        "alias rule freegen_static_judgments/parse_score.py's score_pde() uses), not just match/mismatch\n"
         "against ground truth -- this catches wrong-class -> different-wrong-class\n"
         "revisions a naive match-transition would miss."
     )

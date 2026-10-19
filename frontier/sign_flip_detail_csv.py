@@ -13,7 +13,7 @@ agent_docs/sign_flip_classification.txt (all 32 gt_samples have one, not
 just the 17 pure sign-flip ones) -- distinct from invalidity_note, the
 dataset's own generic/templated field.
 
-Usage: python3 eval/frontier/sign_flip_detail_csv.py
+Usage: python3 frontier/sign_flip_detail_csv.py
 Output: agent_docs/sign_flip_detail_{pure,mixed,all_correctly_invalid}.csv
 """
 import csv
@@ -23,7 +23,7 @@ from pathlib import Path
 
 import pandas as pd
 
-REPO_ROOT = Path(__file__).parent.parent.parent
+REPO_ROOT = Path(__file__).parent.parent
 
 # gt_sample -> (verdict, one-line description), transcribed from
 # agent_docs/sign_flip_classification.txt (manual, diff-based inspection).

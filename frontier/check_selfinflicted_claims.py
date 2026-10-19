@@ -39,7 +39,7 @@ Split of confirmed rows:
   FABRICATION    -- no execution in the episode errored at all.
 
 Usage:
-  python eval/frontier/check_selfinflicted_claims.py --jsonl <stage2.jsonl>
+  python frontier/check_selfinflicted_claims.py --jsonl <stage2.jsonl>
 """
 import argparse
 import json
@@ -47,8 +47,8 @@ import re
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(REPO_ROOT / "eval"))
+REPO_ROOT = Path(__file__).parent.parent
+sys.path.insert(0, str(REPO_ROOT))
 
 from frontier.agentic_sandbox import run_python_file  # noqa: E402
 

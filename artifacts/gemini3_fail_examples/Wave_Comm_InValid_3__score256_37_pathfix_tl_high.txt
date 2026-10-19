@@ -3,7 +3,7 @@ EPISODE LOG: Wave_Comm_InValid_3 (model=gemini-3.7-flash)
 ====================================================================================================
 
 Ground truth: valid=False  pde=wave  method=explicit/implicit  behavior=oscillation/restoration
-Episode dir: /Users/rohansubramanian/raca-torch/private_projects/mlproj/results/frontier/_agentic_work/4b0513c13c48b253/score256_37_pathfix_tl_high
+Episode dir: results/frontier/_agentic_work/4b0513c13c48b253/score256_37_pathfix_tl_high
 Total cost: $0.05186
 Protocol violations: 0
 Cost guard tripped: False

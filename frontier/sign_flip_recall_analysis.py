@@ -17,7 +17,7 @@ API calls):
     reported as a separate category, not merged in (ambiguous which
     discrepancy a partial-credit verdict refers to).
 
-Usage: python3 eval/frontier/sign_flip_recall_analysis.py
+Usage: python3 frontier/sign_flip_recall_analysis.py
 Output: agent_docs/sign_flip_recall_analysis.txt
 """
 import argparse
@@ -26,7 +26,7 @@ from pathlib import Path
 
 import pandas as pd
 
-REPO_ROOT = Path(__file__).parent.parent.parent
+REPO_ROOT = Path(__file__).parent.parent
 
 SIGN_FLIP = [
     "Burgers_1", "Burgers_5", "Burgers_6", "Burgers_7", "Burgers_8",

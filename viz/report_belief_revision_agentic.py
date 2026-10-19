@@ -37,7 +37,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-sys.path.insert(0, str(Path(__file__).parent.parent / "eval" / "frontier"))
+sys.path.insert(0, str(Path(__file__).parent.parent / "frontier"))
 
 REPO_ROOT = Path(__file__).parent.parent
 
@@ -849,7 +849,7 @@ def _table2_rows(df_a: pd.DataFrame, df_b: pd.DataFrame, mod_types: list) -> lis
 
 
 def v11_sign_flip_naming_rate(judge_df: pd.DataFrame, out_dir: Path) -> None:
-    """Reuses eval/frontier/sign_flip_detail_csv.py's manual, diff-based
+    """Reuses frontier/sign_flip_detail_csv.py's manual, diff-based
     CLASSIFICATION (see agent_docs/sign_flip_classification.txt) rather than
     duplicating it -- this panel does not re-derive the ground-truth defect
     labels, only re-slices the existing judge verdicts by them."""

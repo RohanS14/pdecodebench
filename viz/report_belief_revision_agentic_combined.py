@@ -1,11 +1,11 @@
 """
-visualize_agentic_combined.py — one HTML report covering ALL FOUR arms of the
+report_belief_revision_agentic_combined.py — one HTML report covering ALL FOUR arms of the
 validity/PDE benchmark side by side.
 
-Deliberately a SEPARATE script from visualize_agentic.py, which stays untouched
+Deliberately a SEPARATE script from report_belief_revision_agentic.py, which stays untouched
 and keeps producing the per-arm reports. Only *pure* helpers are imported from
 it -- data loaders, rate/AUC computation, table formatting, the mod_type
-constants. In particular `save()` from visualize_frontier is NOT used: it
+constants. In particular `save()` from report_belief_revision is NOT used: it
 appends to a module-global figure list there, so calling it would entangle the
 two scripts' state whenever both are imported in one process. This file builds
 its figures directly and writes its own HTML.
@@ -19,14 +19,14 @@ Layout:
     stacking is simpler than JS show/hide and lets you compare by scrolling.
 
 Usage:
-  python3 viz/visualize_agentic_combined.py \
+  python3 viz/report_belief_revision_agentic_combined.py \
       --arm "2.5-flash-tb0=<stage2.jsonl>=<judge.jsonl>" \
       --arm "2.5-flash-tb8192=<stage2.jsonl>=<judge.jsonl>" \
       --arm "3.7-flash-low=<stage2.jsonl>=<judge.jsonl>" \
       --arm "3.7-flash-high=<stage2.jsonl>=<judge.jsonl>" \
       --out_dir results/frontier/combined_viz
 
-Needs pandas + plotly, which live in system python3 here, not eval/.venv.
+Needs pandas + plotly, which live in system python3 here, not the harness venv.
 """
 import argparse
 import hashlib
@@ -44,7 +44,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-from visualize_agentic import (  # noqa: E402  -- pure helpers only
+from report_belief_revision_agentic import (  # noqa: E402  -- pure helpers only
     INVALID_MOD_TYPES,
     VALID_MOD_TYPES,
     PAIRING_ORDER,
@@ -58,7 +58,7 @@ from visualize_agentic import (  # noqa: E402  -- pure helpers only
     load_judge_results,
     score_auc,
 )
-from visualize_frontier import (  # noqa: E402
+from report_belief_revision import (  # noqa: E402
     FONT, LEGEND, MARGIN, MOD_ORDER, MOD_SHORT, PDE_ORDER, PDE_LABEL,
     TRANS_COLORS, TRANS_ORDER, TRANS_SHORT, bootstrap_ci,
 )
@@ -167,7 +167,7 @@ def _auc(df, stage):
 #
 # Every interval in this module therefore resamples gt_sample WITH REPLACEMENT,
 # carrying all of a script's rows together. Row-level resampling -- which is what
-# visualize_frontier.bootstrap_ci does -- understates these intervals by 1.2x on
+# report_belief_revision.bootstrap_ci does -- understates these intervals by 1.2x on
 # tb0 and 2.2x on 3.7-flash-high, worst exactly where the arms sit near ceiling.
 # Do not use bootstrap_ci for anything in these panels.
 BOOT_N = 4000

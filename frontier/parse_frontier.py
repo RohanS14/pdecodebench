@@ -14,8 +14,9 @@ import re
 import sys
 from pathlib import Path
 
-# ── Re-export from parent parse_score.py (unchanged) ─────────────────────────
+# ── Re-export from freegen_static_judgments/parse_score.py (unchanged) ───────
 sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent / "freegen_static_judgments"))
 from parse_score import (  # noqa: F401 — intentional re-export
     parse_response,
     score_row,

@@ -3,7 +3,7 @@ EPISODE LOG: Burgers_NoComm_Valid_3 (model=gemini-2.5-flash)
 ====================================================================================================
 
 Ground truth: valid=True  pde=burgers  method=explicit  behavior=advection
-Episode dir: /Users/rohansubramanian/raca-torch/private_projects/mlproj/results/frontier/_agentic_work/Burgers_NoComm_Valid_3/stratified256_nothink
+Episode dir: results/frontier/_agentic_work/Burgers_NoComm_Valid_3/stratified256_nothink
 Total cost: $0.01285
 Protocol violations: 0
 Cost guard tripped: False

@@ -289,7 +289,7 @@ def main() -> None:
     frames = [f for f in frames if not f.empty]
     judge_df = _pd.concat(frames, ignore_index=True) if frames else load_judge_results(Path("/nonexistent"))
 
-    from visualize_agentic import df_condition_label
+    from report_belief_revision_agentic import df_condition_label
     lab_a, lab_b = df_condition_label(df_nothink), df_condition_label(df_think)
     print(f"[check-hypotheses] condition A (--nothink) = {lab_a}: {len(df_nothink)} rows")
     print(f"[check-hypotheses] condition B (--think)   = {lab_b}: {len(df_think)} rows")

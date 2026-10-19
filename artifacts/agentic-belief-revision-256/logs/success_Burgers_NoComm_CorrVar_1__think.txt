@@ -3,7 +3,7 @@ EPISODE LOG: Burgers_NoComm_CorrVar_1 (model=gemini-2.5-flash)
 ====================================================================================================
 
 Ground truth: valid=True  pde=burgers  method=explicit  behavior=advection
-Episode dir: /Users/rohansubramanian/raca-torch/private_projects/mlproj/results/frontier/_agentic_work/Burgers_NoComm_CorrVar_1/stratified64_think
+Episode dir: results/frontier/_agentic_work/Burgers_NoComm_CorrVar_1/stratified64_think
 Total cost: $0.01187
 Protocol violations: 0
 Cost guard tripped: False
@@ -90,7 +90,7 @@ I've saved the solution. Now, I'll use `run_diagnostic` to load `solution.npz` a
 }
 
 --- result ---
-Model chose run_diagnostic. Diagnostic script saved to diagnostic_0.py. Execution returned stdout='' stderr='  File "/Users/rohansubramanian/raca-torch/private_projects/mlproj/results/frontier/_agentic_work/Burgers_NoComm_CorrVar_1/stratified64_think/diagnostic_0.py", line 11\n    plt.plot(x, solution[0, :], label=\\\'Initial state\\\')\n                                       ^\nSyntaxError: unexpected character after line continuation character\n'
+Model chose run_diagnostic. Diagnostic script saved to diagnostic_0.py. Execution returned stdout='' stderr='  File "results/frontier/_agentic_work/Burgers_NoComm_CorrVar_1/stratified64_think/diagnostic_0.py", line 11\n    plt.plot(x, solution[0, :], label=\\\'Initial state\\\')\n                                       ^\nSyntaxError: unexpected character after line continuation character\n'
 
 === Turn 3 (tool=run_diagnostic) ===
 

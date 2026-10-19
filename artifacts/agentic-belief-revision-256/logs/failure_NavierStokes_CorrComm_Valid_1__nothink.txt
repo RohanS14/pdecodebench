@@ -3,7 +3,7 @@ EPISODE LOG: NavierStokes_CorrComm_Valid_1 (model=gemini-2.5-flash)
 ====================================================================================================
 
 Ground truth: valid=True  pde=navier-stokes  method=explicit  behavior=advection/diffusion
-Episode dir: /Users/rohansubramanian/raca-torch/private_projects/mlproj/results/frontier/_agentic_work/NavierStokes_CorrComm_Valid_1/stratified64_nothink
+Episode dir: results/frontier/_agentic_work/NavierStokes_CorrComm_Valid_1/stratified64_nothink
 Total cost: $0.01051
 Protocol violations: 0
 Cost guard tripped: False
@@ -67,7 +67,7 @@ The min/max values of u, v, and p seem reasonable for a cavity flow simulation. 
 }
 
 --- result ---
-Model chose run_diagnostic. Diagnostic script saved to diagnostic_0.py. Execution returned stdout='u contains NaN: False\nv contains NaN: False\np contains NaN: False\nu contains Inf: False\nv contains Inf: False\np contains Inf: False\nu along y=1 (centerline):\n' stderr='Traceback (most recent call last):\n  File "/Users/rohansubramanian/raca-torch/private_projects/mlproj/results/frontier/_agentic_work/NavierStokes_CorrComm_Valid_1/stratified64_nothink/diagnostic_0.py", line 17, in <module>\n    print(u[ny//2, :])\n            ^^\nNameError: name \'ny\' is not defined. Did you mean: \'np\'?\n'
+Model chose run_diagnostic. Diagnostic script saved to diagnostic_0.py. Execution returned stdout='u contains NaN: False\nv contains NaN: False\np contains NaN: False\nu contains Inf: False\nv contains Inf: False\np contains Inf: False\nu along y=1 (centerline):\n' stderr='Traceback (most recent call last):\n  File "results/frontier/_agentic_work/NavierStokes_CorrComm_Valid_1/stratified64_nothink/diagnostic_0.py", line 17, in <module>\n    print(u[ny//2, :])\n            ^^\nNameError: name \'ny\' is not defined. Did you mean: \'np\'?\n'
 
 === Turn 3 (tool=run_diagnostic) ===
 

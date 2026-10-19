@@ -20,7 +20,7 @@ artifacts/agentic-belief-revision-256-score/hypothesis_sanity_checks.md are
 written for the full 256-row run.
 
 Usage:
-  python eval/frontier/score_probe_report.py --jsonl <stage2.jsonl> [--stage1 <cache.jsonl>]
+  python frontier/score_probe_report.py --jsonl <stage2.jsonl> [--stage1 <cache.jsonl>]
 """
 import argparse
 import json
@@ -28,8 +28,8 @@ import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(REPO_ROOT / "eval"))
+REPO_ROOT = Path(__file__).parent.parent
+sys.path.insert(0, str(REPO_ROOT))
 
 from frontier.model_pricing import token_cost  # noqa: E402
 # Reuse the existing invalid->valid mod_type mapping rather than duplicating it.

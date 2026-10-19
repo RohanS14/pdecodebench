@@ -10,7 +10,7 @@ silent misconfiguration on Gemini 3 rather than an error.
 import glob
 import json
 import sys, os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'eval'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from frontier.model_pricing import (
     EPISODE_INPUT_TOKEN_ALLOWANCE,

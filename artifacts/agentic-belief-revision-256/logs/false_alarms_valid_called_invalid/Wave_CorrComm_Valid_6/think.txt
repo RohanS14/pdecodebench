@@ -3,7 +3,7 @@ EPISODE LOG: Wave_CorrComm_Valid_6 (model=gemini-2.5-flash)
 ====================================================================================================
 
 Ground truth: valid=True  pde=wave  method=spectral  behavior=oscillation
-Episode dir: /Users/rohansubramanian/raca-torch/private_projects/mlproj/results/frontier/_agentic_work/Wave_CorrComm_Valid_6/stratified256_think
+Episode dir: results/frontier/_agentic_work/Wave_CorrComm_Valid_6/stratified256_think
 Total cost: $0.00771
 Protocol violations: 0
 Cost guard tripped: False

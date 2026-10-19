@@ -3,7 +3,7 @@ EPISODE LOG: Heat_Comm_Valid_1 (model=gemini-2.5-flash)
 ====================================================================================================
 
 Ground truth: valid=True  pde=heat  method=explicit  behavior=diffusion
-Episode dir: /Users/rohansubramanian/raca-torch/private_projects/mlproj/results/frontier/_agentic_work/Heat_Comm_Valid_1/stratified64_nothink
+Episode dir: results/frontier/_agentic_work/Heat_Comm_Valid_1/stratified64_nothink
 Total cost: $0.00585
 Protocol violations: 0
 Cost guard tripped: False

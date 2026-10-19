@@ -3,7 +3,7 @@ EPISODE LOG: NavierStokes_CorrComm_Valid_1 (model=gemini-2.5-flash)
 ====================================================================================================
 
 Ground truth: valid=True  pde=navier-stokes  method=explicit  behavior=advection/diffusion
-Episode dir: /Users/rohansubramanian/raca-torch/private_projects/mlproj/results/frontier/_agentic_work/NavierStokes_CorrComm_Valid_1/stratified64_think
+Episode dir: results/frontier/_agentic_work/NavierStokes_CorrComm_Valid_1/stratified64_think
 Total cost: $0.02058
 Protocol violations: 0
 Cost guard tripped: False
