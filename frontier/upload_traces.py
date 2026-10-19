@@ -2,7 +2,8 @@
 upload_traces.py — publish the full agentic belief-revision traces behind §4.2
 (static vs agentic validity judgments) to a public HuggingFace dataset.
 
-Four arms, 256 episodes each, one per row of the balanced Code Validity sample:
+Four arms, 256 episodes each, one per row of the full Code Validity dataset
+(32 solvers x 8 conditions):
 
   arm                    model              thinking         source run
   gemini25flash_tb0      gemini-2.5-flash   budget 0         results/frontier/score_256_25_tb0
@@ -213,8 +214,8 @@ Code: https://github.com/RohanS14/pdecodebench (`frontier/`).
 
 Each episode: the model first judges a PDE solver statically (Stage 1), then may take up to
 **6 actions** — `edit_source` (patch the solver) and `run_diagnostic` (execute a script in a
-sandbox) — before submitting a revised judgment (Stage 2). Inputs are the 256-row balanced sample
-of the [Code Validity dataset](https://huggingface.co/datasets/bermaneh/pde-llm-eval-code-perturbation-dataset).
+sandbox) — before submitting a revised judgment (Stage 2). Inputs are all 256 rows
+(32 solvers × 8 conditions) of the [Code Validity dataset](https://huggingface.co/datasets/bermaneh/pde-llm-eval-code-perturbation-dataset).
 
 | arm | model | thinking | episodes | judged |
 |---|---|---|---|---|
