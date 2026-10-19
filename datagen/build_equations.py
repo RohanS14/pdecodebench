@@ -25,7 +25,7 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from eval.dataset_io import DEFAULT_MOD_DATASET, load_dataset  # noqa: E402
+from shared.dataset_io import DEFAULT_MOD_DATASET, load_dataset  # noqa: E402
 
 BASE_CONDITION = "Comm_Valid"
 

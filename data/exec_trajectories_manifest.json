@@ -1,0 +1,20 @@
+{
+  "NavierStokes_4": {
+    "status": "ok",
+    "route": "harvested",
+    "source": "dataset",
+    "raw_frames": 100,
+    "shape": [
+      10,
+      64,
+      64,
+      1
+    ],
+    "expected_shape": [
+      64,
+      64,
+      1
+    ],
+    "shape_match": true
+  }
+}

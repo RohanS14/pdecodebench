@@ -61,3 +61,68 @@ notes_trajectory_saving_audit.txt
 
 # Results
 results/frontier
+# ── Large derived data ────────────────────────────────────────────────────────
+# All of these regenerate from the delivered source plus the code in datagen/.
+# NOTE: gitignore has no trailing comments -- "path # note" is a literal pattern.
+#
+# multimodal_trajectories_v1.csv is 111 MB. GitHub's per-file hard limit is 100 MB,
+# so committing it does not fail at review time, it fails at push time.
+# Regenerate: sbatch/run_exec_trajectories.sbatch with RUN_EXPORT=true
+data/multimodal_trajectories_v1.csv
+# 37 MB. Regenerate: datagen/export_rendered_items.py
+data/multimodal_items_rendered_v1.csv
+# 2.5 MB, but it cost five jobs to produce. Published to HuggingFace.
+# Regenerate: sbatch/run_exec_trajectories.sbatch
+data/exec_trajectories.npz
+
+# Delivered source data. NOT regenerable -- kept out of git for size and published
+# to HuggingFace instead. md5 b9f5f332176bae894a061c9f2f5e64e0.
+data/multimodality_physics_with_trajectories.csv
+
+# Exact duplicate of the file above, under a browser-default name. Verified
+# byte-identical (same md5). Safe to delete; ignored so it cannot be committed.
+comma-separated values.csv
+
+# Result CSVs -- rebuilt from the published HF datasets by viz/refresh_report.sh
+results/*.csv
+results/xmodal_summary.json
+results/xmodal_summary.csv
+# Raw per-model generation JSONL. Same reasoning as results/xmodal/ above: every arm
+# is published to HuggingFace (pde-llm-eval-freegen-xmodal-<slug>) and mirrored at
+# /scratch/ehb7466/projects/pde-llm-eval/outputs/, so git would be a third copy of
+# 100+ MB that nothing reads from.
+results/freegen_static_judgments/
+results/freegen_static_judgments_v3/
+results/mc_logprob/
+# Its sibling, and the one that would actually break the push. The 2026-08-25 reorg
+# renamed results/xmodal/ -> results/cross_modal_consistency/; the ignore rule kept
+# pointing at the old name, so 666 MB across 8 arms came back into `git add -A`, two
+# of them over GitHub's 100 MB per-file hard limit (Qwen3.8 at 186 MB, Nemotron at
+# 155 MB). Same reasoning as every other raw arm here: regenerate, don't commit.
+results/cross_modal_consistency/
+
+# Generated reports: multi-MB and self-contained, republished by refresh_report.sh
+viz/pde_dual_report.html
+viz/*_report.html
+
+# Generated figures. Every one is reproducible from viz/ against results/, and they
+# churn on every re-render -- 20 were tracked while 25 sat untracked beside them, and
+# 7 of the tracked PDFs no longer existed on disk. Regenerate rather than diff them.
+figures/
+
+# Operator memory, not documentation. LAYOUT.md is an incident log -- which cluster
+# quota binds, which pgrep form matches itself, what four dead canary jobs taught us
+# about sys.path ordering. tools/README.md is the same in miniature: which one-shot
+# scripts are still live. Both are worth keeping on disk and worthless to someone
+# reading this project on GitHub, where they read as internal notes left in public.
+# The single README.md is the documentation.
+LAYOUT.md
+tools/README.md
+.retired/
+.pytest_cache/
+
+# Paper PDF -- not distributed from this repo.
+76_Solver_to_System_LLM_Reason.pdf
+
+# Anonymized review copy of dataset_release/ -- its own repo (elizaberman/pde-code-understanding-datasets).
+anon-pde-datasets/

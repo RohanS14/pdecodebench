@@ -1,0 +1,36 @@
+# Model roles for the cross-modal comparison. DECLARED, never inferred.
+#
+# The distinction is the whole argument of the figure. Four Qwen releases form an
+# ordered ladder and are the only place a trend claim is licensed. The other four
+# are singletons from different labs: one release each, no ordering, and treating
+# them as points on a time axis would manufacture a field-wide trajectory out of
+# four unrelated models that happen to have dates.
+#
+# Scale is held roughly constant across BOTH groups, which is what makes the
+# comparison mean anything; the loader asserts the band and the caption records the
+# measured range rather than repeating this comment's claim.
+
+band:
+  # The roster's true range is 27.8-32.8B. The band is declared slightly wider than
+  # the advertised "27-32B" because Qwen3-32B and R1-Distill-32B are 32.8B by their
+  # own safetensors totals -- asserting 32.0 would fail on the real roster, and
+  # silently rounding the numbers to fit an assertion is worse than widening it.
+  params_b_min: 27.0
+  params_b_max: 33.0
+
+ladder:
+  # Ordered by release. This ordering IS the x-axis; the dates are carried only for
+  # the confounded companion panel in the details block.
+  - {model_id: "Qwen/Qwen3-32B",   short: "Qwen3-32B",   release: "2025-04-27", params_b: 32.8}
+  - {model_id: "Qwen/Qwen3.5-27B", short: "Qwen3.5-27B", release: "2026-02-24", params_b: 27.8}
+  - {model_id: "Qwen/Qwen3.6-27B", short: "Qwen3.6-27B", release: "2026-04-21", params_b: 27.8}
+  - {model_id: "Qwen/Qwen3.8-27B", short: "Qwen3.8-27B", release: "2026-08-05", params_b: 27.8}
+
+reference:
+  # Singletons. Contemporary, same scale band, different labs. They establish how
+  # much two 30B models can differ for reasons that have nothing to do with time,
+  # which is the only honest yardstick for the ladder's movement.
+  - {model_id: "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B", short: "R1-Distill-32B",      release: "2025-01-20", params_b: 32.8}
+  - {model_id: "Qwen/QwQ-32B",                             short: "QwQ-32B",             release: "2025-03-05", params_b: 32.8}
+  - {model_id: "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16", short: "Nemotron-3-Nano-30B", release: "2025-12-04", params_b: 31.6}
+  - {model_id: "zai-org/GLM-4.7-Flash",                    short: "GLM-4.7-Flash",       release: "2026-01-19", params_b: 31.2}

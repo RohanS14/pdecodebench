@@ -319,8 +319,8 @@ truly-invalid code is invalid, not just whether it said so:
 
 ### Visualization
 
-`viz/visualize_agentic.py` reads both condition JSONLs plus the judge output and
-produces one combined, self-contained HTML report (reusing `viz/visualize_frontier.py`'s
+`viz/report_belief_revision_agentic.py` reads both condition JSONLs plus the judge output and
+produces one combined, self-contained HTML report (reusing `viz/report_belief_revision.py`'s
 shared `save()`/`write_combined_html()` infra and constants rather than duplicating
 them): accuracy-by-mod_type (3 lines — S1 shared, S2 nothink, S2 think), transition
 stacked bars per condition, turns-used-by-mod_type per condition, judge
