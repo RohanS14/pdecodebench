@@ -75,7 +75,7 @@ Raw model outputs are on HuggingFace under [`bermaneh/pde-llm-eval-*`](https://h
 # cross-representation consistency (vLLM)
 python cross_modal_consistency/eval/run_cross_modal_consistency.py --model Qwen/Qwen3-32B --thinking on
 
-# agentic validity (needs GOOGLE_API_KEY, set --thinking_settings to "low high" for 3.7 Flash)
+# agentic validity (needs GOOGLE_API_KEY, set --model gemini-3.7-flash --thinking_settings low high for 3.7 Flash)
 python frontier/run_stratified_sweep.py --model gemini-2.5-flash --thinking_settings 0 8192 \
     --dataset data/merged_mod_jul28.csv --output_root results/frontier/paper --run_id_prefix paper
 python frontier/judge_invalidity_reasoning.py --dataset data/merged_mod_jul28.csv \
