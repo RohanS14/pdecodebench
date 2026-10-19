@@ -37,6 +37,9 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent.parent / "eval" / "frontier"))
+
+REPO_ROOT = Path(__file__).parent.parent
 
 import numpy as np
 import pandas as pd
@@ -66,15 +69,81 @@ def load_agentic_results(path: Path) -> pd.DataFrame:
     df = pd.DataFrame(rows)
     df["mod_type"] = df["mod_type"].str.strip()
     df["gt_pde"] = df["gt_pde"].str.strip()
-    return df
+    return with_condition_column(df)
 
 
 def load_judge_results(path: Path) -> pd.DataFrame:
+    base_cols = ["title", "condition", "thinking_budget", "mod_type",
+                 "pde_class", "category", "explanation"]
     if not Path(path).exists():
-        return pd.DataFrame(columns=["title", "thinking_budget", "mod_type", "pde_class",
-                                      "category", "contains_incorrect_claims", "explanation"])
+        return pd.DataFrame(columns=base_cols + [c for c, _ in PRECISION_FIELDS])
     rows = [json.loads(l) for l in open(path) if l.strip()]
-    return pd.DataFrame(rows)
+    df = with_condition_column(pd.DataFrame(rows))
+    # Guarantee every precision column exists, so a judge run from either side
+    # of the field split does not KeyError downstream. Absent ones stay all-NA
+    # and are dropped from the table by the notna() check.
+    for col, _ in PRECISION_FIELDS:
+        if col not in df.columns:
+            df[col] = pd.NA
+    return df
+
+
+# ── Condition identity ───────────────────────────────────────────────────────
+# Every label in this report used to be hardcoded to the original two-condition
+# design ("thinking off" / "thinking on"), which silently mislabels any other
+# condition -- a thinking_level=high run would be captioned "thinking off".
+# Labels are now derived from the data instead.
+#
+# `condition` is the field going forward (the only one that can name a Gemini 3
+# condition); older 2.5 rows predate it and carry only a numeric
+# thinking_budget, so that is the fallback. Same precedence as
+# judge_invalidity_reasoning._condition_of().
+
+def with_condition_column(df: pd.DataFrame) -> pd.DataFrame:
+    """Guarantee a non-null `condition` column, deriving it from
+    thinking_budget for rows written before `condition` existed.
+
+    Non-null matters: several judge panels groupby() this column, and pandas
+    silently DROPS None/NaN group keys -- which made the whole
+    contains_incorrect_claims section vanish from the report rather than error.
+    """
+    if df.empty:
+        return df
+    df = df.copy()
+    if "condition" not in df.columns:
+        df["condition"] = None
+    def _fill(row):
+        c = row.get("condition")
+        if c is not None and c == c and str(c).strip():
+            return str(c)
+        tb = row.get("thinking_budget")
+        if tb is not None and tb == tb:
+            return f"tb{int(tb)}"
+        return "unknown"
+    df["condition"] = df.apply(_fill, axis=1)
+    return df
+
+
+def condition_label(cond: str) -> str:
+    """Human-readable form of a condition slug, for titles and captions."""
+    if cond.startswith("tl_"):
+        return f"thinking_level={cond[3:]}"
+    if cond == "tb_dynamic":
+        return "thinking_budget=dynamic"
+    if cond.startswith("tb"):
+        return f"thinking_budget={cond[2:]}"
+    return cond
+
+
+def df_condition_label(df: pd.DataFrame) -> str:
+    """Label for a single-condition Stage-2 frame. Falls back to a generic name
+    rather than guessing if a frame somehow mixes conditions."""
+    if df.empty:
+        return "no data"
+    conds = sorted(set(df["condition"])) if "condition" in df.columns else []
+    if len(conds) == 1:
+        return condition_label(conds[0])
+    return "mixed conditions" if conds else "unknown condition"
 
 
 # ── Result 0: system architecture schematic ──────────────────────────────────
@@ -329,20 +398,25 @@ def v0_architecture_diagram(out_dir: Path) -> None:
 SHOW_METHOD_BEHAVIOR_PANELS = False
 
 
-def v1_accuracy_by_modtype(df_nothink: pd.DataFrame, df_think: pd.DataFrame, out_dir: Path,
+def v1_accuracy_by_modtype(df_a: pd.DataFrame, df_b: pd.DataFrame, out_dir: Path,
                             show_method_behavior: bool = SHOW_METHOD_BEHAVIOR_PANELS) -> None:
-    """3 lines per panel: S1 (shared), S2 (thinking off), S2 (thinking on).
-    Stage 1 is 100% independent of thinking_budget (confirmed by reading the
-    harness code) -- it's cached once per row and reused for both Stage-2
-    sweeps, not re-run under a "thinking on" condition. A separate "S1
-    (thinking on)" line would therefore be misleading: it would imply Stage 1
-    was ever executed with thinking enabled, when it never is regardless of
-    which sweep it's paired with. Plotting one shared S1 line makes that
-    structural fact explicit instead of implying something false.
+    """One S1 line per condition plus one S2 line per condition.
 
-    df_think may be empty (nothink-only run, no --think data yet) -- the "S2
-    (thinking on)" series is simply dropped from the plot in that case (2
-    lines instead of 3), rather than erroring.
+    IMPORTANT -- this changed. Under the original design Stage 1 was run once at
+    thinking_budget=0 and reused across both Stage-2 sweeps, so a single shared
+    S1 line was correct and a per-condition S1 line would have implied something
+    false. Stage 1 now runs at the SAME thinking setting as the Stage 2 it feeds,
+    so S1 and S2 differ only in tool access -- which is the whole point, since
+    otherwise "does investigation help" would confound tool access with thinking.
+    S1 is therefore labelled with its condition, not as "shared".
+
+    Caching Stage 1 still matters, for a different reason than before: on Gemini
+    3 nothing is deterministic (temperature is stripped and is not honoured
+    anyway), so the cache is what guarantees every Stage-2 row sees the same
+    Stage-1 draw, rather than being reuse of an identical answer.
+
+    df_b may be empty (single-condition run) -- its series are dropped from the
+    plot rather than erroring.
 
     show_method_behavior=True adds Panels C/D (method/behavior any_match,
     2x2 grid); default False shows just Panels A/B (validity/pde, 1x2)."""
@@ -363,12 +437,15 @@ def v1_accuracy_by_modtype(df_nothink: pd.DataFrame, df_think: pd.DataFrame, out
         horizontal_spacing=0.12, vertical_spacing=0.16,
     )
 
+    lab_a, lab_b = df_condition_label(df_a), df_condition_label(df_b)
     series = [
-        ("S1 (shared)",       "s1", df_nothink, "#2980b9", "solid"),
-        ("S2 (thinking off)", "s2", df_nothink, "#e74c3c", "dash"),
-        ("S2 (thinking on)",  "s2", df_think,   "#f39c12", "dash"),
+        (f"S1 ({lab_a})", "s1", df_a, "#2980b9", "solid"),
+        (f"S2 ({lab_a})", "s2", df_a, "#e74c3c", "dash"),
     ]
-    series = [s for s in series if not s[2].empty]
+    if not df_b.empty:
+        series += [(f"S1 ({lab_b})", "s1", df_b, "#7f8c8d", "solid"),
+                   (f"S2 ({lab_b})", "s2", df_b, "#f39c12", "dash")]
+    series = [x for x in series if not x[2].empty]
 
     for panel_idx, (_, metric) in enumerate(metrics):
         row_idx, col_idx = panel_idx // 2 + 1, panel_idx % 2 + 1
@@ -402,8 +479,9 @@ def v1_accuracy_by_modtype(df_nothink: pd.DataFrame, df_think: pd.DataFrame, out
                       annotation_text="chance", annotation_position="bottom right",
                       row=row_idx, col=col_idx)
 
-    think_present = not df_think.empty
-    title_suffix = "S1 (shared) vs S2, Thinking Off vs On" if think_present else "S1 (shared) vs S2, Thinking Off only (no --think data yet)"
+    think_present = not df_b.empty
+    title_suffix = (f"S1 vs S2, {lab_a} vs {lab_b}" if think_present
+                    else f"S1 vs S2, {lab_a}")
     fig.update_layout(
         title=f"Accuracy by Mod Type: {title_suffix}",
         font=FONT, legend=LEGEND, margin=MARGIN,
@@ -411,11 +489,13 @@ def v1_accuracy_by_modtype(df_nothink: pd.DataFrame, df_think: pd.DataFrame, out
         plot_bgcolor="white", paper_bgcolor="white",
     )
     fig.update_xaxes(tickangle=35)
-    n_lines = 3 if think_present else 2
+    n_lines = len(series)
     desc = (
-        f"{n_lines} lines per panel: S1 is a single shared line (Stage 1 is cached once per "
-        "row and reused for both Stage-2 sweeps -- it never runs under a thinking "
-        "condition, so there is deliberately no separate 'S1 (thinking on)' line). "
+        f"{n_lines} lines per panel. Stage 1 runs at the SAME thinking setting as the Stage 2 "
+        "it feeds, so S1 and S2 differ only in tool access -- that is deliberate: it keeps "
+        "'does investigation help' from confounding tool access with thinking level. (Under the "
+        "original design Stage 1 always ran at thinking_budget=0 and was shared across both "
+        "Stage-2 sweeps; that is no longer the case, so S1 is labelled per condition.) "
         f"Panel B (PDE identification) is a control and should stay flat across all {n_lines} lines."
     )
     if show_method_behavior:
@@ -426,14 +506,14 @@ def v1_accuracy_by_modtype(df_nothink: pd.DataFrame, df_think: pd.DataFrame, out
             "and B. Note: both turned out close to flat across all stages -- execution "
             "evidence barely moves method/behavior identification, unlike validity."
         )
-    save(fig, "V1_accuracy_modtype_3line", out_dir,
-         title=f"Accuracy by Mod Type: S1 (shared) vs S2, {'thinking off vs on' if think_present else 'thinking off only'}",
+    save(fig, "V1_accuracy_modtype", out_dir,
+         title=f"Accuracy by Mod Type: {title_suffix}",
          description=desc)
 
 
 # ── Result 2: transition stacked bars, one per thinking condition ───────────
 
-def v2_transitions_by_condition(df: pd.DataFrame, out_dir: Path, condition_label: str, name_suffix: str) -> None:
+def v2_transitions_by_condition(df: pd.DataFrame, out_dir: Path, cond_label: str, name_suffix: str) -> None:
     conds = [m for m in MOD_ORDER if m in df["mod_type"].unique()]
     labels = [MOD_SHORT.get(c, c) for c in conds]
 
@@ -463,13 +543,13 @@ def v2_transitions_by_condition(df: pd.DataFrame, out_dir: Path, condition_label
         )
 
     fig.update_layout(
-        title=f"Transition Counts by Mod Type — {condition_label}",
+        title=f"Transition Counts by Mod Type — {cond_label}",
         barmode="stack", font=FONT, legend=LEGEND, margin=MARGIN,
         width=1100, height=520, yaxis_title="Count",
         plot_bgcolor="white", paper_bgcolor="white", xaxis_tickangle=35,
     )
     save(fig, f"V2_transitions_{name_suffix}", out_dir,
-         title=f"Transitions — {condition_label}: Counts by Mod Type",
+         title=f"Transitions — {cond_label}: Counts by Mod Type",
          description="Stacked transition counts per mod_type for this thinking condition. "
                      "R→R: correct both stages. R→W: degraded. W→R: improved. W→W: wrong both "
                      "stages. Δ labels show S2−S1 accuracy change in percentage points.")
@@ -477,7 +557,7 @@ def v2_transitions_by_condition(df: pd.DataFrame, out_dir: Path, condition_label
 
 # ── Result 3a: turns used by condition ───────────────────────────────────────
 
-def v3a_turns_by_condition(df: pd.DataFrame, out_dir: Path, condition_label: str, name_suffix: str) -> None:
+def v3a_turns_by_condition(df: pd.DataFrame, out_dir: Path, cond_label: str, name_suffix: str) -> None:
     conds = [m for m in MOD_ORDER if m in df["mod_type"].unique()]
     labels = [MOD_SHORT.get(c, c) for c in conds]
 
@@ -494,13 +574,13 @@ def v3a_turns_by_condition(df: pd.DataFrame, out_dir: Path, condition_label: str
         error_y=dict(type="data", symmetric=False, array=hi_errs, arrayminus=lo_errs),
     ))
     fig.update_layout(
-        title=f"Investigative Actions Used by Mod Type — {condition_label}",
+        title=f"Investigative Actions Used by Mod Type — {cond_label}",
         font=FONT, margin=MARGIN, width=1000, height=480,
         yaxis_title="Mean s2_action_count", plot_bgcolor="white", paper_bgcolor="white",
         xaxis_tickangle=35,
     )
     save(fig, f"V3a_turns_{name_suffix}", out_dir,
-         title=f"Turns used — {condition_label}",
+         title=f"Turns used — {cond_label}",
          description="Mean investigative action count (edit_source/run_diagnostic; "
                      "submit_final_answer never counts) per mod_type, with bootstrap 95% CI.")
 
@@ -517,9 +597,9 @@ def v3b_judge_by_modtype(judge_df: pd.DataFrame, out_dir: Path) -> None:
     if judge_df.empty:
         print("  [viz-agentic] No judge results -- skipping V3b mod_type chart.")
         return
-    for thinking_budget in sorted(judge_df["thinking_budget"].unique()):
-        sub_tb = judge_df[judge_df["thinking_budget"] == thinking_budget]
-        condition_label = "thinking off" if thinking_budget == 0 else f"thinking on (budget={thinking_budget})"
+    for cond in sorted(judge_df["condition"].unique()):
+        sub_tb = judge_df[judge_df["condition"] == cond]
+        cond_label = condition_label(cond)
         conds = [m for m in INVALID_MOD_TYPES if m in sub_tb["mod_type"].unique()]
         labels = [MOD_SHORT.get(c, c) for c in conds]
 
@@ -529,14 +609,14 @@ def v3b_judge_by_modtype(judge_df: pd.DataFrame, out_dir: Path) -> None:
             fig.add_trace(go.Bar(name=cat, x=labels, y=ys, marker_color=CATEGORY_COLORS[cat]))
 
         fig.update_layout(
-            title=f"Invalidity-Reasoning Correctness by Mod Type — {condition_label}",
+            title=f"Invalidity-Reasoning Correctness by Mod Type — {cond_label}",
             barmode="stack", font=FONT, legend=LEGEND, margin=MARGIN,
             width=1000, height=480, yaxis_title="Count",
             plot_bgcolor="white", paper_bgcolor="white", xaxis_tickangle=35,
         )
-        suffix = "nothink" if thinking_budget == 0 else "think"
+        suffix = cond
         save(fig, f"V3b_judge_modtype_{suffix}", out_dir,
-             title=f"Invalidity-reasoning correctness by mod_type — {condition_label}",
+             title=f"Invalidity-reasoning correctness by mod_type — {cond_label}",
              description="LLM-judge (gemini-3.1-pro-preview) classification of the model's valid_exp "
                          "justification, restricted to rows where the model correctly classified "
                          "the code as invalid (gt_valid=False AND s2_valid_match=1). 'none': no "
@@ -550,9 +630,9 @@ def v3b_judge_by_pdeclass(judge_df: pd.DataFrame, out_dir: Path) -> None:
     if judge_df.empty:
         print("  [viz-agentic] No judge results -- skipping V3b pde_class chart.")
         return
-    for thinking_budget in sorted(judge_df["thinking_budget"].unique()):
-        sub_tb = judge_df[judge_df["thinking_budget"] == thinking_budget]
-        condition_label = "thinking off" if thinking_budget == 0 else f"thinking on (budget={thinking_budget})"
+    for cond in sorted(judge_df["condition"].unique()):
+        sub_tb = judge_df[judge_df["condition"] == cond]
+        cond_label = condition_label(cond)
         conds = [p for p in PDE_ORDER if p in sub_tb["pde_class"].unique()]
         labels = [PDE_LABEL.get(c, c) for c in conds]
 
@@ -562,30 +642,49 @@ def v3b_judge_by_pdeclass(judge_df: pd.DataFrame, out_dir: Path) -> None:
             fig.add_trace(go.Bar(name=cat, x=labels, y=ys, marker_color=CATEGORY_COLORS[cat]))
 
         fig.update_layout(
-            title=f"Invalidity-Reasoning Correctness by PDE Class — {condition_label}",
+            title=f"Invalidity-Reasoning Correctness by PDE Class — {cond_label}",
             barmode="stack", font=FONT, legend=LEGEND, margin=MARGIN,
             width=800, height=480, yaxis_title="Count",
             plot_bgcolor="white", paper_bgcolor="white",
         )
-        suffix = "nothink" if thinking_budget == 0 else "think"
+        suffix = cond
         save(fig, f"V3b_judge_pdeclass_{suffix}", out_dir,
-             title=f"Invalidity-reasoning correctness by PDE class — {condition_label}",
+             title=f"Invalidity-reasoning correctness by PDE class — {cond_label}",
              description="Same none/some/all judge classification as the mod_type view, "
                          "aggregated by PDE class instead.")
 
 
+PRECISION_FIELDS = [
+    # (column, output name). The judge's precision signal was split: a single
+    # `contains_incorrect_claims` defined as "extraneous, speculative, or
+    # factually wrong" fired mostly on runtime figures the judge could not
+    # check, not on anything wrong about the code. Both new fields are reported
+    # separately; the legacy merged field is still read so older judge runs
+    # render rather than showing a blank table.
+    ("contains_incorrect_code_claims", "bad_code_claims_rate"),
+    ("contains_unverifiable_execution_claims", "unverifiable_exec_claims_rate"),
+    ("contains_incorrect_claims", "legacy_merged_rate"),
+]
+
+
 def contains_incorrect_claims_table(judge_df: pd.DataFrame) -> pd.DataFrame:
-    """Separate reportable rate, NOT folded into the none/some/all charts --
+    """Separate reportable rates, NOT folded into the none/some/all charts --
     category is a recall-only metric with no precision sensitivity, this
     table is the only place the precision signal (shotgun-reasoning rate)
     is visible."""
     if judge_df.empty:
-        return pd.DataFrame(columns=["thinking_budget", "n", "contains_incorrect_claims_rate"])
+        return pd.DataFrame(columns=["condition", "n"] + [o for _, o in PRECISION_FIELDS])
+    # Grouped on `condition`, not thinking_budget: the latter is None on Gemini 3
+    # rows, and pandas groupby DROPS None keys, so this table silently came back
+    # empty -- the precision signal vanished from the report without erroring.
+    # with_condition_column() guarantees the key is non-null.
     rows = []
-    for thinking_budget, sub in judge_df.groupby("thinking_budget"):
-        rate = sub["contains_incorrect_claims"].mean()
-        rows.append({"thinking_budget": thinking_budget, "n": len(sub),
-                     "contains_incorrect_claims_rate": round(rate, 3)})
+    for cond, sub in judge_df.groupby("condition"):
+        entry = {"condition": cond, "n": len(sub)}
+        for col, out in PRECISION_FIELDS:
+            if col in sub.columns and sub[col].notna().any():
+                entry[out] = round(sub[col].mean(), 3)
+        rows.append(entry)
     return pd.DataFrame(rows)
 
 
@@ -607,7 +706,7 @@ def _rate(df: pd.DataFrame, mod_types: list, match_col: str) -> tuple[float, int
     return sub.mean() * 100, len(sub)
 
 
-def v10_recall_specificity(df_nothink: pd.DataFrame, df_think: pd.DataFrame, out_dir: Path) -> None:
+def v10_recall_specificity(df_a: pd.DataFrame, df_b: pd.DataFrame, out_dir: Path) -> None:
     """Aggregate (all 4 mod_types pooled) and mod_type-stratified recall/
     specificity, for S1 (shared), S2 nothink, and S2 think (if available).
     See agent_docs/hypotheses.md (H1) for the reasoning this panel visualizes:
@@ -616,11 +715,13 @@ def v10_recall_specificity(df_nothink: pd.DataFrame, df_think: pd.DataFrame, out
     investigation -- because a specific injected defect is a discrete target
     evidence can converge to, while "this code is fine" has no equivalent
     target for evidence to confirm."""
-    think_present = not df_think.empty
-    stages = [("S1 (shared)", df_nothink, "s1_valid_match", "#2980b9")]
-    stages.append(("S2 (thinking off)", df_nothink, "s2_valid_match", "#e74c3c"))
+    think_present = not df_b.empty
+    lab_a, lab_b = df_condition_label(df_a), df_condition_label(df_b)
+    stages = [(f"S1 ({lab_a})", df_a, "s1_valid_match", "#2980b9"),
+              (f"S2 ({lab_a})", df_a, "s2_valid_match", "#e74c3c")]
     if think_present:
-        stages.append(("S2 (thinking on)", df_think, "s2_valid_match", "#f39c12"))
+        stages += [(f"S1 ({lab_b})", df_b, "s1_valid_match", "#7f8c8d"),
+                   (f"S2 ({lab_b})", df_b, "s2_valid_match", "#f39c12")]
 
     fig = make_subplots(
         rows=1, cols=2,
@@ -661,15 +762,33 @@ def v10_recall_specificity(df_nothink: pd.DataFrame, df_think: pd.DataFrame, out
     fig.update_xaxes(tickangle=20)
 
     extra_html = (
-        _pre_table(["Stage", "Recall", "Specificity"], _table1_rows(df_nothink, df_think),
+        _pre_table(["Stage", "Recall", "Specificity"], _table1_rows(df_a, df_b),
                    caption="Table 1 — Aggregate recall / specificity by stage")
         + _pre_table(["Stage"] + [MOD_SHORT.get(m, m) for m in INVALID_MOD_TYPES],
-                     _table2_rows(df_nothink, df_think, INVALID_MOD_TYPES),
+                     _table2_rows(df_a, df_b, INVALID_MOD_TYPES),
                      caption="Table 2 — Recall by mod_type (truly-invalid rows only)")
         + _pre_table(["Stage"] + [MOD_SHORT.get(m, m) for m in VALID_MOD_TYPES],
-                     _table2_rows(df_nothink, df_think, VALID_MOD_TYPES),
+                     _table2_rows(df_a, df_b, VALID_MOD_TYPES),
                      caption="Table 3 — Specificity by mod_type (truly-valid rows only)")
     )
+
+    # Per-mod_type n is DERIVED, never hardcoded: this caption previously stated
+    # the 64-row figures ("n=8 each ... ~12.5 percentage points") and silently
+    # went stale when the same script was pointed at the 256-row sample, telling
+    # the reader to ignore differences 4x larger than the real resolution.
+    _mod_ns = sorted({n for mods in (INVALID_MOD_TYPES, VALID_MOD_TYPES)
+                      for m in mods for _, n in [_rate(df_a, [m], "s2_valid_match")] if n})
+    if not _mod_ns:
+        _res = "per-mod_type sample sizes vary -- see the tables below for exact n"
+    elif len(set(_mod_ns)) == 1:
+        _n = _mod_ns[0]
+        _res = (f"n={_n} each in this sample -- a single row is worth "
+                f"~{100/_n:.1f} percentage points, so per-mod_type differences smaller "
+                f"than that shouldn't be over-read")
+    else:
+        _res = (f"n ranges {min(_mod_ns)}-{max(_mod_ns)} across mod_types -- a single row is "
+                f"worth ~{100/max(_mod_ns):.1f}-{100/min(_mod_ns):.1f} percentage points, so "
+                f"per-mod_type differences smaller than that shouldn't be over-read")
 
     save(fig, "V10_recall_specificity", out_dir,
          title="Recall vs Specificity: Aggregate and by Mod Type",
@@ -678,9 +797,7 @@ def v10_recall_specificity(df_nothink: pd.DataFrame, df_think: pd.DataFrame, out
                      "Specificity (Panel B) = fraction of truly-valid rows (gt_valid=True) "
                      "correctly called valid, computed only over the 4 valid mod_types. "
                      "'Aggregate' pools all 4 mod_types on that panel's side; the remaining "
-                     "bars split by individual mod_type (n=8 each in the 64-row stratified "
-                     "sample -- a single row is worth ~12.5 percentage points, so per-mod_type "
-                     "differences smaller than that shouldn't be over-read). See "
+                     f"bars split by individual mod_type ({_res}). See "
                      "agent_docs/hypotheses.md (H1) for the hypothesis this panel tests: "
                      "recall converges toward 100% under agentic investigation across every "
                      "mod_type, while specificity does not improve under the same investigation "
@@ -698,32 +815,593 @@ def _fmt_rate(rate: float, n: int) -> str:
     return f"{k}/{n} ({rate:.1f}%)"
 
 
-def _stage_rows(df_nothink: pd.DataFrame, df_think: pd.DataFrame) -> list:
-    """(stage_label, df, match_col) for whichever stages are available."""
-    stages = [("S1", df_nothink, "s1_valid_match"), ("S2 nothink", df_nothink, "s2_valid_match")]
-    if not df_think.empty:
-        stages.append(("S2 think", df_think, "s2_valid_match"))
+def _stage_rows(df_a: pd.DataFrame, df_b: pd.DataFrame) -> list:
+    """(stage_label, df, match_col) for whichever stages are available. Labels
+    carry the actual condition rather than the historical nothink/think names."""
+    lab_a = df_condition_label(df_a)
+    stages = [(f"S1 ({lab_a})", df_a, "s1_valid_match"),
+              (f"S2 ({lab_a})", df_a, "s2_valid_match")]
+    if not df_b.empty:
+        lab_b = df_condition_label(df_b)
+        stages += [(f"S1 ({lab_b})", df_b, "s1_valid_match"),
+                   (f"S2 ({lab_b})", df_b, "s2_valid_match")]
     return stages
 
 
-def _table1_rows(df_nothink: pd.DataFrame, df_think: pd.DataFrame) -> list:
+def _table1_rows(df_a: pd.DataFrame, df_b: pd.DataFrame) -> list:
     rows = []
-    for stage_label, df, match_col in _stage_rows(df_nothink, df_think):
+    for stage_label, df, match_col in _stage_rows(df_a, df_b):
         rec_rate, rec_n = _rate(df, INVALID_MOD_TYPES, match_col)
         spec_rate, spec_n = _rate(df, VALID_MOD_TYPES, match_col)
         rows.append([stage_label, _fmt_rate(rec_rate, rec_n), _fmt_rate(spec_rate, spec_n)])
     return rows
 
 
-def _table2_rows(df_nothink: pd.DataFrame, df_think: pd.DataFrame, mod_types: list) -> list:
+def _table2_rows(df_a: pd.DataFrame, df_b: pd.DataFrame, mod_types: list) -> list:
     rows = []
-    for stage_label, df, match_col in _stage_rows(df_nothink, df_think):
+    for stage_label, df, match_col in _stage_rows(df_a, df_b):
         row = [stage_label]
         for m in mod_types:
             rate, n = _rate(df, [m], match_col)
             row.append(_fmt_rate(rate, n))
         rows.append(row)
     return rows
+
+
+def v11_sign_flip_naming_rate(judge_df: pd.DataFrame, out_dir: Path) -> None:
+    """Reuses eval/frontier/sign_flip_detail_csv.py's manual, diff-based
+    CLASSIFICATION (see agent_docs/sign_flip_classification.txt) rather than
+    duplicating it -- this panel does not re-derive the ground-truth defect
+    labels, only re-slices the existing judge verdicts by them."""
+    if judge_df.empty:
+        return
+    from sign_flip_detail_csv import CLASSIFICATION  # noqa: E402
+
+    dataset = pd.read_csv(REPO_ROOT / "data" / "merged_mod_jul28.csv")
+    title_to_gt_sample = dict(zip(dataset["title"], dataset["gt_sample"]))
+
+    df = judge_df.copy()
+    df["gt_sample"] = df["title"].map(title_to_gt_sample)
+    df["defect_type"] = df["gt_sample"].map(lambda g: CLASSIFICATION.get(g, ("UNKNOWN", ""))[0])
+
+    categories = ["SIGN FLIP", "MIXED", "OTHER"]
+    x_labels = categories + ["ALL (pooled)"]
+    # Derived from the data, not hardcoded to the original (nothink=0, think=1536)
+    # pair -- a Gemini 3 run has neither of those thinking_budget values.
+    _palette = ["#e74c3c", "#f39c12", "#7f8c8d", "#2980b9"]
+    conditions = [(condition_label(c), c, _palette[i % len(_palette)])
+                  for i, c in enumerate(sorted(df["condition"].unique()))]
+
+    def named_rate(sub: pd.DataFrame) -> tuple[float, int, int]:
+        n = len(sub)
+        named = int(sub["category"].isin(["all", "some"]).sum())
+        return (100 * named / n if n else float("nan")), named, n
+
+    fig = go.Figure()
+    table_rows = []
+    per_cond_stats = {}
+    for cond_label, tb, color in conditions:
+        ys = []
+        stats = []
+        for cat in categories:
+            sub = df[(df["defect_type"] == cat) & (df["condition"] == tb)]
+            rate, named, n = named_rate(sub)
+            ys.append(rate)
+            stats.append((rate, named, n))
+        sub_all = df[df["condition"] == tb]
+        rate_all, named_all, n_all = named_rate(sub_all)
+        ys.append(rate_all)
+        stats.append((rate_all, named_all, n_all))
+        per_cond_stats[cond_label] = stats
+        fig.add_trace(go.Bar(name=cond_label, x=x_labels, y=ys, marker_color=color))
+
+    for i, label in enumerate(x_labels):
+        row = [label]
+        for cond_label, _, _ in conditions:
+            rate, named, n = per_cond_stats[cond_label][i]
+            row.append(_fmt_rate(rate, n))
+        table_rows.append(row)
+
+    fig.update_layout(
+        barmode="group",
+        title="Did the justification name the real defect? (reused judge category, by defect type)",
+        yaxis=dict(title="category in {all, some} rate (%)", range=[0, 105]),
+        font=FONT, legend=LEGEND, margin=MARGIN,
+        width=800, height=480,
+        plot_bgcolor="white", paper_bgcolor="white",
+    )
+    fig.add_hline(y=50, line_dash="dot", line_color="#aaa")
+
+    extra_html = _pre_table(
+        ["Defect type"] + [c[0] for c in conditions], table_rows,
+        caption="category in {all, some} rate, scope: rows already correctly called invalid",
+    )
+
+    save(fig, "V11_sign_flip_naming_rate", out_dir,
+         title="Sign-Flip Defect Naming Rate (reused judge verdicts)",
+         description="For SIGN FLIP gt_samples (17, a single clean discrepancy each -- see "
+                     "agent_docs/sign_flip_classification.txt), the judge's category=all/some "
+                     "verdict is exactly 'did the justification name the sign flip'. For MIXED/"
+                     "OTHER/ALL, the same category field is scored against whichever real "
+                     "discrepancy is actually present, not sign flips specifically. Scope for "
+                     "every bar: only rows the model already correctly called invalid (recall "
+                     "itself is separately near-ceiling for SIGN FLIP -- see "
+                     "agent_docs/sign_flip_recall_analysis.txt). On the original two-condition "
+                     "2.5 data, SIGN FLIP had the LOWEST naming rate of any category in both "
+                     "conditions despite being the easiest defect type to detect at all, and "
+                     "extended thinking did not close that gap -- check whether that still holds "
+                     "here rather than assuming it, since this report may be rendering a "
+                     "different model or a single condition.",
+         extra_html=extra_html)
+
+
+# ── Results 12-16: the validity score ────────────────────────────────────────
+# The score is a 0-10 physical-validity rating collected alongside (never
+# instead of) the binary valid/invalid call, at both stages. Its purpose is to
+# separate DISCRIMINATION (can the model rank correct code above defective
+# code?) from CALIBRATION (does it put its yes/no threshold in the right
+# place?) -- two things the binary field fuses together and cannot distinguish.
+#
+# Panel order is deliberate: V12 (distribution) comes first because the score is
+# bimodal BY GENUINE CLASS SEPARATION, and that fact is what justifies using a
+# rank-based metric (V14) over a mean (V13). Reading V13 or V14 without V12
+# invites treating a mean over a two-humped ordinal as meaningful.
+
+SCORE_MIN, SCORE_MAX = 0, 10
+
+# Valid <-> invalid mod_type pairings, for the paired comparisons. Sourced from
+# the judge module rather than re-derived, so there is one definition.
+try:
+    from judge_invalidity_reasoning import INVALID_TO_VALID_MOD_TYPE  # noqa: E402
+except ImportError:  # pragma: no cover -- viz can render without eval/ on path
+    INVALID_TO_VALID_MOD_TYPE = {
+        "Comm_InValid": "Comm_Valid", "NoComm_InValid": "NoComm_Valid",
+        "NoComm_CorrVar_InValid": "NoComm_CorrVar", "CorrComm_Invalid": "CorrComm",
+    }
+PAIRING_ORDER = ["Comm_Valid", "NoComm_Valid", "CorrComm", "NoComm_CorrVar"]
+
+
+def _has_scores(df: pd.DataFrame) -> bool:
+    return (not df.empty and "s2_validity_score" in df.columns
+            and df["s2_validity_score"].notna().any())
+
+
+def score_auc(pos: list, neg: list) -> float:
+    """P(a random truly-valid row outscores a random truly-invalid row), ties at
+    0.5 -- a normalised Mann-Whitney U. Threshold-free and rank-only, which is
+    why it is the right lens on a lumpy 0-10 integer: it is unaffected by the
+    score's absolute calibration or by clustering, and it is the only measure
+    that stays comparable across models (a "7" from one model is not a "7" from
+    another, but a ranking is a ranking)."""
+    if not pos or not neg:
+        return float("nan")
+    wins = sum((a > b) + 0.5 * (a == b) for a in pos for b in neg)
+    return wins / (len(pos) * len(neg))
+
+
+def _scores(df: pd.DataFrame, stage: str, gt_valid: bool) -> list:
+    col = f"{stage}_validity_score"
+    if df.empty or col not in df.columns:
+        return []
+    sub = df[df["gt_valid"] == gt_valid][col].dropna()
+    return [int(x) for x in sub]
+
+
+def _best_threshold(df: pd.DataFrame, stage: str) -> tuple:
+    """Accuracy achievable from the score alone at its best cutoff, vs the
+    model's own binary call. The gap between them IS the calibration loss: how
+    much accuracy is lost purely to where the model puts its yes/no line,
+    rather than to what it can tell apart."""
+    col = f"{stage}_validity_score"
+    sub = df[df[col].notna()]
+    if sub.empty:
+        return float("nan"), float("nan"), float("nan")
+    best_t, best_acc = None, -1.0
+    for t in range(SCORE_MIN, SCORE_MAX + 2):
+        acc = ((sub[col] >= t) == (sub["gt_valid"] == True)).mean()  # noqa: E712
+        if acc > best_acc:
+            best_t, best_acc = t, acc
+    own = sub[f"{stage}_valid_match"].dropna().mean()
+    return best_t, best_acc, own
+
+
+def v12_score_distribution(df_a: pd.DataFrame, df_b: pd.DataFrame, out_dir: Path) -> None:
+    frames = [(df_condition_label(df_a), df_a)] + ([(df_condition_label(df_b), df_b)] if not df_b.empty else [])
+    frames = [(lab, d) for lab, d in frames if _has_scores(d)]
+    if not frames:
+        print("  [viz-agentic] No validity_score data -- skipping V12 distribution.")
+        return
+
+    fig = make_subplots(rows=len(frames), cols=2,
+                        subplot_titles=[f"{lab} — {st}" for lab, _ in frames for st in ("Stage 1", "Stage 2")],
+                        horizontal_spacing=0.10, vertical_spacing=0.18)
+    xs = list(range(SCORE_MIN, SCORE_MAX + 1))
+    for r, (lab, d) in enumerate(frames, start=1):
+        for c, stage in enumerate(("s1", "s2"), start=1):
+            for gt, name, color in [(True, "truly valid", "#27ae60"), (False, "truly invalid", "#c0392b")]:
+                vals = _scores(d, stage, gt)
+                counts = [vals.count(x) for x in xs]
+                fig.add_trace(go.Bar(x=xs, y=counts, name=name, marker_color=color,
+                                     legendgroup=name, showlegend=(r == 1 and c == 1)),
+                              row=r, col=c)
+            fig.update_xaxes(title_text="validity_score", dtick=1, row=r, col=c)
+            fig.update_yaxes(title_text="Rows", row=r, col=c)
+
+    fig.update_layout(title="Validity-Score Distribution by Ground Truth",
+                      barmode="group", font=FONT, legend=LEGEND, margin=MARGIN,
+                      width=1300, height=380 * len(frames),
+                      plot_bgcolor="white", paper_bgcolor="white")
+
+    rows = []
+    for lab, d in frames:
+        for stage in ("s1", "s2"):
+            allv = _scores(d, stage, True) + _scores(d, stage, False)
+            col = f"{stage}_validity_score"
+            missing = int(d[col].isna().sum()) if col in d.columns else 0
+            ends = sum(1 for v in allv if v <= 1 or v >= 9)
+            rows.append([f"{lab} {stage.upper()}", str(len(allv)), str(len(set(allv))),
+                         f"{100*ends/len(allv):.0f}%" if allv else "n/a", str(missing)])
+    extra = _pre_table(["Condition/stage", "n scored", "distinct values", "mass in end bins (0-1, 9-10)", "missing"],
+                       rows, caption="Table — scale usage and compliance")
+
+    save(fig, "V12_score_distribution", out_dir,
+         title="Validity-score distribution by ground truth",
+         description="Counts of each 0-10 score, split by ground truth, per stage. Read this "
+                     "panel BEFORE V13/V14. The distribution is expected to be bimodal, but the "
+                     "cause matters: if the two humps sit on opposite sides (truly-valid high, "
+                     "truly-invalid low) that is genuine class separation, and a mean over it is "
+                     "a weak summary -- use the rank-based AUC in V14 instead. If instead both "
+                     "classes pile onto the same end bins, the model is not using the scale and "
+                     "no score claim is trustworthy. 'distinct values' and 'missing' in the table "
+                     "are the compliance check: a score the model often declines to give, or one "
+                     "that only ever takes two values, is a schema problem rather than a "
+                     "measurement.",
+         extra_html=extra)
+
+
+def v13_mean_score_by_modtype(df_a: pd.DataFrame, df_b: pd.DataFrame, out_dir: Path) -> None:
+    frames = [(df_condition_label(df_a), df_a)] + ([(df_condition_label(df_b), df_b)] if not df_b.empty else [])
+    frames = [(lab, d) for lab, d in frames if _has_scores(d)]
+    if not frames:
+        print("  [viz-agentic] No validity_score data -- skipping V13 mean score.")
+        return
+
+    fig = make_subplots(rows=1, cols=2,
+                        subplot_titles=["Panel A — truly-invalid mod_types (score should be LOW)",
+                                        "Panel B — truly-valid mod_types (score should be HIGH)"],
+                        horizontal_spacing=0.12)
+    palette = ["#2980b9", "#e74c3c", "#7f8c8d", "#f39c12"]
+    idx = 0
+    for lab, d in frames:
+        for stage in ("s1", "s2"):
+            color = palette[idx % len(palette)]
+            idx += 1
+            for col_idx, mods in enumerate([INVALID_MOD_TYPES, VALID_MOD_TYPES], start=1):
+                mods = [m for m in mods if m in set(d["mod_type"])]
+                ys, los, his = [], [], []
+                for m in mods:
+                    sub = d[d["mod_type"] == m][f"{stage}_validity_score"].dropna()
+                    lo, mean, hi = bootstrap_ci(sub)
+                    ys.append(mean); los.append(mean - lo); his.append(hi - mean)
+                fig.add_trace(go.Bar(
+                    name=f"{stage.upper()} ({lab})", x=[MOD_SHORT.get(m, m) for m in mods], y=ys,
+                    marker_color=color,
+                    error_y=dict(type="data", symmetric=False, array=his, arrayminus=los),
+                    legendgroup=f"{stage}{lab}", showlegend=(col_idx == 1),
+                ), row=1, col=col_idx)
+    for c in (1, 2):
+        fig.update_yaxes(range=[0, 10.6], title_text="Mean validity_score", row=1, col=c)
+    fig.update_layout(title="Mean Validity Score by Mod Type",
+                      barmode="group", font=FONT, legend=LEGEND, margin=MARGIN,
+                      width=1400, height=560, plot_bgcolor="white", paper_bgcolor="white")
+    fig.update_xaxes(tickangle=20)
+
+    save(fig, "V13_mean_score_modtype", out_dir,
+         title="Mean validity score by mod_type",
+         description="Mean 0-10 score per mod_type with bootstrap 95% CIs, split by whether the "
+                     "mod_type is truly-invalid (Panel A) or truly-valid (Panel B). CAVEAT: a "
+                     "mean over a bimodal ordinal is a weak summary -- see V12 for the shape it "
+                     "is summarising, and prefer V14's AUC, which is rank-based and therefore "
+                     "unaffected by clustering. This panel is useful mainly for seeing whether "
+                     "the valid/invalid gap is uniform across the naming conditions, not for the "
+                     "absolute values.")
+
+
+def v14_score_auc(df_a: pd.DataFrame, df_b: pd.DataFrame, out_dir: Path) -> None:
+    frames = [(df_condition_label(df_a), df_a)] + ([(df_condition_label(df_b), df_b)] if not df_b.empty else [])
+    frames = [(lab, d) for lab, d in frames if _has_scores(d)]
+    if not frames:
+        print("  [viz-agentic] No validity_score data -- skipping V14 AUC.")
+        return
+
+    x_labels = ["Aggregate"] + [MOD_SHORT.get(m, m) for m in PAIRING_ORDER]
+    fig = go.Figure()
+    palette = ["#2980b9", "#e74c3c", "#7f8c8d", "#f39c12"]
+    idx = 0
+    table_rows = []
+    for lab, d in frames:
+        for stage in ("s1", "s2"):
+            color = palette[idx % len(palette)]; idx += 1
+            ys = [score_auc(_scores(d, stage, True), _scores(d, stage, False))]
+            for valid_mt in PAIRING_ORDER:
+                inv_mt = next(k for k, v in INVALID_TO_VALID_MOD_TYPE.items() if v == valid_mt)
+                col = f"{stage}_validity_score"
+                pos = [int(x) for x in d[d["mod_type"] == valid_mt][col].dropna()]
+                neg = [int(x) for x in d[d["mod_type"] == inv_mt][col].dropna()]
+                ys.append(score_auc(pos, neg))
+            fig.add_trace(go.Bar(name=f"{stage.upper()} ({lab})", x=x_labels, y=ys,
+                                 marker_color=color,
+                                 text=[f"{y:.3f}" if y == y else "n/a" for y in ys],
+                                 textposition="outside"))
+            best_t, best_acc, own = _best_threshold(d, stage)
+            table_rows.append([f"{lab} {stage.upper()}", f"{ys[0]:.3f}",
+                               f">= {best_t}", f"{best_acc*100:.1f}%", f"{own*100:.1f}%",
+                               f"{(best_acc-own)*100:+.1f} pp"])
+
+    fig.add_hline(y=0.5, line_dash="dot", line_color="#aaa",
+                  annotation_text="chance", annotation_position="bottom right")
+    fig.update_yaxes(range=[0, 1.08], title_text="AUC (score vs gt_valid)")
+    fig.update_layout(title="Score Discrimination (AUC): Aggregate and by Mod-Type Pairing",
+                      barmode="group", font=FONT, legend=LEGEND, margin=MARGIN,
+                      width=1400, height=540, plot_bgcolor="white", paper_bgcolor="white")
+    fig.update_xaxes(tickangle=20)
+
+    extra = _pre_table(
+        ["Condition/stage", "AUC", "best cutoff", "acc @ best cutoff", "model's own binary acc", "calibration loss"],
+        table_rows,
+        caption="Table — discrimination vs calibration. 'Calibration loss' is how much accuracy "
+                "is recoverable purely by moving the yes/no threshold, with the model's ranking "
+                "held fixed.")
+
+    save(fig, "V14_score_auc", out_dir,
+         title="Score discrimination (AUC), aggregate and by mod-type pairing",
+         description="AUC = P(a random truly-valid row outscores a random truly-invalid row), "
+                     "ties counted 0.5 -- a normalised Mann-Whitney U. Threshold-free and "
+                     "rank-only, so it is unaffected by the score's absolute calibration or by "
+                     "the clustering visible in V12, and it is the only score measure that stays "
+                     "comparable across models. Per-pairing bars compare each valid mod_type "
+                     "against its own invalid counterpart. The KEY read is the table: a high AUC "
+                     "alongside a large calibration loss means the model CAN rank correct code "
+                     "above defective code and is simply putting its yes/no cutoff in the wrong "
+                     "place -- a calibration failure, not a knowledge failure. A low AUC means "
+                     "the opposite, and the score adds nothing the binary call did not already "
+                     "say. Per-pairing bars rest on 32 rows per side here, so read directions "
+                     "rather than magnitudes.")
+
+
+def v15_paired_ranking(df_a: pd.DataFrame, df_b: pd.DataFrame, out_dir: Path) -> None:
+    """Does the clean member of a matched pair outscore its OWN defective twin?
+
+    Pairs are keyed on (gt_sample, mod_type pairing) -- NOT gt_sample alone.
+    Each gt_sample carries four valid mod_types and four invalid ones, so keying
+    on gt_sample alone silently collapses eight rows into one pair and discards
+    most of the comparison. Pairing removes between-sample difficulty variance,
+    which makes this better powered than the unpaired AUC."""
+    frames = [(df_condition_label(df_a), df_a)] + ([(df_condition_label(df_b), df_b)] if not df_b.empty else [])
+    frames = [(lab, d) for lab, d in frames if _has_scores(d)]
+    if not frames or "gt_sample" not in df_a.columns or df_a["gt_sample"].isna().all():
+        print("  [viz-agentic] No gt_sample/score data -- skipping V15 paired ranking.")
+        return
+
+    OUT = ["clean higher", "tied", "inverted"]
+    COLORS = {"clean higher": "#27ae60", "tied": "#95a5a6", "inverted": "#c0392b"}
+    # S1 hatched, S2 solid. Colour has to keep encoding the OUTCOME, so stage is
+    # carried by fill pattern instead -- reusing colour for stage would cost the
+    # clean/tied/inverted distinction that is the whole point of the panel.
+    STAGE_PATTERN = {"s1": "/", "s2": ""}
+
+    def _paired_counts(d: pd.DataFrame, stage: str) -> tuple[dict, dict]:
+        """Pair up each row with its own twin and bucket the comparison.
+
+        Same pairing key at both stages, so the S1 and S2 bars are strictly
+        comparable. A pair whose row is present but UNSCORED (a blank forced
+        answer) is bucketed as "tied" rather than dropped. No score exists, so
+        the model expressed no ranking either way, and _ratio() already excludes
+        ties from its denominator -- exactly where an uninformative pair
+        belongs. Dropping it would make one arm's pair total differ from the
+        rest for a reason unrelated to ranking; calling it "inverted" would
+        assert a ranking that was never made."""
+        col = f"{stage}_validity_score"
+        pairs = {}
+        for _, r in d.iterrows():
+            gs, mt = r.get("gt_sample"), r.get("mod_type")
+            if not gs:
+                continue
+            sc = r.get(col)
+            key = (gs, INVALID_TO_VALID_MOD_TYPE.get(mt, mt))
+            # None marks PRESENT BUT UNSCORED, distinct from an absent twin.
+            pairs.setdefault(key, {})[bool(r["gt_valid"])] = (
+                int(sc) if sc == sc and sc is not None else None)
+        counts = {k: 0 for k in OUT}
+        per_pairing = {p: {k: 0 for k in OUT} for p in PAIRING_ORDER}
+        for (gs, pairing), v in pairs.items():
+            if True not in v or False not in v:
+                continue
+            if v[True] is None or v[False] is None:
+                k = "tied"
+            else:
+                k = "clean higher" if v[True] > v[False] else ("tied" if v[True] == v[False] else "inverted")
+            counts[k] += 1
+            if pairing in per_pairing:
+                per_pairing[pairing][k] += 1
+        return counts, per_pairing
+
+    def _ratio(c: dict) -> float:
+        denom = c["clean higher"] + c["inverted"]
+        return c["clean higher"] / denom if denom else float("nan")
+
+    fig = go.Figure()
+    table_rows = []
+    first = True
+    for lab, d in frames:
+        stage_counts = {}
+        for stage in ("s1", "s2"):
+            counts, per_pairing = _paired_counts(d, stage)
+            stage_counts[stage] = counts
+            for k in OUT:
+                fig.add_trace(go.Bar(
+                    name=k, x=["Aggregate"] + [MOD_SHORT.get(p, p) for p in PAIRING_ORDER],
+                    y=[counts[k]] + [per_pairing[p][k] for p in PAIRING_ORDER],
+                    marker_color=COLORS[k],
+                    marker_pattern_shape=STAGE_PATTERN[stage],
+                    # offsetgroup puts S1 and S2 side by side while barmode=stack
+                    # still stacks the three outcomes WITHIN each bar.
+                    offsetgroup=f"{lab}-{stage}",
+                    legendgroup=k, showlegend=(first and stage == "s1"),
+                    hovertemplate=f"{stage.upper()} ({lab})<br>{k}: %{{y}}<extra></extra>",
+                ))
+            table_rows.append([f"{lab} {stage.upper()}", str(sum(counts.values())),
+                               str(counts["clean higher"]), str(counts["tied"]),
+                               str(counts["inverted"]),
+                               f"{_ratio(counts):.2f}" if _ratio(counts) == _ratio(counts) else "n/a"])
+        # Delta row: the tie collapse is the finding, so spell it out rather than
+        # leaving the reader to subtract two rows.
+        a, b = stage_counts["s1"], stage_counts["s2"]
+        d_ratio = _ratio(b) - _ratio(a)
+        table_rows.append([f"  {lab} delta S1->S2",
+                           f"{sum(b.values()) - sum(a.values()):+d}",
+                           f"{b['clean higher'] - a['clean higher']:+d}",
+                           f"{b['tied'] - a['tied']:+d}",
+                           f"{b['inverted'] - a['inverted']:+d}",
+                           f"{d_ratio:+.2f}" if d_ratio == d_ratio else "n/a"])
+        first = False
+
+    fig.update_layout(title="Paired Ranking: Clean vs Its Own Defective Twin (S1 vs S2)",
+                      barmode="stack", font=FONT, legend=LEGEND, margin=MARGIN,
+                      width=1300, height=520, yaxis_title="Matched pairs",
+                      plot_bgcolor="white", paper_bgcolor="white", xaxis_tickangle=20)
+
+    extra = _pre_table(["Condition/stage", "pairs", "clean higher", "tied", "inverted", "ratio (higher / (higher+inverted))"],
+                       table_rows,
+                       caption="Table — paired ranking, per stage with the S1->S2 delta. Ties are "
+                               "EXCLUDED from the ratio and separately compress AUC, so a high tie "
+                               "count is itself a warning that the scale is being used too coarsely.")
+
+    save(fig, "V15_paired_ranking", out_dir,
+         title="Paired ranking: clean vs its own defective twin",
+         description="Valid and invalid rows come in matched pairs that differ by ONE injected "
+                     "defect on otherwise identical code, so this asks the sharpest available "
+                     "question: per pair, did the clean version outscore its own corrupted twin? "
+                     "Pairing removes between-sample difficulty variance, making this better "
+                     "powered than the unpaired AUC in V14. Pairs are keyed on (gt_sample, "
+                     "mod_type pairing), not gt_sample alone -- each gt_sample has four valid and "
+                     "four invalid mod_types, so keying on the sample alone would collapse eight "
+                     "rows into a single pair. Inverted pairs are the highest-value rows to "
+                     "inspect by hand. Both stages are shown -- S1 hatched, S2 solid -- because "
+                     "the S1->S2 movement is the point: Stage 1 is the model's static ranking and "
+                     "Stage 2 is what execution did to it. Read the delta row in the table first. "
+                     "Tie resolution is usually the largest effect: a model that scores a clean "
+                     "script and its defective twin identically has told you nothing, and evidence "
+                     "is what breaks the tie. A condition that arrives at S1 with few ties and no "
+                     "inversions has little left for execution to fix, so a small delta there is "
+                     "a ceiling effect rather than a failure of investigation.",
+         # Was missing: `extra` was built and then dropped, so this panel's table
+         # had never rendered in ANY report. Every other table-bearing panel
+         # passes extra_html; this one silently did not.
+         extra_html=extra)
+
+
+def v16_score_vs_judge(df_a: pd.DataFrame, judge_df: pd.DataFrame, out_dir: Path) -> None:
+    """Groundedness cross-check: a good AUC proves the score RANKS correctly, not
+    that it is grounded in anything the model actually found. The judge's
+    none/some/all verdict on the same explanation text is the external check."""
+    if judge_df.empty or not _has_scores(df_a):
+        print("  [viz-agentic] No judge/score overlap -- skipping V16.")
+        return
+    scores = df_a.set_index("title")["s2_validity_score"].to_dict()
+    rows_by_cat = {c: [] for c in CATEGORY_ORDER}
+    for _, r in judge_df.iterrows():
+        sc = scores.get(r["title"])
+        if sc is not None and sc == sc and r["category"] in rows_by_cat:
+            rows_by_cat[r["category"]].append(int(sc))
+
+    fig = go.Figure()
+    ys, los, his, ns = [], [], [], []
+    for c in CATEGORY_ORDER:
+        vals = rows_by_cat[c]
+        lo, mean, hi = bootstrap_ci(pd.Series(vals, dtype=float)) if vals else (float("nan"),) * 3
+        ys.append(mean); los.append(mean - lo); his.append(hi - mean); ns.append(len(vals))
+    fig.add_trace(go.Bar(x=CATEGORY_ORDER, y=ys,
+                         marker_color=[CATEGORY_COLORS[c] for c in CATEGORY_ORDER],
+                         text=[f"n={n}" for n in ns], textposition="outside",
+                         error_y=dict(type="data", symmetric=False, array=his, arrayminus=los)))
+    fig.update_layout(title="Validity Score vs Judge-Assessed Reasoning Quality",
+                      font=FONT, margin=MARGIN, width=800, height=460,
+                      yaxis_title="Mean validity_score", plot_bgcolor="white",
+                      paper_bgcolor="white")
+    fig.update_yaxes(range=[0, 10.6])
+
+    save(fig, "V16_score_vs_judge", out_dir,
+         title="Validity score vs judge-assessed reasoning quality",
+         description="Mean score for rows the judge graded none / some / all, over "
+                     "correctly-called-invalid rows only. This is a GROUNDEDNESS check, not a "
+                     "performance measure: a high AUC shows the score ranks correctly, but not "
+                     "that it reflects anything the model actually found -- if the score were "
+                     "confabulated to agree with the binary call, it would rank fine while "
+                     "meaning nothing. Expect little separation here: on the data this was built "
+                     "for, all three categories sat near the floor of the scale, so the score "
+                     "does NOT predict whether the explanation was right. That null is the "
+                     "result; do not read a small gap between bars as a finding.")
+
+
+def v17_precision_rates(judge_df: pd.DataFrame, out_dir: Path) -> None:
+    """Judge precision rates as tables only -- no chart. `category` (V3b) is a
+    RECALL-only metric: it asks whether the justification named the real defect,
+    and says nothing about whether it also asserted something false. These rates
+    are the only place that shows up.
+
+    Reports whichever precision columns the judge file actually populated, so a
+    pre-split run (merged `contains_incorrect_claims`) and a post-split run
+    (code-claims + execution-claims) both render."""
+    if judge_df.empty:
+        print("  [viz-agentic] No judge results -- skipping V17 precision rates.")
+        return
+    cols = [(c, o) for c, o in PRECISION_FIELDS
+            if c in judge_df.columns and judge_df[c].notna().any()]
+    if not cols:
+        print("  [viz-agentic] No precision fields populated -- skipping V17.")
+        return
+
+    blocks = [_pre_table(
+        ["Condition", "n"] + [o for _, o in cols],
+        [[condition_label(cond), str(len(sub))]
+         + [_fmt_rate(sub[c].mean() * 100, len(sub)) for c, _ in cols]
+         for cond, sub in judge_df.groupby("condition")],
+        caption="Table 1 — precision rate, global (all judged rows pooled)")]
+
+    for cond, sub in judge_df.groupby("condition"):
+        rows = []
+        for m in INVALID_MOD_TYPES:
+            s = sub[sub["mod_type"] == m]
+            if s.empty:
+                continue
+            rows.append([MOD_SHORT.get(m, m), str(len(s))]
+                        + [_fmt_rate(s[c].mean() * 100, len(s)) for c, _ in cols])
+        if rows:
+            blocks.append(_pre_table(
+                ["mod_type", "n"] + [o for _, o in cols], rows,
+                caption=f"Table 2 — precision rate by mod_type — {condition_label(cond)}"))
+
+    save(None, "V17_precision_rates", out_dir,
+         title="Judge precision rates (global and by mod_type)",
+         description="Rate at which the model's justification contained a faulty claim, "
+                     "over rows it already correctly called invalid. This is the PRECISION "
+                     "counterpart to V3b's category, which is recall-only -- a justification "
+                     "can name every real defect ('all') and still assert something false. "
+                     "bad_code_claims_rate is the one that matters: it fires only when the "
+                     "justification says something factually WRONG about the code. "
+                     "unverifiable_exec_claims_rate fires when it cites runtime figures the "
+                     "judge cannot check from the code alone (step counts, magnitudes, NaN "
+                     "timing); that is NOT an error -- the model could execute the code -- and "
+                     "it runs so high that it is near-constant, so read it as a description of "
+                     "how the model argues rather than as a comparative metric. "
+                     "legacy_merged_rate appears only for judge runs predating the split, where "
+                     "one field conflated 'extraneous, speculative, or factually wrong'; on the "
+                     "3.7 high sweep 20 of its 24 flagged rows were objections to runtime "
+                     "figures rather than to anything wrong about the code, so legacy figures "
+                     "overstate the error rate roughly 6x and are not comparable to "
+                     "bad_code_claims_rate.",
+         extra_html="".join(blocks))
 
 
 def _pre_table(header: list, rows: list, caption: str = "") -> str:
@@ -745,12 +1423,17 @@ def _pre_table(header: list, rows: list, caption: str = "") -> str:
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Agentic belief-revision visualizations")
-    p.add_argument("--nothink", required=True, help="Path to the thinking_budget=0 Stage-2 JSONL")
+    p.add_argument("--stage2", action="append", default=[],
+                   help="Stage-2 JSONL. Repeatable (once per thinking condition). Condition "
+                        "labels are read from each file's `condition` field, falling back to "
+                        "tb<thinking_budget> for rows written before that field existed, so "
+                        "both the old 2.5 two-condition data and a single-condition Gemini 3 "
+                        "run render correctly.")
+    p.add_argument("--nothink", default=None,
+                   help="DEPRECATED alias for the first --stage2 path, kept so existing "
+                        "two-condition invocations keep working.")
     p.add_argument("--think", default=None,
-                   help="Path to the thinking_budget=1536 Stage-2 JSONL. Optional -- if omitted, "
-                        "the report renders nothink-only versions of every result (2-line "
-                        "accuracy plot instead of 4, no think-condition transitions/turns/judge "
-                        "sections) rather than erroring.")
+                   help="DEPRECATED alias for the second --stage2 path.")
     p.add_argument("--judge", default="results/frontier/stratified_64/judge/judge_results.jsonl",
                    help="Path to judge_results.jsonl. Optional -- if the file doesn't exist yet, "
                         "judge sections are skipped (load_judge_results already handles this).")
@@ -761,33 +1444,56 @@ def parse_args() -> argparse.Namespace:
 def main():
     args = parse_args()
 
-    df_nothink = load_agentic_results(Path(args.nothink))
-    df_think = load_agentic_results(Path(args.think)) if args.think else pd.DataFrame()
+    # --stage2 is the current flag; --nothink/--think are kept as positional
+    # aliases so existing two-condition invocations keep working unchanged.
+    paths = list(args.stage2) or [p for p in (args.nothink, args.think) if p]
+    if not paths:
+        sys.exit("[viz-agentic] ERROR: pass at least one --stage2 <path> "
+                 "(or the deprecated --nothink).")
+    if len(paths) > 2:
+        sys.exit(f"[viz-agentic] ERROR: {len(paths)} conditions given; this report "
+                 "renders at most 2. Run it once per pair.")
+
+    df_a = load_agentic_results(Path(paths[0]))
+    df_b = load_agentic_results(Path(paths[1])) if len(paths) > 1 else pd.DataFrame()
     judge_df = load_judge_results(Path(args.judge))
-    print(f"[viz-agentic] nothink: {len(df_nothink)} rows, think: {len(df_think)} rows, "
-          f"judge: {len(judge_df)} rows")
-    if df_think.empty:
-        print("[viz-agentic] No --think data provided -- rendering nothink-only "
-              "versions of every result (2-line accuracy plot, no think-condition "
-              "transitions/turns sections).")
+    lab_a, lab_b = df_condition_label(df_a), df_condition_label(df_b)
+    print(f"[viz-agentic] condition A ({lab_a}): {len(df_a)} rows")
+    if not df_b.empty:
+        print(f"[viz-agentic] condition B ({lab_b}): {len(df_b)} rows")
+    else:
+        print("[viz-agentic] single condition -- per-condition transitions/turns "
+              "sections render once, and the accuracy plot shows 2 lines.")
+    print(f"[viz-agentic] judge: {len(judge_df)} rows")
 
     out_dir = Path(args.out_dir)
     print(f"[viz-agentic] Output → {out_dir}\n")
 
     v0_architecture_diagram(out_dir)
-    v1_accuracy_by_modtype(df_nothink, df_think, out_dir)
-    v2_transitions_by_condition(df_nothink, out_dir, "thinking off", "nothink")
-    v3a_turns_by_condition(df_nothink, out_dir, "thinking off", "nothink")
-    if not df_think.empty:
-        v2_transitions_by_condition(df_think, out_dir, "thinking on", "think")
-        v3a_turns_by_condition(df_think, out_dir, "thinking on", "think")
+    cond_a = sorted(set(df_a["condition"]))[0]
+    v1_accuracy_by_modtype(df_a, df_b, out_dir)
+    v2_transitions_by_condition(df_a, out_dir, lab_a, cond_a)
+    v3a_turns_by_condition(df_a, out_dir, lab_a, cond_a)
+    if not df_b.empty:
+        cond_b = sorted(set(df_b["condition"]))[0]
+        v2_transitions_by_condition(df_b, out_dir, lab_b, cond_b)
+        v3a_turns_by_condition(df_b, out_dir, lab_b, cond_b)
     v3b_judge_by_modtype(judge_df, out_dir)
     v3b_judge_by_pdeclass(judge_df, out_dir)
-    v10_recall_specificity(df_nothink, df_think, out_dir)
+    v10_recall_specificity(df_a, df_b, out_dir)
+    # Score panels. V12 first by design -- V13/V14 are hard to read without
+    # knowing the shape of the distribution they summarise.
+    v12_score_distribution(df_a, df_b, out_dir)
+    v13_mean_score_by_modtype(df_a, df_b, out_dir)
+    v14_score_auc(df_a, df_b, out_dir)
+    v15_paired_ranking(df_a, df_b, out_dir)
+    v16_score_vs_judge(df_a, judge_df, out_dir)
+    v11_sign_flip_naming_rate(judge_df, out_dir)
+    v17_precision_rates(judge_df, out_dir)
 
     incorrect_claims = contains_incorrect_claims_table(judge_df)
     if not incorrect_claims.empty:
-        print("\n[viz-agentic] contains_incorrect_claims rate by thinking condition:")
+        print("\n[viz-agentic] contains_incorrect_claims rate by condition:")
         print(incorrect_claims.to_string(index=False))
         incorrect_claims.to_csv(out_dir / "contains_incorrect_claims_rate.csv", index=False)
 

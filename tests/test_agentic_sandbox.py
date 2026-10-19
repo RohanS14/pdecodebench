@@ -8,6 +8,7 @@ import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'eval'))
 
 from frontier.agentic_sandbox import (
+    episode_slug,
     episode_dir,
     snapshot_root,
     quarantine_root,
@@ -147,7 +148,17 @@ try:
     )
     check("write-cap trip: not a timeout", timed_out is False)
     check("write-cap trip: no abort (exactly one candidate)", abort_reason is None, str(abort_reason))
-    check("write-cap trip: stderr mentions the write cap", "1GB write cap" in stderr or "write cap" in stderr, repr(stderr))
+    check("write-cap trip: stderr tells the model the write was cancelled",
+          "write cancelled" in stderr, repr(stderr))
+    # The model is told WHAT happened, never WHERE the file went. Naming the
+    # quarantine dir is useless to the model and contradicts it being
+    # model-invisible -- quarantine is a sibling of cwd, so it is reachable.
+    check("write-cap trip: stderr does NOT name the quarantine destination",
+          "quarantine" not in stderr.lower(), repr(stderr))
+    check("write-cap trip: stderr leaks no path at all",
+          "_agentic_work" not in stderr and "results/" not in stderr, repr(stderr))
+    check("write-cap trip: stderr leaks no label",
+          "InValid" not in stderr and TITLE_A not in stderr, repr(stderr))
     check("write-cap trip: oversized file removed from work dir", not (work_a / "big.bin").exists())
     qroot = quarantine_root(TITLE_A, RUN_A)
     check("write-cap trip: oversized file moved to quarantine", (qroot / "big.bin").exists())
@@ -230,7 +241,15 @@ try:
         max_file_size_bytes=100_000, max_episode_dir_bytes=10_000_000,
     )
     check("multi-match: abort_reason is ambiguous_oversized_write", abort_reason == "ambiguous_oversized_write", str(abort_reason))
-    check("multi-match: stderr explains the ambiguity", "ambiguous" in stderr or "matched the expected size" in stderr, repr(stderr))
+    # This branch is OPERATOR-facing only: it sets abort_reason, and the Stage-2
+    # loop breaks before appending the tool result to contents, so the model
+    # never reads it. Diagnostic detail is therefore a feature here, not a leak
+    # -- unlike the single-culprit branch above, which the model does read.
+    check("multi-match: stderr explains the ambiguity (operator-facing detail)",
+          "ambiguous" in stderr.lower() and "matched the expected size" in stderr,
+          repr(stderr))
+    check("multi-match: stderr states nothing was moved",
+          "nothing was moved" in stderr, repr(stderr))
     check("multi-match: pre-existing file 1 untouched (not moved)", (work_d / "existing_large_1.bin").exists())
     check("multi-match: pre-existing file 2 untouched (not moved)", (work_d / "existing_large_2.bin").exists())
     check("multi-match: no quarantine dir created (nothing moved)", not quarantine_root(TITLE_D, RUN_D).exists())
@@ -341,6 +360,63 @@ finally:
 
 
 # ── Summary ──────────────────────────────────────────────────────────────────
+
+# ── Label leakage: the episode cwd must not carry the ground-truth label ─────
+# The episode dir IS the subprocess cwd, and Python prints absolute paths in
+# every warning and traceback -- which the harness returns verbatim as the tool
+# result. When the dir was named after the title, "..._InValid_1" went straight
+# into the model's context. Confirmed live before the fix.
+#
+# This test raises rather than emitting a numpy warning: a traceback exercises
+# the same leak vector and does not assume numpy is importable in whichever
+# interpreter runs the suite. Keep it -- the bug returns the moment someone
+# renames the directory for convenience.
+
+print("\n── label leakage via subprocess paths ──")
+
+TITLE_LEAK, RUN_LEAK = "Wave_Comm_InValid_9", "unittest_leak"
+for p in (episode_dir(TITLE_LEAK, RUN_LEAK), snapshot_root(TITLE_LEAK, RUN_LEAK)):
+    if p.exists():
+        shutil.rmtree(p)
+
+check("episode dir path contains neither the title nor the label",
+      "InValid" not in str(episode_dir(TITLE_LEAK, RUN_LEAK))
+      and TITLE_LEAK not in str(episode_dir(TITLE_LEAK, RUN_LEAK)),
+      str(episode_dir(TITLE_LEAK, RUN_LEAK)))
+check("episode_slug is stable across calls",
+      episode_slug(TITLE_LEAK) == episode_slug(TITLE_LEAK))
+check("distinct titles get distinct slugs",
+      episode_slug(TITLE_LEAK) != episode_slug("Wave_Comm_Valid_9"))
+
+work_leak = setup_episode("raise ValueError('boom')\n", TITLE_LEAK, RUN_LEAK)
+_out, _err, _to, _ab = run_python_file("solver_v0.py", work_leak, 20, TITLE_LEAK, RUN_LEAK)
+
+check("stderr does NOT leak the label substring",
+      "InValid" not in _err, _err[:200])
+check("stderr does NOT leak the full title",
+      TITLE_LEAK not in _err, _err[:200])
+check("stderr does NOT leak the absolute episode path",
+      str(work_leak) not in _err, _err[:200])
+# Evidence must survive -- the point is to neutralise the path, not the output.
+check("stderr STILL contains the traceback (evidence preserved)",
+      "Traceback" in _err and "ValueError" in _err, _err[:200])
+check("stderr STILL names the script and line (readable relative path)",
+      "solver_v0.py" in _err, _err[:200])
+
+# The quarantine path is the one leak vector the scrub CANNOT cover: the
+# message is appended to stderr AFTER _scrub_paths() runs, and the quarantine
+# dir is not under cwd, so only a label-free directory name makes it safe.
+check("snapshot_root is label-free",
+      "InValid" not in str(snapshot_root(TITLE_LEAK, RUN_LEAK)))
+check("quarantine_root is label-free (its path is interpolated into stderr)",
+      "InValid" not in str(quarantine_root(TITLE_LEAK, RUN_LEAK)))
+check("episode dir and snapshot root are still siblings",
+      episode_dir(TITLE_LEAK, RUN_LEAK).parent == snapshot_root(TITLE_LEAK, RUN_LEAK).parent)
+
+for p in (episode_dir(TITLE_LEAK, RUN_LEAK), snapshot_root(TITLE_LEAK, RUN_LEAK)):
+    if p.exists():
+        shutil.rmtree(p)
+
 
 print()
 if failures:

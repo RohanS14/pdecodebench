@@ -23,6 +23,7 @@ notes_trajectory_saving_audit.txt / the disk-safety-hardening plan):
   - SNAPSHOT_DEDUP_THRESHOLD_BYTES: unrelated to the two caps above -- a
     waste-reduction measure, not a safety guard. See snapshot_turn().
 """
+import hashlib
 import shutil
 import subprocess
 import sys
@@ -43,12 +44,37 @@ SNAPSHOT_DEDUP_THRESHOLD_BYTES = 30_000_000  # 30MB "skip if unchanged" floor
 _CULPRIT_SIZE_FRACTION = 0.9
 
 
+def episode_slug(title: str) -> str:
+    """Opaque, stable directory name. NOT the title: the title contains the
+    ground-truth label ("..._InValid_1"), and this path is the subprocess cwd,
+    so Python prints it in every warning and traceback -- which the harness
+    returns verbatim as the tool result.
+
+    Stops Python volunteering the label. NOT a boundary: the results tree
+    remains readable from the subprocess (log filenames and dataset.csv both
+    carry labels), which is the design's stated soft-boundary position. That
+    residual channel is covered by a post-run probe scan, not by this name.
+
+    16 hex chars (64 bits) so a collision cannot merge two episodes' scratch
+    dirs. Title <-> slug is recoverable without a manifest: every output row
+    carries both `title` and `episode_dir`.
+    """
+    return hashlib.sha256(title.encode()).hexdigest()[:16]
+
+
 def episode_dir(title: str, run_id: str) -> Path:
-    return AGENTIC_WORK_ROOT / title / run_id
+    return AGENTIC_WORK_ROOT / episode_slug(title) / run_id
 
 
 def snapshot_root(title: str, run_id: str) -> Path:
-    return AGENTIC_WORK_ROOT / title / f"{run_id}_snapshots"
+    # Same episode_slug() as episode_dir(), for two reasons. It keeps the two a
+    # real SIBLING pair (the property quarantine_root's docstring relies on);
+    # using the title here would have scattered episodes under the slug and
+    # snapshots under the label, leaving the label in the tree anyway. And
+    # It also keeps quarantine_root() label-free. The oversized-write message no
+    # longer names its destination at all, but the slug is the defence that does
+    # not depend on that message staying terse.
+    return AGENTIC_WORK_ROOT / episode_slug(title) / f"{run_id}_snapshots"
 
 
 def quarantine_root(title: str, run_id: str) -> Path:
@@ -90,6 +116,35 @@ def _find_oversized_candidates(work: Path, max_file_size_bytes: int) -> list[Pat
         if entry.is_file() and entry.stat().st_size >= threshold:
             candidates.append(entry)
     return candidates
+
+
+def _scrub_paths(text: str, cwd: Path) -> str:
+    """Collapse the absolute episode cwd to './' in captured output, so a
+    traceback stays readable (./solver_v0.py:3: ...) without carrying the full
+    path. Belt-and-braces on top of the opaque episode_slug().
+
+    Deliberately does NOT also substitute run_id on its own. run_id is a
+    COMPONENT of cwd, so the replacements below already strip it from every
+    absolute path; a standalone replace would only catch a deliberate probe
+    (os.path.basename(os.getcwd())), which reaches the harmless opaque slug
+    anyway. Against that near-zero gain it would be a blind substring replace
+    over the model's own printed output with a caller-supplied needle -- the
+    test suite uses run_id="unittest", so a script printing "testing stability"
+    would silently become "<run>ing stability", corrupting the very evidence
+    the model reasons from.
+    """
+    if not text:
+        return text
+    # Scrub BOTH the literal and resolved forms of cwd. The subprocess reports
+    # resolved paths in tracebacks, but callers may pass a cwd containing ".."
+    # or a symlink (the test suite imports via tests/../eval, which puts a
+    # literal "tests/.." in REPO_ROOT). Comparing only the string we were handed
+    # made the scrub silently match nothing -- no error, just an unscrubbed path.
+    # Longest first, so the more specific form wins.
+    bases = {str(cwd), str(Path(cwd).resolve())}
+    for base in sorted(bases, key=len, reverse=True):
+        text = text.replace(base + "/", "./").replace(base, ".")
+    return text
 
 
 def run_python_file(
@@ -150,7 +205,7 @@ def run_python_file(
             timeout=timeout,
             preexec_fn=_limit_file_size,
         )
-        stdout, stderr, timed_out = proc.stdout, proc.stderr, False
+        stdout, stderr, timed_out = _scrub_paths(proc.stdout, cwd), _scrub_paths(proc.stderr, cwd), False
     except subprocess.TimeoutExpired as exc:
         # exc.stdout/exc.stderr can be raw bytes even though text=True was
         # passed to subprocess.run above -- CPython's text-decoding happens
@@ -166,8 +221,8 @@ def run_python_file(
                 return chunk.decode("utf-8", errors="replace")
             return chunk
 
-        stdout = _decode(exc.stdout)
-        stderr = _decode(exc.stderr) + f"\n[TIMEOUT after {timeout}s]"
+        stdout = _scrub_paths(_decode(exc.stdout), cwd)
+        stderr = _scrub_paths(_decode(exc.stderr), cwd) + f"\n[TIMEOUT after {timeout}s]"
         timed_out = True
 
     # Oversized-write check runs unconditionally (success, script error, or
@@ -182,15 +237,24 @@ def run_python_file(
         qroot.mkdir(parents=True, exist_ok=True)
         dest = qroot / culprit.name
         shutil.move(str(culprit), str(dest))
+        # Deliberately does NOT name the quarantine destination. The model has no
+        # use for it, and printing the path of a directory that is reachable from
+        # cwd (quarantine is a SIBLING of the episode dir) contradicts it being
+        # model-invisible. The destination is recorded in the episode dir/snapshot
+        # layout for human inspection instead.
         stderr += (
-            f"\n[terminated: wrote a file >= {max_file_size_bytes} bytes "
-            f"(1GB write cap); file moved to "
-            f"{dest.relative_to(REPO_ROOT)}]"
+            f"\n[terminated: attempted to write a file >= "
+            f"{max_file_size_bytes} bytes cap, write cancelled]"
         )
     elif len(candidates) > 1:
+        # Operator-facing ONLY, unlike the single-culprit branch above: this sets
+        # abort_reason, and the Stage-2 loop breaks before appending the tool
+        # result to contents, so the model never reads this. Keep the diagnostic
+        # detail -- how many files matched, and that nothing was moved -- since
+        # that is exactly what a human needs when inspecting an aborted episode.
         stderr += (
             f"\n[terminated: wrote a file >= {max_file_size_bytes} bytes "
-            f"(1GB write cap); {len(candidates)} files matched the expected "
+            f"(write cap); {len(candidates)} files matched the expected "
             f"size, ambiguous -- episode aborted for manual inspection, "
             f"nothing was moved]"
         )

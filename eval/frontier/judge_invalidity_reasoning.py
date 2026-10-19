@@ -18,10 +18,23 @@ Design decided after a dedicated red-team discussion (see the plan doc):
     defects (e.g. an exponent change, while missing a separate sign flip)
     gave real, sufficient, correct reasoning -- a binary true/false would
     unfairly score that as "wrong" for not being exhaustive.
-  - contains_incorrect_claims is a separate bool, since category alone is a
-    recall-only metric with no precision sensitivity (a crisp correct
-    explanation and a "shotgun" explanation with one real claim buried in
-    wrong ones would otherwise score identically).
+  - Two separate precision bools, since category alone is a recall-only metric
+    with no precision sensitivity (a crisp correct explanation and a "shotgun"
+    explanation with one real claim buried in wrong ones would otherwise score
+    identically):
+      contains_incorrect_code_claims          -- asserts something false about
+                                                 the code. The real precision
+                                                 signal; verifiable from what
+                                                 the judge is given.
+      contains_unverifiable_execution_claims  -- cites runtime figures the judge
+                                                 cannot check. NOT an error.
+    These replace a single `contains_incorrect_claims` defined as "extraneous,
+    speculative, or factually wrong", which fired on three different things at
+    once. On the 3.7 sweep 20 of its 24 flagged rows were objections to specific
+    runtime numbers, not to anything wrong about the code: the judge has no
+    execution output and read genuine observations as fabrication. The prompt
+    now also states that the model could execute the code. Older judge JSONLs
+    carry only the merged field, so downstream readers accept either.
   - Uses a separate, stronger judge model (gemini-2.5-pro) than the
     gemini-2.5-flash being evaluated, to reduce self-preference bias --
     accepted caveat: same-family models can still share blind spots.
@@ -38,24 +51,48 @@ REPO_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "eval"))
 
 from frontier.run_belief_revision_agentic import call_gemini_agentic  # noqa: E402
+from frontier.model_pricing import token_cost as _priced_token_cost  # noqa: E402
+from frontier.run_belief_revision import build_thinking_config, sampling_kwargs  # noqa: E402
 from dataset_io import load_dataset  # noqa: E402
 
-# Judge model pricing -- Gemini 3.1 Pro (the model actually used for the real
-# test run), confirmed via web search this session: $2.00/M input,
-# $12.00/M output. Deliberately separate from run_belief_revision.py's
-# _PRICE_IN/_PRICE_OUT, which are gemini-2.5-flash rates -- the judge uses a
-# different, more expensive model on purpose (see module docstring).
-_PRICE_IN_JUDGE = 2.00 / 1_000_000
-_PRICE_OUT_JUDGE = 12.00 / 1_000_000
+# Judge pricing now comes from frontier.model_pricing, so the judge cannot end
+# up on stale rates independently of the rest of the harness. Those Pro-tier
+# numbers are carried over from the constants that used to live here and are
+# flagged unverified in that module -- unlike the flash-tier rates, they have
+# not been re-checked against the pricing doc.
 
 
-def _judge_token_cost(usage) -> float:
+def _condition_of(row: dict) -> str:
+    """Which thinking condition a row belongs to.
+
+    Prefers the explicit `condition` slug (e.g. "tl_high", "tb0"). Falls back to
+    the legacy numeric thinking_budget so an existing judge_results.jsonl and
+    existing 2.5 Stage-2 rows still match rather than being re-judged at cost.
+    The old nothink/think naming could not express a Gemini 3 condition at all."""
+    cond = row.get("condition")
+    if cond:
+        return str(cond)
+    tb = row.get("thinking_budget")
+    return f"tb{tb}" if tb is not None else "unknown"
+
+
+def _judge_token_usage(usage, model: str) -> tuple[int, int, int, float]:
+    """Returns (input_tokens, output_tokens, think_tokens, cost_usd) for a judge
+    call. Thinking is billed at the output rate (there is no separate thinking
+    rate), same uniform formula as every other model.
+
+    Raw counts are returned, not just the derived cost, so judge spend stays
+    recomputable if the Pro rates change or turn out wrong -- the same principle
+    applied to Stage-1/Stage-2 rows. Previously only the cost was computed and
+    it was never persisted at all, so judge spend was recoverable only from
+    console logs (the pre-existing 240-row judge file has this gap)."""
     if usage is None:
-        return 0.0
+        return 0, 0, 0, 0.0
     inp = getattr(usage, "prompt_token_count", 0) or 0
     out = getattr(usage, "candidates_token_count", 0) or 0
     think = getattr(usage, "thoughts_token_count", 0) or 0
-    return inp * _PRICE_IN_JUDGE + out * _PRICE_OUT_JUDGE + think * _PRICE_OUT_JUDGE
+    return inp, out, think, _priced_token_cost(model, inp, out, think)
+
 
 # ── Valid/invalid mod_type mapping ───────────────────────────────────────────
 # The dataset's naming is irregular -- note the inconsistent "Invalid" vs
@@ -175,35 +212,83 @@ JUDGE_DECL = {
                     "between the base and corrupted code."
                 ),
             },
-            "contains_incorrect_claims": {
+            # Split from the original single `contains_incorrect_claims`, which
+            # was defined as "extraneous, speculative, OR factually wrong" and
+            # so fired on three different things at once. On the 3.7 sweep that
+            # made 20 of 24 flagged rows objections to specific runtime numbers
+            # rather than to anything wrong about the code -- the judge has no
+            # execution output, so it read genuine observations as fabrication.
+            # "extraneous" is deliberately gone: extraneous is not incorrect.
+            "contains_incorrect_code_claims": {
                 "type": "boolean",
                 "description": (
-                    "True if the justification ALSO includes claims that are "
-                    "extraneous, speculative, or factually wrong (in addition "
-                    "to any correct ones). False if every claim made is "
-                    "accurate, even if incomplete."
+                    "True if the justification asserts something factually "
+                    "WRONG about the code -- a change, mechanism, or property "
+                    "that is not actually present. False if every claim it "
+                    "makes about the code is accurate, even if incomplete, and "
+                    "even if it also says more than was necessary."
+                ),
+            },
+            "contains_unverifiable_execution_claims": {
+                "type": "boolean",
+                "description": (
+                    "True if the justification cites specific runtime behaviour "
+                    "you cannot check from the code alone -- step counts at "
+                    "which values diverge, numerical magnitudes, NaN timing, "
+                    "convergence figures. This is NOT an error and must not "
+                    "influence the fields above: the model could execute the "
+                    "code, so such figures may be real observations. Record "
+                    "them here so they can be analysed separately."
                 ),
             },
             "explanation": {
                 "type": "string",
                 "description": (
-                    "1-3 sentence justification for the category and "
-                    "contains_incorrect_claims choices. If category is "
-                    "'some', explicitly note any additional real "
+                    "1-3 sentence justification for the category, "
+                    "contains_incorrect_code_claims, and "
+                    "contains_unverifiable_execution_claims choices. If "
+                    "category is 'some', explicitly note any additional real "
                     "discrepancies between the base and corrupted code that "
                     "the justification did NOT mention."
                 ),
             },
         },
-        "required": ["category", "contains_incorrect_claims", "explanation"],
+        "required": ["category", "contains_incorrect_code_claims",
+                     "contains_unverifiable_execution_claims", "explanation"],
     },
+}
+
+
+# Stage-dependent factual statement about tool access. This is the ONE thing that
+# legitimately differs between judging a Stage-1 and a Stage-2 justification: at
+# Stage 1 the model was read-only, so a runtime claim is a prediction it could not
+# have observed. The instruction about WHERE to record such claims is deliberately
+# word-for-word identical in both, so the schema means the same thing at both
+# stages and only the interpretation differs.
+EXEC_NOTE = {
+    "s2": (
+        "The model was able to execute the code before giving its answer, so "
+        "claims about runtime behaviour may be genuine observations rather than "
+        "speculation. You cannot verify them -- you have the code, not the "
+        "execution output. Judge claims about the code on their correctness; "
+        "record unverifiable runtime figures in the separate field rather than "
+        "counting them as errors.\n\n"
+    ),
+    "s1": (
+        "The model had NO execution access when giving this answer -- it was a "
+        "static read of the source with no tools, so any claim about runtime "
+        "behaviour is a prediction it could not have observed. You cannot verify "
+        "such claims either -- you have the code, not any execution output. Judge "
+        "claims about the code on their correctness; record unverifiable runtime "
+        "figures in the separate field rather than counting them as errors.\n\n"
+    ),
 }
 
 
 def build_judge_prompt(
     base_code: str, corrupted_code: str, invalidity_note: str, valid_exp: str,
     gt_valid_code: str | None = None, gt_invalid_code: str | None = None,
-    caveat_note: str = "",
+    caveat_note: str = "", stage: str = "s2",
 ) -> str:
     """Block order (each ground-truth block placed immediately after its
     paired original, for easy cross-referencing; caveat note before any code
@@ -211,7 +296,7 @@ def build_judge_prompt(
     last, right before the final instruction):
       intro -> caveat_note? -> base_valid_code -> ground_truth_valid_code? ->
       corrupted_code_that_was_evaluated -> ground_truth_invalid_code? ->
-      invalidity_note -> model_justification -> final instruction.
+      invalidity_note -> score_framing -> model_justification -> final instruction.
     gt_valid_code/gt_invalid_code/caveat_note default to the no-reference
     case (omitted entirely), so a Comm_InValid row's prompt is unchanged
     from before this reference was added."""
@@ -238,6 +323,20 @@ def build_judge_prompt(
         "description, not necessarily a specific mechanism -- do not treat "
         "it as the definitive or only correct answer):\n\n"
         f"<invalidity_note>\n{invalidity_note}\n</invalidity_note>\n\n"
+        # Placed here, adjacent to the justification it governs, rather than in
+        # the intro (which is separated from it by the code and ground-truth
+        # blocks). 89% of eligible explanations (110/124 on the 3.7 sweep)
+        # state the validity score in prose, so the judge sees it regardless --
+        # blinding is unavailable, and this neutralises it by instruction.
+        # Accepted tradeoff: naming a thing to disregard draws some attention
+        # to it; at 89% leakage the alternatives are worse.
+        "The model was asked to give a binary answer and a score for validity. "
+        "Every example provided here was one the model answered \"invalid\" for "
+        "the binary field. Its justification may mention the assigned validity "
+        "score. The task here is to evaluate the accuracy of the claims in "
+        "valid_exp solely with respect to the actual invalidities in the code, "
+        "not the model's stated validity score.\n\n"
+        + EXEC_NOTE[stage] +
         "Here is the model's own justification for why it judged the "
         "corrupted code invalid:\n\n"
         f"<model_justification>\n{valid_exp}\n</model_justification>\n\n"
@@ -251,16 +350,21 @@ def build_judge_prompt(
 def call_judge(client, model: str, base_code: str, corrupted_code: str,
                 invalidity_note: str, valid_exp: str, max_retries: int = 4,
                 gt_valid_code: str | None = None, gt_invalid_code: str | None = None,
-                caveat_note: str = "") -> dict:
+                caveat_note: str = "", stage: str = "s2") -> dict:
     from google.genai import types
 
     prompt = build_judge_prompt(base_code, corrupted_code, invalidity_note, valid_exp,
                                  gt_valid_code=gt_valid_code, gt_invalid_code=gt_invalid_code,
-                                 caveat_note=caveat_note)
+                                 caveat_note=caveat_note, stage=stage)
     contents = [types.Content(role="user", parts=[types.Part(text=prompt)])]
     config = types.GenerateContentConfig(
-        temperature=0.0,
         max_output_tokens=50_000,
+        # Explicit, not inherited. gemini-3.1-pro-preview's documented default IS
+        # "high (Dynamic)", so this pins the default rather than escalating it --
+        # medium would have been a reduction. Stated outright because leaving it
+        # implicit meant the judge's effort level was whatever the family default
+        # happened to be, and the judge is the measurement instrument here.
+        thinking_config=build_thinking_config(model, "high"),
         tools=[types.Tool(function_declarations=[types.FunctionDeclaration(**JUDGE_DECL)])],
         tool_config=types.ToolConfig(
             function_calling_config=types.FunctionCallingConfig(
@@ -268,20 +372,32 @@ def call_judge(client, model: str, base_code: str, corrupted_code: str,
             )
         ),
         automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
+        # temperature is stripped on a Gemini 3 judge (the migration guide says
+        # to remove it, and confirmed live it is accepted but not honored).
+        **sampling_kwargs(model),
     )
     resp = call_gemini_agentic(client, model, contents, config, max_retries)
-    cost_usd = _judge_token_cost(getattr(resp, "usage_metadata", None))
+    inp, out, think, cost_usd = _judge_token_usage(getattr(resp, "usage_metadata", None), model)
+    usage_fields = {
+        "judge_model": model,
+        "judge_input_tokens": inp,
+        "judge_output_tokens": out,
+        "judge_think_tokens": think,
+        "cost_usd": round(cost_usd, 8),
+    }
     calls = getattr(resp, "function_calls", None) or []
     if not calls:
-        return {"category": None, "contains_incorrect_claims": None,
-                "explanation": "(judge produced no function call)", "_raw_text": getattr(resp, "text", None),
-                "cost_usd": cost_usd}
+        return {"category": None, "contains_incorrect_code_claims": None,
+                "contains_unverifiable_execution_claims": None,
+                "explanation": "(judge produced no function call)",
+                "_raw_text": getattr(resp, "text", None), **usage_fields}
     args = dict(calls[0].args or {})
     return {
         "category": args.get("category"),
-        "contains_incorrect_claims": args.get("contains_incorrect_claims"),
+        "contains_incorrect_code_claims": args.get("contains_incorrect_code_claims"),
+        "contains_unverifiable_execution_claims": args.get("contains_unverifiable_execution_claims"),
         "explanation": args.get("explanation"),
-        "cost_usd": cost_usd,
+        **usage_fields,
     }
 
 
@@ -289,26 +405,35 @@ def call_judge(client, model: str, base_code: str, corrupted_code: str,
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="LLM-as-judge invalidity-reasoning eval")
-    p.add_argument("--judge_model", default="gemini-pro-latest",
-                   help="Default is an alias that always resolves to the current Pro-tier model "
-                        "-- gemini-2.5-pro itself 404s ('no longer available to new users') despite "
-                        "still appearing in the models.list() response, confirmed live.")
+    p.add_argument("--judge_model", default="gemini-3.1-pro-preview",
+                   help="Pinned, not the gemini-pro-latest alias: confirmed live that the alias "
+                        "currently resolves here (it accepted thinking_level, which 2.5 rejects, "
+                        "and resp.model_version reported 'gemini-3.1-pro-preview'). An alias can "
+                        "retarget silently, which would change what a verdict means; a pinned ID "
+                        "keeps the run reproducible. Note gemini-2.5-pro 404s for new users "
+                        "despite still appearing in models.list().")
     p.add_argument("--dataset", default=str(REPO_ROOT / "results" / "frontier" / "stratified_64" / "dataset.csv"))
     p.add_argument("--stage2_jsonl", action="append", required=True,
                    help="Path to a Stage-2 output JSONL (pass once per thinking condition).")
     p.add_argument("--output", default=str(REPO_ROOT / "results" / "frontier" / "stratified_64" / "judge" / "judge_results.jsonl"))
     p.add_argument("--limit", type=int, default=0)
-    p.add_argument("--max_cost_usd", type=float, default=1.0,
-                   help="Session-wide cost cap across all judge calls (all "
-                        "stage2_jsonl inputs combined). NOTE: a real 31-row "
-                        "nothink pass under the PRE-ground-truth-reference "
-                        "prompt already cost $0.9042 -- adding the "
-                        "ground-truth reference blocks (see "
-                        "find_ground_truth_reference) increases per-row cost "
-                        "further for ~29/31 of those rows. Re-check/raise "
-                        "this default before a real re-run rather than "
-                        "trusting the old $0.3-0.4 estimate.")
+    p.add_argument("--max_cost_usd", type=float, default=10.0,
+                   help="Session-wide cap across all judge calls (all stage2_jsonl "
+                        "inputs combined). 10.0 sized from a measured estimate for the "
+                        "3.7 sweep: 124 eligible rows, 1,033,887 prompt chars total, "
+                        "~$3-6 at $2/$12 per 1M. Supersedes an older note citing "
+                        "$0.90 for 31 rows, which predated the ground-truth-reference "
+                        "blocks. Raise it for a larger eligible set.")
     p.add_argument("--max_retries", type=int, default=4)
+    p.add_argument("--stage", choices=["s2", "s1"], default="s2",
+                   help="Which stage's justification to judge. 's2' (default) is the "
+                        "agentic answer and reproduces all existing behaviour exactly. "
+                        "'s1' judges the static read-only answer instead: eligibility "
+                        "switches to s1_valid_match, the justification is read from the "
+                        "flat s1_valid_exp field, and the prompt states the model had no "
+                        "execution access. Write s1 results to a DIFFERENT --output than "
+                        "s2: the resume checkpoint is keyed on (title, condition) and "
+                        "would otherwise treat one stage as already done.")
     return p.parse_args()
 
 
@@ -343,8 +468,8 @@ def main() -> None:
                 line = line.strip()
                 if line:
                     r = json.loads(line)
-                    done.add((r["title"], r["thinking_budget"]))
-        print(f"[judge] Checkpoint: {len(done)} (title, thinking_budget) pairs already judged.", flush=True)
+                    done.add((r["title"], _condition_of(r)))
+        print(f"[judge] Checkpoint: {len(done)} (title, condition) pairs already judged.", flush=True)
 
     n_judged = 0
     session_cost = 0.0
@@ -355,14 +480,15 @@ def main() -> None:
         with open(jsonl_path) as f:
             rows = [json.loads(line) for line in f if line.strip()]
 
-        eligible = [r for r in rows if r.get("gt_valid") is False and r.get("s2_valid_match") == 1]
+        match_col = f"{args.stage}_valid_match"
+        eligible = [r for r in rows if r.get("gt_valid") is False and r.get(match_col) == 1]
         print(f"[judge] {jsonl_path}: {len(rows)} rows, {len(eligible)} eligible "
-              f"(gt_valid=False AND s2_valid_match=1)", flush=True)
+              f"(gt_valid=False AND {match_col}=1)  [stage={args.stage}]", flush=True)
 
         for row_result in eligible:
             title = row_result["title"]
-            thinking_budget = row_result["thinking_budget"]
-            if (title, thinking_budget) in done:
+            condition = _condition_of(row_result)
+            if (title, condition) in done:
                 continue
             if args.limit and n_judged >= args.limit:
                 print(f"[judge] --limit {args.limit} reached.", flush=True)
@@ -391,29 +517,51 @@ def main() -> None:
 
             corrupted_code = str(dataset_row["code"])
             invalidity_note = str(dataset_row.get("invalidity_note") or "")
-            valid_exp = str(row_result.get("s2_submit_args", {}).get("valid_exp") or "")
+            if args.stage == "s2":
+                valid_exp = str(row_result.get("s2_submit_args", {}).get("valid_exp") or "")
+            else:
+                # Stage 1 has no submit-args blob; the parsed explanation is a flat field.
+                valid_exp = str(row_result.get("s1_valid_exp") or "")
 
-            print(f"  [{n_judged+1}] {title} (thinking_budget={thinking_budget})", end=" ", flush=True)
+            print(f"  [{n_judged+1}] {title} ({condition})", end=" ", flush=True)
             verdict = call_judge(client, args.judge_model, base_code, corrupted_code,
                                   invalidity_note, valid_exp, max_retries=args.max_retries,
                                   gt_valid_code=gt_valid_code, gt_invalid_code=gt_invalid_code,
-                                  caveat_note=caveat_note)
+                                  caveat_note=caveat_note, stage=args.stage)
 
             out_row = {
                 "title": title,
-                "thinking_budget": thinking_budget,
+                # Both written: `condition` is the key going forward (and the
+                # only one that can name a Gemini 3 condition), thinking_budget
+                # is kept so existing analysis of 2.5 data keeps working.
+                "condition": condition,
+                "thinking_budget": row_result.get("thinking_budget"),
+                "model": row_result.get("model"),
                 "mod_type": dataset_row["mod_type"],
                 "pde_class": dataset_row["pde_class"],
+                # Which stage's justification this verdict is about. Absent on the
+                # judge files produced before --stage existed; those are all s2.
+                "judge_stage": args.stage,
                 "category": verdict["category"],
-                "contains_incorrect_claims": verdict["contains_incorrect_claims"],
+                "contains_incorrect_code_claims": verdict["contains_incorrect_code_claims"],
+                "contains_unverifiable_execution_claims": verdict["contains_unverifiable_execution_claims"],
                 "explanation": verdict["explanation"],
                 "used_ground_truth_reference": gt_valid_code is not None or gt_invalid_code is not None,
+                # Persisted per row so judge spend is auditable and recomputable
+                # from the data, not only from console output.
+                "judge_model": verdict.get("judge_model"),
+                "judge_input_tokens": verdict.get("judge_input_tokens"),
+                "judge_output_tokens": verdict.get("judge_output_tokens"),
+                "judge_think_tokens": verdict.get("judge_think_tokens"),
+                "cost_usd": verdict.get("cost_usd"),
             }
             with open(out_path, "a") as f:
                 f.write(json.dumps(out_row) + "\n")
             n_judged += 1
             session_cost += verdict["cost_usd"]
-            print(f"category={verdict['category']} contains_incorrect_claims={verdict['contains_incorrect_claims']} "
+            print(f"category={verdict['category']} "
+                  f"bad_code_claims={verdict['contains_incorrect_code_claims']} "
+                  f"unverif_exec={verdict['contains_unverifiable_execution_claims']} "
                   f"${verdict['cost_usd']:.5f}", flush=True)
 
     print(f"\n[judge] Done. {n_judged} new judgments -> {out_path}", flush=True)

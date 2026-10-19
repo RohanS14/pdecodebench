@@ -639,7 +639,7 @@ client11 = ConfigCapturingClient(scripted11)
 result11 = run_agentic_stage2(
     client11, "gemini-2.5-flash", TITLE11, RUN11, CODE, PROMPT_S1, S1_TEXT,
     budget=6, truncate_chars=4000, subprocess_timeout=10, episode_cost_cap_usd=0.50,
-    thinking_budget=1536,
+    thinking_setting=1536,
 )
 
 check("thought_summary captured on the action_trace entry",
@@ -692,7 +692,7 @@ client12 = FakeClient(scripted12)
 result12 = run_agentic_stage2(
     client12, "gemini-2.5-flash", TITLE12, RUN12, CODE, PROMPT_S1, S1_TEXT,
     budget=6, truncate_chars=4000, subprocess_timeout=10, episode_cost_cap_usd=0.50,
-    thinking_budget=1536,
+    thinking_setting=1536,
 )
 
 check("possible_thought_leak is flagged True",
@@ -745,17 +745,22 @@ check("submit_args carries the final answer", result13["submit_args"]["valid"] =
 check("action_count is 0 (neither submit call counts against budget)", result13["action_count"] == 0, str(result13["action_count"]))
 
 # The confirm-turn's contents (sent for turn 2's call) must include the
-# recap as a tool-role function_response, not a hardcoded reminder gated on
+# recap as a function_response, not a hardcoded reminder gated on
 # mode=="VALIDATED" the way the terminal path's pre-call reminder is.
+#
+# role is "user", not "tool": Gemini's Content schema allows only "user" and
+# "model", and what makes a message a tool result is the functionResponse PART,
+# not the role. gemini-2.5-flash tolerated role="tool"; gemini-3.7-flash rejects
+# it outright ("Role 'tool' is not supported").
 confirm_turn_contents13 = client13.models.seen_contents[1]
 tool_role_texts13 = [
     part.text
-    for content in confirm_turn_contents13 if content.role == "tool"
+    for content in confirm_turn_contents13 if content.role == "user"
     for part in content.parts
     if getattr(part, "function_response", None) is not None
     for part in [types.Part(text=part.function_response.response.get("result", ""))]
 ]
-check("confirm-turn's contents include a tool-role function_response with the recap",
+check("confirm-turn's contents include a user-role function_response with the recap",
       any(CODE in t and S1_TEXT in t for t in tool_role_texts13), tool_role_texts13)
 
 for p in (episode_dir(TITLE13, RUN13), snapshot_root(TITLE13, RUN13)):
@@ -841,7 +846,11 @@ check("client saw all 3 turns (episode was not aborted)", client15.models.n_call
 check("aborted is False", result15["aborted"] is False, str(result15))
 check("abort_reason is None", result15["abort_reason"] is None, str(result15["abort_reason"]))
 check("submit_args carries the final answer", result15["submit_args"]["valid"] == "yes")
-check("first action's result mentions the write cap/quarantine", "write cap" in result15["action_trace"][0]["result"], result15["action_trace"][0]["result"])
+check("first action's result tells the model the write was cancelled",
+      "write cancelled" in result15["action_trace"][0]["result"], result15["action_trace"][0]["result"])
+check("first action's result does not name the quarantine destination",
+      "quarantine" not in result15["action_trace"][0]["result"].lower(),
+      result15["action_trace"][0]["result"])
 check("episode_dir has a turn1 snapshot (episode continued normally, not aborted)",
       (snapshot_root(TITLE15, RUN15) / "turn1").exists())
 check("the oversized file was actually quarantined (moved out of the work dir)",
@@ -894,6 +903,192 @@ for p in (episode_dir(TITLE16, RUN16), snapshot_root(TITLE16, RUN16)):
 
 
 # ── Summary ──────────────────────────────────────────────────────────────────
+
+# ════════════════════════════════════════════════════════════════════════════
+# Gemini 3 migration: family branching, signature replay, truncation labelling.
+# Every fact asserted here was confirmed against the live API and the docs
+# before the code was written -- see the plan's "Verified facts" table.
+# ════════════════════════════════════════════════════════════════════════════
+
+from frontier.run_belief_revision_agentic import _function_response_content, _model_turn_content
+
+print("\n── per-family request config (2.5 vs 3.7) ──")
+
+def _run_capture(model, thinking_setting, title):
+    for pp in (episode_dir(title, "unittest"), snapshot_root(title, "unittest")):
+        if pp.exists():
+            shutil.rmtree(pp)
+    sub = fc("submit_final_answer", pde="heat", method="explicit", behavior="diffusion",
+             valid="yes", validity_score=8, pde_exp="x", method_exp="x",
+             behavior_exp="x", valid_exp="x")
+    cl = ConfigCapturingClient([[fc("edit_source", full_source="")], [sub]])
+    res = run_agentic_stage2(
+        cl, model, title, "unittest", CODE, PROMPT_S1, S1_TEXT,
+        budget=1, truncate_chars=4000, subprocess_timeout=10,
+        episode_cost_cap_usd=0.50, thinking_setting=thinking_setting,
+    )
+    for pp in (episode_dir(title, "unittest"), snapshot_root(title, "unittest")):
+        if pp.exists():
+            shutil.rmtree(pp)
+    return cl, res
+
+cl25, _ = _run_capture("gemini-2.5-flash", 1536, "_test_family_25")
+cfg25 = cl25.models.seen_configs[0]
+check("2.5: thinking_budget is set", cfg25.thinking_config.thinking_budget == 1536,
+      str(cfg25.thinking_config))
+check("2.5: thinking_level is NOT set (the API rejects it on 2.5)",
+      getattr(cfg25.thinking_config, "thinking_level", None) is None)
+check("2.5: temperature=0 is still sent", cfg25.temperature == 0.0, str(cfg25.temperature))
+
+cl37, _ = _run_capture("gemini-3.7-flash", "high", "_test_family_37")
+cfg37 = cl37.models.seen_configs[0]
+check("3.7: thinking_level is set to HIGH",
+      str(getattr(cfg37.thinking_config, "thinking_level", "")).upper().endswith("HIGH"),
+      str(cfg37.thinking_config))
+check("3.7: thinking_budget is NOT set (accepted but silently ignored -> must not be sent)",
+      cfg37.thinking_config.thinking_budget is None, str(cfg37.thinking_config))
+check("3.7: temperature is omitted (migration guide strips it; it is not honored anyway)",
+      cfg37.temperature is None, str(cfg37.temperature))
+check("3.7: top_p/top_k also omitted",
+      cfg37.top_p is None and cfg37.top_k is None)
+check("mode and allowed_function_names are set every turn (VALIDATED/ANY both work on 3.7)",
+      all(c.tool_config.function_calling_config.mode is not None
+          and c.tool_config.function_calling_config.allowed_function_names
+          for c in cl37.models.seen_configs))
+
+# Crossing the families must RAISE, not silently misconfigure -- that is the
+# whole point, since Gemini 3 accepts thinking_budget and ignores it.
+print("\n── crossing the thinking families raises rather than silently misconfiguring ──")
+for model, bad, label in [("gemini-3.7-flash", 0, "numeric budget on 3.7"),
+                          ("gemini-2.5-flash", "high", "level string on 2.5")]:
+    try:
+        _run_capture(model, bad, "_test_family_bad")
+        check(f"{label} raises", False, "no exception")
+    except ValueError:
+        check(f"{label} raises ValueError", True)
+
+print("\n── function responses use role='user' and echo the call id ──")
+
+class _FakeCall:
+    def __init__(self, cid):
+        self.id = cid
+        self.name = "run_diagnostic"
+
+c_with = _function_response_content(types, "run_diagnostic", "out", _FakeCall("call_42"))
+c_without = _function_response_content(types, "run_diagnostic", "out", _FakeCall(None))
+check("function response role is 'user', never 'tool' (3.7 rejects role='tool')",
+      c_with.role == "user" and c_without.role == "user")
+check("call id is echoed when present (docs require it on Gemini 3)",
+      c_with.parts[0].function_response.id == "call_42")
+check("call id is omitted when the model returned none (2.5 returns None)",
+      not c_without.parts[0].function_response.id)
+
+print("\n── model-turn replay preserves thought signatures ──")
+
+# 3.7 puts the signature on the function_call part; 2.5 puts it on the text
+# part. Both were observed live. Replaying every part unmodified on 3.x covers
+# either case and satisfies the docs' "return the entire response with all parts".
+thought_p = FakePart(text="thinking...", thought=True, thought_signature=b"sig-thought")
+text_p = FakePart(text="here is my plan", thought=False, thought_signature=None)
+fcall_p = FakePart(text=None, thought=False, thought_signature=b"sig-fc",
+                   function_call=fc("run_diagnostic", script="print(1)"))
+parts = [thought_p, text_p, fcall_p]
+
+mt3 = _model_turn_content(types, "gemini-3.7-flash", parts, None)
+check("3.x replays ALL parts including the thought part (any Part may carry a signature)",
+      len(mt3.parts) == 3 and mt3.parts is not parts, str(len(mt3.parts)))
+check("3.x preserves the signature carried on a thought part",
+      mt3.parts[0].thought_signature == b"sig-thought")
+check("3.x preserves the signature carried on the function_call part",
+      mt3.parts[2].thought_signature == b"sig-fc")
+check("3.x does not merge or reorder parts",
+      [getattr(x, "text", None) for x in mt3.parts] == [p.text for p in parts])
+
+mt25 = _model_turn_content(types, "gemini-2.5-flash", parts, None)
+check("2.5 keeps the historical filtered behavior (thought part dropped)",
+      len(mt25.parts) == 2 and all(not p.thought for p in mt25.parts), str(len(mt25.parts)))
+check("2.5 still preserves the text part that carries its signature",
+      mt25.parts[0].text == "here is my plan")
+check("no parts at all -> None rather than a fabricated Part that would strip a signature",
+      _model_turn_content(types, "gemini-3.7-flash", [], None) is None)
+
+print("\n── a MAX_TOKENS turn is LABELLED as truncation; control flow unchanged ──")
+
+class TruncatedModels(ConfigCapturingModels):
+    """Simulates exhausting max_output_tokens: finish_reason=MAX_TOKENS with no
+    function call. Confirmed live on 3.7 at HIGH. Two variants matter -- with
+    partial text (lands in the text_only branch) and without (empty branch) --
+    because the 8 real cases in the completed runs all surfaced as text_only."""
+    def __init__(self, scripted_calls, partial_text):
+        super().__init__(scripted_calls)
+        self._partial_text = partial_text
+        self._fired = False
+
+    def generate_content(self, model, contents, config):
+        self.seen_configs.append(config)
+        self.seen_contents.append(list(contents))
+        if not self._fired:
+            self._fired = True
+            class _FR:
+                name = "MAX_TOKENS"
+            cand = FakeCandidate([FakePart(text=self._partial_text, thought=False,
+                                           thought_signature=b"sig-trunc")]
+                                 if self._partial_text else [])
+            cand.finish_reason = _FR()
+            r = FakeResponse([], text=self._partial_text, candidates=[cand])
+            return r
+        return super().generate_content(model, contents, config)
+
+
+for partial_text, branch in [("I will also print the values", "text_only"), (None, "empty_response")]:
+    title = f"_test_trunc_{branch}"
+    for pp in (episode_dir(title, "unittest"), snapshot_root(title, "unittest")):
+        if pp.exists():
+            shutil.rmtree(pp)
+    sub = fc("submit_final_answer", pde="heat", method="explicit", behavior="diffusion",
+             valid="yes", validity_score=5, pde_exp="x", method_exp="x",
+             behavior_exp="x", valid_exp="x")
+    cl = ConfigCapturingClient([])
+    cl.models = TruncatedModels([[sub], [sub], [sub], [sub]], partial_text)
+    res = run_agentic_stage2(
+        cl, "gemini-3.7-flash", title, "unittest", CODE, PROMPT_S1, S1_TEXT,
+        budget=3, truncate_chars=4000, subprocess_timeout=10,
+        episode_cost_cap_usd=0.50, thinking_setting="high",
+    )
+    first = res["action_trace"][0]
+    check(f"[{branch}] truncated turn records finish_reason=MAX_TOKENS",
+          first.get("finish_reason") == "MAX_TOKENS", str(first.get("finish_reason")))
+    check(f"[{branch}] truncated turn is flagged truncated=True",
+          first.get("truncated") is True, str(first.get("truncated")))
+    check(f"[{branch}] it still lands in the {branch} branch (control flow unchanged)",
+          first.get(branch) is True, str(first))
+    check(f"[{branch}] it still costs an action (budget is 6 investigative actions, "
+          f"and this turn produced no evidence)", res["action_count"] >= 1, str(res["action_count"]))
+    check(f"[{branch}] the episode still reaches a real submitted answer",
+          res["submit_args"] is not None and res["submit_args"].get("valid") == "yes")
+    check(f"[{branch}] per-turn token counts are recorded (episode sums cannot "
+          f"show WHICH turn truncated)",
+          "input_tokens" in first and "think_tokens" in first, str(first.keys()))
+    if partial_text:
+        mt = [c for c in cl.models.seen_contents[1] if c.role == "model"]
+        check("[text_only] the truncated model turn is replayed, signature intact",
+              any(getattr(pt, "thought_signature", None) == b"sig-trunc"
+                  for c in mt for pt in c.parts), str(len(mt)))
+    for pp in (episode_dir(title, "unittest"), snapshot_root(title, "unittest")):
+        if pp.exists():
+            shutil.rmtree(pp)
+
+print("\n── every request ends on a non-empty user turn (docs require it) ──")
+for cl, label in [(cl25, "2.5"), (cl37, "3.7")]:
+    ok = True
+    for contents in cl.models.seen_contents:
+        last = contents[-1]
+        has_text = any((getattr(pt, "text", None) or "").strip() for pt in last.parts)
+        has_fr = any(getattr(pt, "function_response", None) is not None for pt in last.parts)
+        if last.role != "user" or not (has_text or has_fr):
+            ok = False
+    check(f"[{label}] final turn of every request is a non-empty user turn", ok)
+
 
 print()
 if failures:

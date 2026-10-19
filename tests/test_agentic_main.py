@@ -84,12 +84,14 @@ row = {
 
 stage1_text = (
     "pde: heat\nmethod: explicit\nbehavior: diffusion\nvalid: yes\n"
+    "validity_score: 9\n"
     "pde_exp: looks like the heat equation.\n"
     "method_exp: explicit finite differences.\n"
     "behavior_exp: heat spreads out over time.\n"
     "valid_exp: boundary conditions look fine.\n"
 )
 submit_call = fc("submit_final_answer", pde="heat", method="explicit", behavior="diffusion", valid="yes",
+                  validity_score=8,
                   pde_exp="unchanged", method_exp="unchanged", behavior_exp="unchanged", valid_exp="unchanged")
 stage2_calls = [
     [submit_call],  # voluntary (budget=6, 0 actions used) -- intercepted once
@@ -104,6 +106,14 @@ result = process_row(
 )
 
 check("row has title",              result["title"] == TITLE)
+
+# ── validity_score plumbing: graded score carried alongside the binary call ──
+check("s1_validity_score parsed from the Stage-1 text", result["s1_validity_score"] == 9,
+      repr(result["s1_validity_score"]))
+check("s2_validity_score carried from the submit_final_answer args", result["s2_validity_score"] == 8,
+      repr(result["s2_validity_score"]))
+check("validity_score does NOT create a match column (no ground-truth score exists)",
+      "s2_validity_score_match" not in result and "validity_score_match" not in result)
 check("row has s1_parsed_valid",    result["s1_parsed_valid"] == "yes")
 check("row has s1_valid_match",     result["s1_valid_match"] == 1)
 check("row has s2_action_count",    result["s2_action_count"] == 0)
@@ -197,12 +207,12 @@ check("stage1_result carries internal code/prompt_s1 fields for run_stage2_and_s
 row_nothink = run_stage2_and_score(
     split_client, "gemini-2.5-flash", row2, stage1_result, run_id=RUN_ID2,
     budget=6, truncate_chars=4000, subprocess_timeout=10, episode_cost_cap_usd=0.50,
-    thinking_budget=0,
+    thinking_setting=0,
 )
 row_think = run_stage2_and_score(
     split_client, "gemini-2.5-flash", row2, stage1_result, run_id=RUN_ID2,
     budget=6, truncate_chars=4000, subprocess_timeout=10, episode_cost_cap_usd=0.50,
-    thinking_budget=1536,
+    thinking_setting=1536,
 )
 
 check("Stage 1 was called exactly once despite 2 Stage-2 conditions", split_client.models.stage1_calls == 1, str(split_client.models.stage1_calls))
@@ -218,6 +228,42 @@ check("both rows have transition computed", row_nothink["transition"] == "right-
 for p in (episode_dir(TITLE2, RUN_ID2), snapshot_root(TITLE2, RUN_ID2)):
     if p.exists():
         shutil.rmtree(p)
+
+
+# ── A malformed validity_score must land as None, never a fabricated number.
+# Confirmed live that the API accepts minimum/maximum in a declaration but does
+# not enforce them, so the harness is the only guard. ──
+
+print("\n── malformed validity_score -> None (not 0, not the raw value) ──")
+
+TITLE3, RUN_ID3 = "_test_main_badscore_Heat_Comm_Valid_1", "unittest_badscore"
+for p3 in (episode_dir(TITLE3, RUN_ID3), snapshot_root(TITLE3, RUN_ID3)):
+    if p3.exists():
+        shutil.rmtree(p3)
+
+row3 = dict(row)
+row3["title"] = TITLE3
+bad_submit = fc("submit_final_answer", pde="heat", method="explicit", behavior="diffusion", valid="yes",
+                validity_score=250,
+                pde_exp="x", method_exp="x", behavior_exp="x", valid_exp="x")
+bad_s1 = stage1_text.replace("validity_score: 9", "validity_score: not a number")
+bad_client = SplitFakeClient(bad_s1, [[bad_submit], [bad_submit]])
+s1_bad = run_stage1(bad_client, "gemini-2.5-flash", row3, max_retries=4)
+row_bad = run_stage2_and_score(
+    bad_client, "gemini-2.5-flash", row3, s1_bad, run_id=RUN_ID3,
+    budget=6, truncate_chars=4000, subprocess_timeout=10, episode_cost_cap_usd=0.50,
+    thinking_setting=0,
+)
+check("out-of-range s2 validity_score (250) becomes None, not 250 and not 0",
+      row_bad["s2_validity_score"] is None, repr(row_bad["s2_validity_score"]))
+check("unparseable s1 validity_score becomes None",
+      row_bad["s1_validity_score"] is None, repr(row_bad["s1_validity_score"]))
+check("a bad score does not invalidate the rest of the row",
+      row_bad["s2_valid_match"] == 1 and row_bad["s2_hedge_class"] is not None)
+
+for p3 in (episode_dir(TITLE3, RUN_ID3), snapshot_root(TITLE3, RUN_ID3)):
+    if p3.exists():
+        shutil.rmtree(p3)
 
 
 print()

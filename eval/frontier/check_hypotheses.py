@@ -127,10 +127,15 @@ def check_h2(df_nothink, df_think) -> None:
     if df_think.empty:
         report("accuracy(S2 think) > accuracy(S1)", "skip", "no --think data provided")
         return
+    # df_think's OWN S1, not df_nothink's. Under the original design Stage 1 ran
+    # once at tb0 and was shared by both Stage-2 sweeps, so one s1_acc was
+    # correct; Stage 1 now runs at the same setting as the Stage 2 it feeds, so
+    # reusing condition A's S1 here compared B's Stage 2 against A's Stage 1.
+    think_s1_acc = df_think["s1_valid_match"].dropna().mean() * 100
     think_acc = df_think["s2_valid_match"].dropna().mean() * 100
     report(
-        f"accuracy(S2 think)={think_acc:.1f}% > accuracy(S1)={s1_acc:.1f}%",
-        "pass" if think_acc > s1_acc else "fail",
+        f"accuracy(S2 think)={think_acc:.1f}% > accuracy(S1 think)={think_s1_acc:.1f}%",
+        "pass" if think_acc > think_s1_acc else "fail",
     )
 
 
@@ -190,9 +195,15 @@ def check_j1(df_nothink, df_think, judge_df) -> None:
         )
         return
 
-    judged_counts = judge_df.groupby("thinking_budget").size()
-    judged_nothink = int(judged_counts.get(0, 0))
-    judged_think = int(judged_counts.get(1536, 0))
+    # Split on `condition`, matched to each Stage-2 frame's own condition, not on
+    # hardcoded thinking_budget values. thinking_budget is None on every Gemini 3
+    # row, so the old {0, 1536} lookup returned 0/0 and this check silently
+    # skipped with "judge results not yet at full scale" on complete data.
+    cond_a = sorted(set(df_nothink["condition"]))[0]
+    cond_b = sorted(set(df_think["condition"]))[0]
+    judged_counts = judge_df.groupby("condition").size()
+    judged_nothink = int(judged_counts.get(cond_a, 0))
+    judged_think = int(judged_counts.get(cond_b, 0))
 
     THRESHOLD = 0.8
     nothink_ok = len(eligible_nothink) > 0 and judged_nothink >= THRESHOLD * len(eligible_nothink)
@@ -214,13 +225,23 @@ def check_j1(df_nothink, df_think, judge_df) -> None:
     judge_df = judge_df.copy()
     judge_df["_category_score"] = judge_df["category"].map(category_score)
 
-    nothink_j = judge_df[judge_df["thinking_budget"] == 0]
-    think_j = judge_df[judge_df["thinking_budget"] == 1536]
+    nothink_j = judge_df[judge_df["condition"] == cond_a]
+    think_j = judge_df[judge_df["condition"] == cond_b]
 
     nothink_cat = nothink_j["_category_score"].mean()
     think_cat = think_j["_category_score"].mean()
-    nothink_incorrect = nothink_j["contains_incorrect_claims"].mean() * 100
-    think_incorrect = think_j["contains_incorrect_claims"].mean() * 100
+    # The judge's precision field was split into contains_incorrect_code_claims
+    # (a real error) and contains_unverifiable_execution_claims (not an error).
+    # Prefer the code-claims field; fall back to the merged legacy field so this
+    # check still runs against judge output produced before the split.
+    def _incorrect_rate(df):
+        for col in ("contains_incorrect_code_claims", "contains_incorrect_claims"):
+            if col in df.columns and df[col].notna().any():
+                return df[col].mean() * 100, col
+        return float("nan"), "unavailable"
+
+    nothink_incorrect, _src = _incorrect_rate(nothink_j)
+    think_incorrect, incorrect_src = _incorrect_rate(think_j)
 
     cat_holds = think_cat > nothink_cat
     incorrect_holds = think_incorrect < nothink_incorrect
@@ -231,7 +252,7 @@ def check_j1(df_nothink, df_think, judge_df) -> None:
         "pass" if cat_holds else "fail",
     )
     report(
-        f"J1 contains_incorrect_claims: rate(think)={think_incorrect:.1f}% < "
+        f"J1 {incorrect_src}: rate(think)={think_incorrect:.1f}% < "
         f"rate(nothink)={nothink_incorrect:.1f}%",
         "pass" if incorrect_holds else "fail",
     )
@@ -243,8 +264,10 @@ def parse_args() -> argparse.Namespace:
         REPO_ROOT / "results" / "frontier" / "stratified_256" / "nothink" / "gemini25flash__belief_revision_agentic.jsonl"))
     p.add_argument("--think", default=str(
         REPO_ROOT / "results" / "frontier" / "stratified_256" / "think" / "gemini25flash__belief_revision_agentic.jsonl"))
-    p.add_argument("--judge", default=str(
-        REPO_ROOT / "results" / "frontier" / "stratified_256" / "judge" / "judge_results.jsonl"))
+    # Repeatable: each arm writes its own judge file, so a two-condition
+    # comparison needs both. A single --judge containing both conditions (the
+    # original 2.5 layout) still works.
+    p.add_argument("--judge", action="append", default=[])
     return p.parse_args()
 
 
@@ -259,10 +282,20 @@ def main() -> None:
     df_nothink = load_agentic_results(nothink_path)
     think_path = Path(args.think)
     df_think = load_agentic_results(think_path) if think_path.exists() else __import__("pandas").DataFrame()
-    judge_df = load_judge_results(Path(args.judge))
+    import pandas as _pd
+    judge_paths = args.judge or [str(
+        REPO_ROOT / "results" / "frontier" / "stratified_256" / "judge" / "judge_results.jsonl")]
+    frames = [load_judge_results(Path(j)) for j in judge_paths]
+    frames = [f for f in frames if not f.empty]
+    judge_df = _pd.concat(frames, ignore_index=True) if frames else load_judge_results(Path("/nonexistent"))
 
-    print(f"[check-hypotheses] nothink: {len(df_nothink)} rows, think: {len(df_think)} rows, "
-          f"judge: {len(judge_df)} rows")
+    from visualize_agentic import df_condition_label
+    lab_a, lab_b = df_condition_label(df_nothink), df_condition_label(df_think)
+    print(f"[check-hypotheses] condition A (--nothink) = {lab_a}: {len(df_nothink)} rows")
+    print(f"[check-hypotheses] condition B (--think)   = {lab_b}: {len(df_think)} rows")
+    print(f"[check-hypotheses] judge: {len(judge_df)} rows from {len(judge_paths)} file(s)")
+    print("[check-hypotheses] NOTE: the labels 'nothink'/'think' below are legacy names "
+          "for condition A / condition B as mapped above.")
 
     check_h1(df_nothink, df_think)
     check_h2(df_nothink, df_think)

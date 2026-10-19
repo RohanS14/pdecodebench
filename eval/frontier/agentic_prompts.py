@@ -119,12 +119,34 @@ against the investigative action budget.\
             "method": {"type": "string", "description": "Numerical method(s) used -- list all that apply."},
             "behavior": {"type": "string", "description": "Dominant physical process(es) -- list all that apply."},
             "valid": {"type": "string", "description": "Does this code run and produce a correct physical solution for the PDE?"},
+            # Endpoint anchors ONLY -- deliberately no interior tiers, no example defect
+            # types, no suggested diagnostics. Naming defect categories here would hand
+            # the model the exact vocabulary whose absence drives the obfuscated-condition
+            # effect this experiment measures (see the design doc's "Validity score").
+            # minimum/maximum are hints only: confirmed live that the API accepts but does
+            # not enforce them (asked for 250, got 2), so the harness validates instead.
+            # Wording is kept identical to PROMPT_S1_AGENTIC's validity_score bullet --
+            # if the stages describe the score differently, an S1-vs-S2 score comparison
+            # is measuring two different questions.
+            "validity_score": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 10,
+                "description": (
+                    "An integer from 0 to 10 rating physical validity for the code - how "
+                    "closely the trajectory from the code would match the intended physical "
+                    "system. 0 means it retains none of the intended system's physics; 10 "
+                    "means it reproduces the intended system's physics exactly. This is a "
+                    "score of the degree of physical validity, not a confidence score in "
+                    "the binary valid answer field."
+                ),
+            },
             "pde_exp": {"type": "string", "description": "1-2 sentence explanation for the pde answer, including whether/why it changed from your first-stage answer."},
             "method_exp": {"type": "string", "description": "1-2 sentence explanation for the method answer, including whether/why it changed from your first-stage answer."},
             "behavior_exp": {"type": "string", "description": "1-2 sentence explanation for the behavior answer, including whether/why it changed from your first-stage answer."},
-            "valid_exp": {"type": "string", "description": "1-2 sentence explanation for the valid answer, including whether/why it changed from your first-stage answer."},
+            "valid_exp": {"type": "string", "description": "1-2 sentence explanation justifying BOTH the valid answer and the validity_score -- say why that degree of physical validity, not just yes or no -- including whether/why either changed from your first-stage answer."},
         },
-        "required": ["pde", "method", "behavior", "valid", "pde_exp", "method_exp", "behavior_exp", "valid_exp"],
+        "required": ["pde", "method", "behavior", "valid", "validity_score", "pde_exp", "method_exp", "behavior_exp", "valid_exp"],
     },
 }
 
@@ -152,6 +174,7 @@ pde: ____
 method: ____
 behavior: ____
 valid: ____
+validity_score: ____
 pde_exp: ____
 method_exp: ____
 behavior_exp: ____
@@ -161,20 +184,66 @@ valid_exp: ____
 - method: numerical method(s) used — list all that apply
 - behavior: dominant physical process(es) — list all that apply
 - valid: does this code run and produce a correct physical solution for the PDE?
-- pde_exp/method_exp/behavior_exp/valid_exp: 1-2 sentence explanation for each answer above\
+- validity_score: an integer from 0 to 10 rating physical validity for the code - how closely the trajectory from the code would match the intended physical system. 
+0 means it retains none of the intended system's physics; 10 means it reproduces the intended system's physics exactly. 
+This is a score of the degree of physical validity, not a confidence score in the binary valid answer field.
+- pde_exp/method_exp/behavior_exp/valid_exp: 1-2 sentence explanation for each answer above. 
+valid_exp should justify both the valid answer and the validity_score — say why that degree of physical validity, not just yes or no.\
 """
 
 
+VALIDITY_SCORE_MIN = 0
+VALIDITY_SCORE_MAX = 10
+
+
+def coerce_validity_score(value) -> int | None:
+    """Validate a validity_score into an int in [0, 10], or None.
+
+    Never coerces an invalid value into a number: out-of-range, non-numeric,
+    fractional, and missing all become None, so downstream analysis can count
+    non-compliance instead of silently absorbing it as a real score. Confirmed
+    live that the API accepts minimum/maximum in a function declaration but does
+    NOT enforce them (asked for 250, the model returned 2), so this is the only
+    actual guard on the range.
+
+    Accepts a string form ("7") because Stage 1 answers in text, not a tool call.
+    """
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, str):
+        m = re.search(r"-?\d+", value)
+        if not m:
+            return None
+        value = m.group(0)
+    try:
+        as_float = float(value)
+    except (TypeError, ValueError):
+        return None
+    if as_float != int(as_float):
+        return None
+    as_int = int(as_float)
+    if not VALIDITY_SCORE_MIN <= as_int <= VALIDITY_SCORE_MAX:
+        return None
+    return as_int
+
+
 def parse_s1_explanations(text: str) -> dict:
-    """Extract the 4 explanation fields from an agentic Stage-1 response.
-    Mirrors parse_score.parse_response()'s regex approach for the 4 core
-    fields, but kept separate so the static experiment's Stage-1 parsing
-    (parse_score.py) stays completely untouched."""
+    """Extract the 4 explanation fields plus validity_score from an agentic
+    Stage-1 response. Mirrors parse_score.parse_response()'s regex approach for
+    the 4 core fields, but kept separate so the static experiment's Stage-1
+    parsing (parse_score.py) stays completely untouched.
+
+    validity_score rides along here (rather than in a separate parser) because
+    it comes from the same single response and the same line-oriented format;
+    it is validated through coerce_validity_score(), so an absent or malformed
+    score is None rather than a fabricated number."""
     text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
     result = {}
     for field in ("pde_exp", "method_exp", "behavior_exp", "valid_exp"):
         matches = re.findall(rf"(?im)^[-*]?\s*{field}\s*:\s*(.+?)(?:\n|$)", text)
         result[field] = matches[-1].strip() if matches else None
+    score_matches = re.findall(r"(?im)^[-*]?\s*validity_score\s*:\s*(.+?)(?:\n|$)", text)
+    result["validity_score"] = coerce_validity_score(score_matches[-1]) if score_matches else None
     return result
 
 

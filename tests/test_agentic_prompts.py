@@ -7,6 +7,7 @@ import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'eval'))
 
 from frontier.agentic_prompts import (
+    coerce_validity_score,
     ALL_TOOL_DECLS,
     EDIT_SOURCE_DECL,
     EMPTY_RESPONSE_FEEDBACK,
@@ -48,9 +49,56 @@ for name, decl in ALL_TOOL_DECLS.items():
     check(f"{name} has parameters_json_schema", "parameters_json_schema" in decl)
 
 req = set(SUBMIT_FINAL_ANSWER_DECL["parameters_json_schema"]["required"])
-check("submit_final_answer requires 4 answer + 4 explanation fields",
-      req == {"pde", "method", "behavior", "valid", "pde_exp", "method_exp", "behavior_exp", "valid_exp"},
+check("submit_final_answer requires 4 answer + validity_score + 4 explanation fields",
+      req == {"pde", "method", "behavior", "valid", "validity_score",
+              "pde_exp", "method_exp", "behavior_exp", "valid_exp"},
       str(req))
+
+# ── validity_score: graded 0-10 physical-fidelity score, alongside the binary ──
+_score = SUBMIT_FINAL_ANSWER_DECL["parameters_json_schema"]["properties"]["validity_score"]
+check("validity_score is declared as an integer", _score["type"] == "integer")
+check("validity_score is oriented so HIGH = good (0 = no physics, 10 = exact), not severity",
+      "0 means it retains none" in _score["description"]
+      and "10 means it reproduces" in _score["description"])
+# The score and the binary field now share the word "validity", so this
+# disclaimer is load-bearing: without it the score reads as confidence in the
+# yes/no answer, which is a different quantity.
+check("validity_score is explicitly NOT a confidence score in the binary valid field",
+      "not a confidence score in the binary valid answer field" in _score["description"])
+# Both stages must describe the score identically, or an S1-vs-S2 score
+# comparison is measuring two different questions.
+for _frag in ["rating physical validity for the code",
+              "0 means it retains none of the intended system's physics",
+              "10 means it reproduces the intended system's physics exactly",
+              "not a confidence score in the binary valid answer field"]:
+    check(f"S1 prompt and S2 schema share wording: {_frag[:44]!r}",
+          _frag in _score["description"] and _frag in PROMPT_S1_AGENTIC)
+# The anchoring constraint from the design doc: naming defect categories or
+# diagnostics would hand the model the vocabulary whose absence drives the
+# obfuscated-condition effect this experiment measures.
+_leaks = ["boundary condition", "conservation", "sign flip", "exponent",
+          "stability", "CFL", "diffusion", "check whether", "for example"]
+check("validity_score description leaks no defect types or diagnostics (endpoint anchors only)",
+      not [w for w in _leaks if w.lower() in _score["description"].lower()],
+      str([w for w in _leaks if w.lower() in _score["description"].lower()]))
+check("valid_exp is asked to justify the degree of validity, not just yes/no",
+      "validity_score" in SUBMIT_FINAL_ANSWER_DECL["parameters_json_schema"]["properties"]["valid_exp"]["description"])
+
+check("PROMPT_S1_AGENTIC asks for validity_score too",
+      "validity_score: ____" in PROMPT_S1_AGENTIC)
+
+# coerce_validity_score is the ONLY real guard: confirmed live that the API
+# accepts minimum/maximum in a declaration but does not enforce them.
+for raw, want, label in [
+    (7, 7, "in-range int"), ("7", 7, "in-range string"), (0, 0, "lower bound"),
+    (10, 10, "upper bound"), (11, None, "just above range"), (-1, None, "negative"),
+    (250, None, "far out of range"), (None, None, "missing"),
+    ("seven", None, "non-numeric"), ("", None, "empty"), (7.5, None, "fractional"),
+    (True, None, "bool is not a score"), (7.0, 7, "integral float"),
+    ("8 (mostly fine)", 8, "score with trailing prose"),
+]:
+    check(f"coerce_validity_score: {label} -> {want!r}", coerce_validity_score(raw) == want,
+          f"got {coerce_validity_score(raw)!r}")
 
 check("edit_source requires full_source", EDIT_SOURCE_DECL["parameters_json_schema"]["required"] == ["full_source"])
 check("run_diagnostic requires script",  RUN_DIAGNOSTIC_DECL["parameters_json_schema"]["required"] == ["script"])

@@ -37,6 +37,11 @@ import pandas as pd
 REPO_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "eval"))
 
+from frontier.model_pricing import (  # noqa: E402
+    estimate_prompt_cost,
+    is_gemini_3,
+)
+from frontier.model_pricing import token_cost as _priced_token_cost  # noqa: E402
 from frontier.parse_frontier import (  # noqa: E402
     classify_hedge,
     compute_traj_signal,
@@ -51,10 +56,9 @@ from dataset_io import DEFAULT_MOD_DATASET, load_dataset  # noqa: E402
 # Burgers_1 is fixed — set is empty. Add e.g. {"Burgers_1"} to re-exclude.
 EXCLUDED_SAMPLES: set = set()
 
-# Gemini 2.5 Flash pricing (USD/token, May 2025)
-_PRICE_IN    = 0.15  / 1_000_000   # input
-_PRICE_OUT   = 1.25  / 1_000_000   # non-thinking output
-_PRICE_THINK = 3.50  / 1_000_000   # thinking tokens
+# Pricing now lives in frontier.model_pricing (imported below) -- the constants
+# that used to sit here were wrong ($0.15/$1.25 against a listed $0.30/$2.50)
+# and assumed a separate thinking rate that does not exist. See that module.
 
 # ── Prompts ───────────────────────────────────────────────────────────────────
 
@@ -174,13 +178,78 @@ class RateLimiter:
 
 # ── Gemini API ────────────────────────────────────────────────────────────────
 
-def call_gemini(client, model: str, contents: list, max_retries: int = 4):
+def _default_include_thoughts(model: str, thinking_setting) -> bool:
+    """Thought summaries are only meaningful when thinking is actually on.
+    Gemini 3 has no way to switch thinking off, so it is always on there."""
+    if is_gemini_3(model):
+        return True
+    return thinking_setting != 0
+
+
+def build_thinking_config(model: str, thinking_setting, include_thoughts: bool | None = None):
+    """Family-branched ThinkingConfig. Gemini 2.5 takes the numeric
+    thinking_budget; Gemini 3.x takes the thinking_level enum.
+
+    Crossing them is a SILENT misconfiguration, which is why this is
+    centralized and raises: confirmed live that gemini-3.7-flash accepts
+    thinking_budget=0 and ignores it (still spent 73 thinking tokens), while
+    gemini-2.5-flash rejects thinking_level outright ("Thinking level is not
+    supported for this model").
+
+    thinking_setting is an int for 2.5 (0 disables) and a level string for 3.x
+    ("low"/"medium"/"high"; "minimal" is rejected on 3.7, whose floor is "low").
+    """
+    from google.genai import types
+    if include_thoughts is None:
+        include_thoughts = _default_include_thoughts(model, thinking_setting)
+    if is_gemini_3(model):
+        if not isinstance(thinking_setting, str):
+            raise ValueError(
+                f"{model} requires a thinking_level string (e.g. 'high'), got "
+                f"{thinking_setting!r}. thinking_budget is accepted by the API but "
+                f"silently ignored on Gemini 3."
+            )
+        return types.ThinkingConfig(
+            thinking_level=thinking_setting.upper(), include_thoughts=include_thoughts
+        )
+    if isinstance(thinking_setting, str):
+        raise ValueError(
+            f"{model} does not support thinking_level (the API rejects it outright); "
+            f"pass a numeric thinking_budget instead, got {thinking_setting!r}."
+        )
+    return types.ThinkingConfig(
+        thinking_budget=thinking_setting, include_thoughts=include_thoughts
+    )
+
+
+def sampling_kwargs(model: str) -> dict:
+    """temperature/top_p/top_k must be stripped on Gemini 3.x -- the migration
+    guide says to remove them, and confirmed live that temperature=0 is accepted
+    but NOT honored (three identical requests returned three different answers).
+    Sending it would imply a determinism the model does not provide."""
+    return {} if is_gemini_3(model) else {"temperature": 0.0}
+
+
+def stage1_thinking_setting(model: str):
+    """Stage 1's thinking setting when not specified. Gemini 2.5 keeps the
+    historical thinking_budget=0; Gemini 3 cannot disable thinking, so its floor
+    is 'low'. Callers running Stage 2 at a given level should pass that SAME
+    level for Stage 1 rather than relying on this default -- otherwise "does
+    investigation help" compares low-thinking-without-tools against
+    high-thinking-with-tools."""
+    return "low" if is_gemini_3(model) else 0
+
+
+def call_gemini(client, model: str, contents: list, max_retries: int = 4,
+                thinking_setting=None):
     """Single Gemini API call with exponential backoff on 429/503."""
     from google.genai import types
+    if thinking_setting is None:
+        thinking_setting = stage1_thinking_setting(model)
     config = types.GenerateContentConfig(
-        temperature=0.0,
         max_output_tokens=50_000,
-        thinking_config=types.ThinkingConfig(thinking_budget=0),
+        thinking_config=build_thinking_config(model, thinking_setting),
+        **sampling_kwargs(model),
     )
 
     for attempt in range(max_retries + 1):
@@ -201,20 +270,24 @@ def call_gemini(client, model: str, contents: list, max_retries: int = 4):
                 raise
 
 
-def token_cost(usage) -> tuple[int, int, int, float]:
-    """Returns (input_tokens, output_tokens, think_tokens, cost_usd)."""
+def token_cost(usage, model: str) -> tuple[int, int, int, float]:
+    """Returns (input_tokens, output_tokens, think_tokens, cost_usd).
+
+    `model` is required: rates differ per model, and thinking is billed at the
+    output rate (there is no separate thinking rate). Raw counts are returned
+    alongside the derived cost so cost stays recomputable if the constants
+    change again -- which they already did once."""
     if usage is None:
         return 0, 0, 0, 0.0
     inp   = getattr(usage, "prompt_token_count",     0) or 0
     out   = getattr(usage, "candidates_token_count", 0) or 0
     think = getattr(usage, "thoughts_token_count",   0) or 0
-    cost  = inp * _PRICE_IN + out * _PRICE_OUT + think * _PRICE_THINK
-    return inp, out, think, cost
+    return inp, out, think, _priced_token_cost(model, inp, out, think)
 
 
-def estimate_cost_usd(prompt_text: str) -> float:
+def estimate_cost_usd(prompt_text: str, model: str) -> float:
     """Pre-flight cost estimate (character-count proxy, ~4 chars/token)."""
-    return (len(prompt_text) / 4) * _PRICE_IN + 120 * _PRICE_OUT
+    return estimate_prompt_cost(model, prompt_text)
 
 
 # ── Argument parsing ──────────────────────────────────────────────────────────
@@ -300,7 +373,7 @@ def main() -> None:
         prompt_s1 = PROMPT_S1.format(code=code)
 
         # Pre-flight cost check (two calls estimated)
-        est = estimate_cost_usd(prompt_s1) * 2
+        est = estimate_cost_usd(prompt_s1, args.model) * 2
         if session_cost + est > args.max_cost_usd:
             print(
                 f"[frontier] Cost limit ${args.max_cost_usd:.2f} reached "
@@ -330,7 +403,7 @@ def main() -> None:
             resp1   = None
         s1_latency = round(time.time() - t0, 3)
         s1_inp, s1_out, s1_think, s1_cost = token_cost(
-            resp1.usage_metadata if resp1 else None
+            resp1.usage_metadata if resp1 else None, args.model
         )
         session_cost += s1_cost
 
@@ -360,7 +433,7 @@ def main() -> None:
             resp2   = None
         s2_latency = round(time.time() - t0, 3)
         s2_inp, s2_out, s2_think, s2_cost = token_cost(
-            resp2.usage_metadata if resp2 else None
+            resp2.usage_metadata if resp2 else None, args.model
         )
         session_cost += s2_cost
 

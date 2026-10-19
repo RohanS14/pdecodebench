@@ -25,6 +25,7 @@ from frontier.agentic_prompts import (  # noqa: E402
     build_submit_confirmation_reminder,
     build_validated_reminder_final,
     build_validated_reminder_investigative,
+    coerce_validity_score,
     parse_s1_explanations,
 )
 from frontier.agentic_tools import (  # noqa: E402
@@ -33,6 +34,21 @@ from frontier.agentic_tools import (  # noqa: E402
     tools_available,
     truncate,
 )
+from frontier.model_pricing import (  # noqa: E402
+    condition_slug,
+    episode_cost_cap,
+    estimate_prompt_cost,
+    is_gemini_3,
+    parse_thinking_setting,
+)
+# Thinking/sampling config construction is shared with Stage 1 so the two can
+# never drift apart on which family takes which parameter.
+from frontier.run_belief_revision import (  # noqa: E402
+    build_thinking_config,
+    sampling_kwargs,
+    stage1_thinking_setting,
+)
+from frontier.model_pricing import token_cost as priced_token_cost  # noqa: E402
 from frontier.agentic_sandbox import (  # noqa: E402
     MAX_EPISODE_DIR_BYTES,
     MAX_FILE_SIZE_BYTES,
@@ -43,9 +59,23 @@ from frontier.agentic_sandbox import (  # noqa: E402
 from frontier.episode_log import write_episode_log  # noqa: E402
 
 INVESTIGATIVE_BUDGET_DEFAULT = 6
+
+# Thinking tokens count against this budget, and exhausting it returns a
+# response with NO function call -- confirmed live on gemini-3.7-flash at
+# thinking_level=HIGH (cap 300 -> 574 thinking tokens, finish_reason=MAX_TOKENS,
+# zero function calls). 50k measured ample for a demanding single HIGH turn
+# (4272 tokens total), so this is unchanged; the guard against silent truncation
+# is finish_reason logging, not a bigger cap.
+MAX_OUTPUT_TOKENS = 50_000
 TRUNCATE_CHARS_DEFAULT = 4000
 SUBPROCESS_TIMEOUT_DEFAULT = 120
-EPISODE_COST_CAP_DEFAULT = 0.50  # USD -- see notes_agentic_token_inefficiency.txt
+# None => derive from the model's real per-token pricing via
+# model_pricing.episode_cost_cap(). The previous flat $0.50 was tuned to
+# gemini-2.5-flash under pricing constants that were themselves wrong, and a
+# fixed dollar cap gives a pricier model less investigative runway for the same
+# work. Tripping the cap does NOT raise -- it collapses the tool list exactly as
+# budget exhaustion does, so a cap set too low silently ends investigation early.
+EPISODE_COST_CAP_DEFAULT = None
 
 # Max consecutive times the model may call a tool that wasn't actually declared
 # to it that turn (e.g. calling edit_source after the budget/cost-guard already
@@ -56,28 +86,20 @@ EPISODE_COST_CAP_DEFAULT = 0.50  # USD -- see notes_agentic_token_inefficiency.t
 # so the harness must reject and bound it explicitly.
 MAX_PROTOCOL_VIOLATIONS = 2
 
-# Gemini 2.5 Flash pricing (USD/token) -- mirrors run_belief_revision.py's
-# constants; duplicated rather than imported since these are module-level
-# literals, not behavior, and keeping this file's cost math self-contained
-# avoids a cross-import just for three numbers.
-_PRICE_IN = 0.15 / 1_000_000
-_PRICE_OUT = 1.25 / 1_000_000
-_PRICE_THINK = 3.50 / 1_000_000
+def _token_cost(usage, model: str) -> tuple[int, int, int, float]:
+    """Returns (input_tokens, output_tokens, think_tokens, cost_usd).
 
-
-def _token_cost(usage) -> tuple[int, int, int, float]:
-    """Returns (input_tokens, output_tokens, think_tokens, cost_usd) -- mirrors
-    run_belief_revision.py's token_cost() so raw counts can be persisted per
-    episode, not just the derived cost (which depends on pricing constants
-    that can go stale/wrong -- keeping the raw counts means cost can always
-    be recomputed correctly later without re-running anything)."""
+    Raw counts are persisted per episode, not just the derived cost, so cost
+    stays recomputable when pricing constants turn out to be wrong -- which
+    they were: the old constants here understated input/output ~2x and assumed
+    a separate thinking rate that does not exist. Pricing now lives in
+    frontier.model_pricing."""
     if usage is None:
         return 0, 0, 0, 0.0
     inp = getattr(usage, "prompt_token_count", 0) or 0
     out = getattr(usage, "candidates_token_count", 0) or 0
     think = getattr(usage, "thoughts_token_count", 0) or 0
-    cost = inp * _PRICE_IN + out * _PRICE_OUT + think * _PRICE_THINK
-    return inp, out, think, cost
+    return inp, out, think, priced_token_cost(model, inp, out, think)
 
 
 def call_gemini_agentic(client, model: str, contents: list, config, max_retries: int = 4):
@@ -98,6 +120,57 @@ def call_gemini_agentic(client, model: str, contents: list, config, max_retries:
                 time.sleep(wait)
             else:
                 raise
+
+
+def _function_response_content(types, name: str, result: str, call):
+    """Build the Content carrying a tool result back to the model.
+
+    role="user", NOT "tool": Gemini's Content schema allows only "user" and
+    "model" -- there is no tool role, and what makes a message a tool result is
+    the functionResponse PART, not the role. gemini-2.5-flash tolerated
+    role="tool" (which is why it worked for 256 rows), but gemini-3.7-flash
+    rejects it outright: "Role 'tool' is not supported." The SDK's own automatic
+    function-calling path uses role="user" in all four of its call sites.
+
+    The call's `id` is echoed when present. Gemini 3 returns one and the docs
+    require it back on the functionResponse; Gemini 2.5 returns None, so it is
+    set conditionally rather than unconditionally.
+    """
+    part = types.Part.from_function_response(name=name, response={"result": result})
+    call_id = getattr(call, "id", None) if call is not None else None
+    if call_id:
+        part.function_response.id = call_id
+    return types.Content(role="user", parts=[part])
+
+
+def _model_turn_content(types, model: str, resp_content_parts: list, call):
+    """The model's own turn, replayed into history.
+
+    Gemini 3.x: replay the response's parts EXACTLY as received, thought parts
+    included. The docs say "any Part of a model response may contain a thought
+    signature", "always send the thought_signature back inside its original
+    Part", and "return the entire response with all parts". Filtering out thought
+    parts is a third way to lose a signature alongside the documented DON'Ts
+    (don't merge a signed Part with an unsigned one; don't combine two signed
+    Parts), so nothing is filtered or rebuilt here.
+
+    Gemini 2.5: keep the historical filtered behavior -- signatures there appear
+    on function-calling turns and were observed on the text part, which the
+    filter keeps. Holding this path fixed keeps the bridge run close to how the
+    existing binary-only data was produced.
+    """
+    if is_gemini_3(model):
+        if resp_content_parts:
+            return types.Content(role="model", parts=list(resp_content_parts))
+        # No parts at all (e.g. a MAX_TOKENS truncation). Nothing to replay, and
+        # fabricating a Part would strip whatever signature the real turn had.
+        return None
+    non_thought_parts = [p for p in resp_content_parts if not getattr(p, "thought", False)]
+    if non_thought_parts:
+        return types.Content(role="model", parts=non_thought_parts)
+    if call is not None:
+        return types.Content(role="model", parts=[types.Part(function_call=call)])
+    return None
 
 
 def _build_tools(available_names: list[str]):
@@ -183,8 +256,8 @@ def run_agentic_stage2(
     budget: int = INVESTIGATIVE_BUDGET_DEFAULT,
     truncate_chars: int = TRUNCATE_CHARS_DEFAULT,
     subprocess_timeout: int = SUBPROCESS_TIMEOUT_DEFAULT,
-    episode_cost_cap_usd: float = EPISODE_COST_CAP_DEFAULT,
-    thinking_budget: int = 0,
+    episode_cost_cap_usd: float | None = EPISODE_COST_CAP_DEFAULT,
+    thinking_setting: int | str | None = None,
     max_retries: int = 4,
     max_file_size_bytes: int = MAX_FILE_SIZE_BYTES,
     max_episode_dir_bytes: int = MAX_EPISODE_DIR_BYTES,
@@ -202,12 +275,22 @@ def run_agentic_stage2(
     config)` -- tests pass a scripted fake client (tests/test_agentic_loop.py),
     real runs pass a `google.genai.Client()`.
 
-    `thinking_budget` defaults to 0 to match the existing static experiment's
-    convention (Rohan's decision for the pilot); exposed as a parameter, not a
-    hardcoded literal, since it's expected to change once Stage 2's tool-choice
-    quality is evaluated with thinking enabled.
+    `thinking_setting` is an int thinking_budget on Gemini 2.5 (0 disables) and
+    a thinking_level string on Gemini 3.x ("low"/"medium"/"high" -- "minimal" is
+    rejected on 3.7, whose floor is "low"). None resolves to that family's
+    default. The two are NOT interchangeable: Gemini 3 accepts thinking_budget
+    and silently ignores it, so build_thinking_config() raises rather than
+    letting a crossed setting look like it worked.
+
+    `episode_cost_cap_usd` of None derives the cap from this model's real
+    pricing rather than using a flat dollar figure.
     """
     from google.genai import types
+
+    if thinking_setting is None:
+        thinking_setting = stage1_thinking_setting(model)
+    if episode_cost_cap_usd is None:
+        episode_cost_cap_usd = episode_cost_cap(model)
 
     work = setup_episode(code, title, run_id)
     snapshot_turn(title, run_id, 0)
@@ -237,6 +320,7 @@ def run_agentic_stage2(
     def _empty_submission(reason: str, raw_text: str | None = None) -> dict:
         return {
             "pde": "", "method": "", "behavior": "", "valid": "",
+            "validity_score": None,
             "pde_exp": "", "method_exp": "", "behavior_exp": "", "valid_exp": "",
             "_forced_reason": reason,
             "_raw_text": raw_text or "",
@@ -277,12 +361,8 @@ def run_agentic_stage2(
             contents.append(types.Content(role="user", parts=[types.Part(text=reminder)]))
 
         config = types.GenerateContentConfig(
-            temperature=0.0,
-            max_output_tokens=50_000,
-            thinking_config=types.ThinkingConfig(
-                thinking_budget=thinking_budget,
-                include_thoughts=(thinking_budget != 0),
-            ),
+            max_output_tokens=MAX_OUTPUT_TOKENS,
+            thinking_config=build_thinking_config(model, thinking_setting),
             tools=_build_tools(available),
             tool_config=types.ToolConfig(
                 function_calling_config=types.FunctionCallingConfig(
@@ -290,9 +370,10 @@ def run_agentic_stage2(
                 )
             ),
             automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
+            **sampling_kwargs(model),
         )
         resp = call_gemini_agentic(client, model, contents, config, max_retries)
-        turn_inp, turn_out, turn_think, turn_cost = _token_cost(getattr(resp, "usage_metadata", None))
+        turn_inp, turn_out, turn_think, turn_cost = _token_cost(getattr(resp, "usage_metadata", None), model)
         episode_cost += turn_cost
         episode_input_tokens += turn_inp
         episode_output_tokens += turn_out
@@ -303,13 +384,46 @@ def run_agentic_stage2(
         raw_text = getattr(resp, "text", None) or ""
         has_call = bool(calls)
         has_text = bool(raw_text.strip())
+        candidates = getattr(resp, "candidates", None) or []
+
+        # finish_reason distinguishes a TRUNCATED turn from the model choosing
+        # not to act. Confirmed live: exhausting max_output_tokens returns no
+        # function call (and sometimes partial text), which is otherwise
+        # indistinguishable from a real empty/text-only response -- and this
+        # already happened 8 times in the completed 256-row runs, where those
+        # turns were logged as the model declining to act. Thinking tokens count
+        # against the same budget, so this is not Gemini-3-specific.
+        #
+        # Control flow is deliberately UNCHANGED: a truncated turn still costs
+        # an action, still gets its feedback message, still escalates. The
+        # escalate-then-force-a-tool-call path is a reasonable recovery and
+        # worked in all 8 observed cases; only the LABEL was wrong.
+        _fr = getattr(candidates[0], "finish_reason", None) if candidates else None
+        finish_reason = getattr(_fr, "name", None) or (str(_fr) if _fr is not None else None)
+        truncated_turn = bool(finish_reason and "MAX_TOKENS" in finish_reason)
+        if truncated_turn:
+            print(f"WARNING: turn {turn} hit max_output_tokens "
+                  f"(thoughts={turn_think}, output={turn_out}) -- response truncated, "
+                  f"not a deliberate non-action", flush=True)
+
+        # Per-turn provenance, merged into every action_trace entry below. The
+        # existing episode-level sums cannot show WHICH turn truncated, which is
+        # why the 8 historical cases could only be found by a length heuristic.
+        turn_meta = {
+            "finish_reason": finish_reason,
+            "truncated": truncated_turn,
+            "input_tokens": turn_inp,
+            "output_tokens": turn_out,
+            "think_tokens": turn_think,
+            "mode": mode,
+            "tools_offered": list(available),
+        }
 
         # Thought-summary extraction (only present when include_thoughts=True).
         # Purely additive: resp.text/resp.function_calls (raw_text/calls above)
         # already correctly exclude thought parts -- confirmed live via a
         # standalone smoke test before this code was written -- so none of the
         # has_call/has_text branch logic below needs to change.
-        candidates = getattr(resp, "candidates", None) or []
         resp_content_parts = []
         thought_summary_text = ""
         possible_thought_leak = False
@@ -317,7 +431,7 @@ def run_agentic_stage2(
             resp_content_parts = getattr(getattr(candidates[0], "content", None), "parts", None) or []
             thought_parts = [p.text for p in resp_content_parts if getattr(p, "thought", False) and getattr(p, "text", None)]
             thought_summary_text = "\n".join(thought_parts)
-        if thinking_budget != 0 and raw_text.lstrip().startswith("THOUGHT:"):
+        if thinking_setting != 0 and raw_text.lstrip().startswith("THOUGHT:"):
             possible_thought_leak = True
             print(f"WARNING: possible thought leak into regular text at turn {turn}")
 
@@ -332,7 +446,7 @@ def run_agentic_stage2(
                 action_trace.append({
                     "turn": turn, "tool": None, "args": {}, "result": raw_text,
                     "new_filename": None, "no_function_call": True,
-                    "thought_summary": thought_summary_text,
+                    "thought_summary": thought_summary_text, **turn_meta,
                     **({"possible_thought_leak": True} if possible_thought_leak else {}),
                 })
                 submit_args = _empty_submission("no_function_call", raw_text)
@@ -349,9 +463,19 @@ def run_agentic_stage2(
                 action_trace.append({
                     "turn": turn, "tool": None, "args": {}, "result": "",
                     "new_filename": None, "empty_response": True,
-                    "thought_summary": thought_summary_text,
+                    "thought_summary": thought_summary_text, **turn_meta,
                     **({"possible_thought_leak": True} if possible_thought_leak else {}),
                 })
+                # Replay the model's own turn BEFORE the feedback message.
+                # Previously these branches appended only the feedback, dropping
+                # whatever thought_signature that turn carried -- and on Gemini 3
+                # any Part may carry one, with signatures documented as mandatory
+                # for function calling. Returns None when there is nothing real
+                # to replay (e.g. a truncation with no parts at all), rather than
+                # fabricating a Part.
+                _mt = _model_turn_content(types, model, resp_content_parts, None)
+                if _mt is not None:
+                    contents.append(_mt)
                 contents.append(types.Content(role="user", parts=[types.Part(text=EMPTY_RESPONSE_FEEDBACK)]))
                 consecutive_empty += 1
                 if consecutive_empty >= 2:
@@ -366,9 +490,15 @@ def run_agentic_stage2(
                 action_trace.append({
                     "turn": turn, "tool": None, "args": {}, "result": raw_text,
                     "new_filename": None, "text_only": True,
-                    "thought_summary": thought_summary_text,
+                    "thought_summary": thought_summary_text, **turn_meta,
                     **({"possible_thought_leak": True} if possible_thought_leak else {}),
                 })
+                # Same signature-continuity fix as the empty branch above. This
+                # is the branch a partially-emitted truncation lands in, so it
+                # matters in practice, not just in theory.
+                _mt = _model_turn_content(types, model, resp_content_parts, None)
+                if _mt is not None:
+                    contents.append(_mt)
                 contents.append(types.Content(role="user", parts=[types.Part(text=TEXT_ONLY_FEEDBACK)]))
                 consecutive_empty = 0
                 mode_override = "ANY"
@@ -392,9 +522,9 @@ def run_agentic_stage2(
         # be replayed as future context). Falls back to the exact original
         # single-part behavior when resp has no .candidates (all fake test
         # doubles, and any real response without them).
-        non_thought_parts = [p for p in resp_content_parts if not getattr(p, "thought", False)]
-        model_parts = non_thought_parts if non_thought_parts else [types.Part(function_call=call)]
-        contents.append(types.Content(role="model", parts=model_parts))
+        model_turn = _model_turn_content(types, model, resp_content_parts, call)
+        if model_turn is not None:
+            contents.append(model_turn)
 
         if name == "submit_final_answer":
             if len(available) > 1 and not submit_confirmed:
@@ -414,19 +544,16 @@ def run_agentic_stage2(
                     "turn": turn, "tool": name, "args": args, "result": reminder,
                     "new_filename": None, "reasoning_text": reasoning_text,
                     "provisional_submit": True,
-                    "thought_summary": thought_summary_text,
+                    "thought_summary": thought_summary_text, **turn_meta,
                     **({"possible_thought_leak": True} if possible_thought_leak else {}),
                 })
-                contents.append(types.Content(
-                    role="tool",
-                    parts=[types.Part.from_function_response(name=name, response={"result": reminder})],
-                ))
+                contents.append(_function_response_content(types, name, reminder, call))
                 continue
             submit_args = args
             action_trace.append({
                 "turn": turn, "tool": name, "args": args, "result": None,
                 "new_filename": None, "reasoning_text": reasoning_text,
-                "thought_summary": thought_summary_text,
+                "thought_summary": thought_summary_text, **turn_meta,
                 **({"possible_thought_leak": True} if possible_thought_leak else {}),
             })
             break
@@ -449,13 +576,10 @@ def run_agentic_stage2(
                 "turn": turn, "tool": name, "args": args,
                 "result": rejection, "new_filename": None, "rejected": True,
                 "reasoning_text": reasoning_text,
-                "thought_summary": thought_summary_text,
+                "thought_summary": thought_summary_text, **turn_meta,
                 **({"possible_thought_leak": True} if possible_thought_leak else {}),
             })
-            contents.append(types.Content(
-                role="tool",
-                parts=[types.Part.from_function_response(name=name, response={"result": rejection})],
-            ))
+            contents.append(_function_response_content(types, name, rejection, call))
             if protocol_violations > MAX_PROTOCOL_VIOLATIONS:
                 submit_args = _empty_submission("protocol_violations_exceeded")
                 break
@@ -481,7 +605,7 @@ def run_agentic_stage2(
             "turn": turn, "tool": name, "args": args,
             "result": truncated, "new_filename": new_filename,
             "reasoning_text": reasoning_text,
-            "thought_summary": thought_summary_text,
+            "thought_summary": thought_summary_text, **turn_meta,
             **({"possible_thought_leak": True} if possible_thought_leak else {}),
             **({"abort_reason": abort_reason} if abort_reason else {}),
         })
@@ -497,10 +621,7 @@ def run_agentic_stage2(
             # run_stratified_sweep.py's checkpoint handling.
             break
 
-        contents.append(types.Content(
-            role="tool",
-            parts=[types.Part.from_function_response(name=name, response={"result": truncated})],
-        ))
+        contents.append(_function_response_content(types, name, truncated, call))
 
         snapshot_turn(title, run_id, turn)
 
@@ -546,17 +667,24 @@ from frontier.parse_frontier import classify_hedge, parse_response, score_row  #
 from dataset_io import DEFAULT_MOD_DATASET, load_dataset  # noqa: E402
 
 
-def run_stage1(client, model: str, row: dict, max_retries: int = 4) -> dict:
+def run_stage1(client, model: str, row: dict, max_retries: int = 4,
+               thinking_setting: int | str | None = None) -> dict:
     """
     Run Stage 1 only (agentic-only prompt: PROMPT_S1_AGENTIC, a superset of
     run_belief_revision.py's PROMPT_S1 that adds explanation fields -- the
     shared static-experiment prompt/parser stay untouched).
 
-    Stage 1 is 100% independent of thinking_budget (call_gemini() hardcodes
-    thinking_budget=0 and never receives the CLI flag) and fully
-    deterministic (temperature=0) -- cache this once per row and reuse it
-    across every thinking-condition sweep rather than re-running it, which
-    would just be paying twice for identical work.
+    `thinking_setting` should MATCH the Stage-2 condition this answer will be
+    paired with. Otherwise "does investigation help" compares
+    low-thinking-without-tools against high-thinking-with-tools -- two variables
+    at once. That means the Stage-1 cache is keyed by thinking setting, not
+    shared across all of them (see run_stratified_sweep.py).
+
+    Caching is still correct and still worth it, but for a different reason than
+    before: on Gemini 3 nothing is deterministic (temperature is stripped, and
+    confirmed live that temperature=0 is not honored anyway), so the cache stops
+    being reuse of an identical answer and becomes the mechanism that holds the
+    comparison together -- every Stage-2 condition sees the SAME Stage-1 draw.
     """
     from google.genai import types
 
@@ -566,9 +694,12 @@ def run_stage1(client, model: str, row: dict, max_retries: int = 4) -> dict:
 
     prompt_s1 = PROMPT_S1_AGENTIC.format(code=code)
     contents_s1 = [types.Content(role="user", parts=[types.Part(text=prompt_s1)])]
-    resp1 = call_gemini(client, model, contents_s1, max_retries)
+    resp1 = call_gemini(client, model, contents_s1, max_retries,
+                        thinking_setting=thinking_setting)
     s1_text = resp1.text or ""
-    s1_inp, s1_out, s1_think, s1_cost = token_cost(getattr(resp1, "usage_metadata", None))
+    s1_inp, s1_out, s1_think, s1_cost = token_cost(
+        getattr(resp1, "usage_metadata", None), model
+    )
 
     p1 = parse_response(s1_text)
     scores1 = score_row(p1, row, embed_model=None)
@@ -582,6 +713,11 @@ def run_stage1(client, model: str, row: dict, max_retries: int = 4) -> dict:
         "gt_pde": str(row["pde_class"]),
         "gt_method": str(row["num_method"]),
         "gt_behavior": str(row["phys_process"]),
+        # gt_sample identifies which base sample this row was derived from, so a
+        # valid row can be matched to its own defective counterpart. Required by
+        # the paired-by-gt_sample analysis (the primary score statistic); without
+        # it that comparison cannot be computed from the output JSONL at all.
+        "gt_sample": str(row.get("gt_sample", "")) or None,
         "code_hash": hashlib.sha256(code.encode()).hexdigest()[:16],
 
         # Internal-only, consumed by run_stage2_and_score(); stripped before
@@ -603,6 +739,10 @@ def run_stage1(client, model: str, row: dict, max_retries: int = 4) -> dict:
         "s1_method_exp": s1_explanations.get("method_exp"),
         "s1_behavior_exp": s1_explanations.get("behavior_exp"),
         "s1_valid_exp": s1_explanations.get("valid_exp"),
+        # Graded 0-10 physical-fidelity score, collected alongside (never instead
+        # of) the binary valid call. None when absent or out of range -- never
+        # coerced to a number, so non-compliance stays countable.
+        "s1_validity_score": s1_explanations.get("validity_score"),
 
         # Bookkeeping -- raw token counts persisted (not just derived cost)
         # so cost can always be recomputed correctly later even if pricing
@@ -624,8 +764,8 @@ def run_stage2_and_score(
     budget: int = INVESTIGATIVE_BUDGET_DEFAULT,
     truncate_chars: int = TRUNCATE_CHARS_DEFAULT,
     subprocess_timeout: int = SUBPROCESS_TIMEOUT_DEFAULT,
-    episode_cost_cap_usd: float = EPISODE_COST_CAP_DEFAULT,
-    thinking_budget: int = 0,
+    episode_cost_cap_usd: float | None = EPISODE_COST_CAP_DEFAULT,
+    thinking_setting: int | str | None = None,
     max_retries: int = 4,
 ) -> dict:
     """
@@ -639,12 +779,15 @@ def run_stage2_and_score(
     prompt_s1 = stage1_result["prompt_s1"]
     s1_text = stage1_result["s1_response"]
 
+    _resolved_setting = (stage1_thinking_setting(model)
+                         if thinking_setting is None else thinking_setting)
+
     s2 = run_agentic_stage2(
         client, model, title, run_id, code, prompt_s1, s1_text,
         budget=budget, truncate_chars=truncate_chars,
         subprocess_timeout=subprocess_timeout,
         episode_cost_cap_usd=episode_cost_cap_usd,
-        thinking_budget=thinking_budget, max_retries=max_retries,
+        thinking_setting=thinking_setting, max_retries=max_retries,
     )
 
     out = dict(stage1_result)
@@ -660,7 +803,10 @@ def run_stage2_and_score(
         # callers (run_stratified_sweep.py) must still checkpoint this row
         # (so it isn't silently auto-retried) and flag it for human review.
         out.update({
-            "thinking_budget": thinking_budget,
+            "thinking_setting": _resolved_setting,
+            "thinking_budget": _resolved_setting if not isinstance(_resolved_setting, str) else None,
+            "thinking_level": _resolved_setting if isinstance(_resolved_setting, str) else None,
+            "condition": condition_slug(model, _resolved_setting),
             "aborted": True,
             "abort_reason": s2["abort_reason"],
             "s2_action_count": s2["action_count"],
@@ -679,7 +825,10 @@ def run_stage2_and_score(
     scores2 = score_row(submit, row, embed_model=None)
 
     out.update({
-        "thinking_budget": thinking_budget,
+        "thinking_setting": _resolved_setting,
+        "thinking_budget": _resolved_setting if not isinstance(_resolved_setting, str) else None,
+        "thinking_level": _resolved_setting if isinstance(_resolved_setting, str) else None,
+        "condition": condition_slug(model, _resolved_setting),
         "aborted": False,
         "abort_reason": None,
         "transition": get_transition(out.get("s1_valid_match"), scores2.get("valid_match")),
@@ -690,6 +839,7 @@ def run_stage2_and_score(
         "s2_method_any_match": scores2.get("method_any_match"),
         "s2_behavior_any_match": scores2.get("behavior_any_match"),
         "s2_hedge_class": classify_hedge(submit.get("valid")),
+        "s2_validity_score": coerce_validity_score(submit.get("validity_score")),
         "s2_action_count": s2["action_count"],
         "s2_tools_used": s2["tools_used"],
         "s2_used_edit_source": s2["used_edit_source"],
@@ -716,8 +866,8 @@ def process_row(
     budget: int = INVESTIGATIVE_BUDGET_DEFAULT,
     truncate_chars: int = TRUNCATE_CHARS_DEFAULT,
     subprocess_timeout: int = SUBPROCESS_TIMEOUT_DEFAULT,
-    episode_cost_cap_usd: float = EPISODE_COST_CAP_DEFAULT,
-    thinking_budget: int = 0,
+    episode_cost_cap_usd: float | None = EPISODE_COST_CAP_DEFAULT,
+    thinking_setting: int | str | None = None,
     max_retries: int = 4,
 ) -> dict:
     """
@@ -727,13 +877,14 @@ def process_row(
     be cached/reused across multiple thinking-condition sweeps (see
     run_stratified_sweep.py).
     """
-    stage1_result = run_stage1(client, model, row, max_retries=max_retries)
+    stage1_result = run_stage1(client, model, row, max_retries=max_retries,
+                               thinking_setting=thinking_setting)
     return run_stage2_and_score(
         client, model, row, stage1_result, run_id=run_id,
         budget=budget, truncate_chars=truncate_chars,
         subprocess_timeout=subprocess_timeout,
         episode_cost_cap_usd=episode_cost_cap_usd,
-        thinking_budget=thinking_budget, max_retries=max_retries,
+        thinking_setting=thinking_setting, max_retries=max_retries,
     )
 
 
@@ -747,7 +898,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--truncate_chars", type=int, default=TRUNCATE_CHARS_DEFAULT)
     p.add_argument("--subprocess_timeout", type=int, default=SUBPROCESS_TIMEOUT_DEFAULT)
     p.add_argument("--episode_cost_cap_usd", type=float, default=EPISODE_COST_CAP_DEFAULT)
-    p.add_argument("--thinking_budget", type=int, default=0)
+    # str, not int: a Gemini 3 condition is a level name ("high"), a 2.5
+    # condition is a numeric budget ("0"/"1536"). Resolved by family below.
+    p.add_argument("--thinking_setting", default=None,
+                   help="Gemini 2.5: numeric thinking_budget (e.g. 0, 1536). "
+                        "Gemini 3.x: thinking_level name (low/medium/high). "
+                        "Omitted => that family's default.")
     p.add_argument("--max_cost_usd", type=float, default=1.0,
                    help="Session-level cap. Conservative default (vs. run_belief_revision.py's "
                         "5.0) since per-row agentic cost is not yet characterized and Rohan has "
@@ -804,8 +960,9 @@ def main() -> None:
         # estimate_cost_usd() assumes ~120 flat output tokens/call and has no
         # thinking-token term, so with thinking enabled it would silently
         # undercount -- add a worst-case per-call thinking margin.
-        think_margin = args.thinking_budget * _PRICE_THINK if args.thinking_budget else 0.0
-        est = (estimate_cost_usd(PROMPT_S1_AGENTIC.format(code=str(row["code"]))) + think_margin) * (args.budget + 2)
+        est = estimate_prompt_cost(
+            args.model, PROMPT_S1_AGENTIC.format(code=str(row["code"]))
+        ) * (args.budget + 2)
         if session_cost + est > args.max_cost_usd:
             print(f"[frontier-agentic] Cost limit ${args.max_cost_usd:.2f} reached. Stopping.", flush=True)
             break
@@ -817,7 +974,8 @@ def main() -> None:
             budget=args.budget, truncate_chars=args.truncate_chars,
             subprocess_timeout=args.subprocess_timeout,
             episode_cost_cap_usd=args.episode_cost_cap_usd,
-            thinking_budget=args.thinking_budget, max_retries=args.max_retries,
+            thinking_setting=parse_thinking_setting(args.model, args.thinking_setting),
+            max_retries=args.max_retries,
         )
         session_cost += result["total_cost_usd"]
         append_result(out_path, result)

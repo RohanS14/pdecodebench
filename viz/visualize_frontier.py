@@ -30,15 +30,28 @@ MOD_ORDER = [
     "Comm_Valid", "NoComm_Valid", "CorrComm", "NoComm_CorrVar",
     "Comm_InValid", "NoComm_InValid", "CorrComm_Invalid", "NoComm_CorrVar_InValid",
 ]
+# Display labels for the eight lexical-perturbation conditions. Single source of
+# truth: every figure, table and report imports these, so there is exactly one
+# name per condition and no long/short variants anywhere.
+#
+# "Obfuscated Var" replaced "Corrupt Variable": nothing is corrupted there --
+# identifiers are renamed to meaningless foobar_N and program behaviour is
+# unchanged, unlike the Invalid conditions which really do alter the physics.
+# That condition ALSO has its comments stripped (verified: 0 comments and
+# foobar_ identifiers in all 32 rows); the label omits that for length, so state
+# it in prose wherever the condition is discussed.
+#
+# "+" joins an additive condition; the comma is used where "+ No" would be
+# ungrammatical.
 MOD_SHORT = {
     "Comm_Valid":              "Clean+Comment",
     "NoComm_Valid":            "Clean, No Comment",
     "CorrComm":                "Corrupt Comment",
-    "NoComm_CorrVar":          "Corrupt Variable",
+    "NoComm_CorrVar":          "Obfuscated Var",
     "Comm_InValid":            "Invalid+Comment",
     "NoComm_InValid":          "Invalid, No Comment",
-    "CorrComm_Invalid":        "CorrComment+Invalid",
-    "NoComm_CorrVar_InValid":  "CorrVar+Invalid",
+    "CorrComm_Invalid":        "Invalid+Corrupt Comment",
+    "NoComm_CorrVar_InValid":  "Invalid+Obfuscated Var",
 }
 
 PDE_ORDER = ["burgers", "heat", "wave", "navier-stokes"]
@@ -181,7 +194,7 @@ def write_combined_html(out_dir: Path, slug: str) -> None:
   <div class="meta">
     <strong>Model:</strong> {slug}<br>
     <strong>Experiment:</strong> Two-stage code + trajectory eval<br>
-    <strong>Dataset:</strong> PDEcodeBench v4 (128 scripts, 8 mod_types)
+    <strong>Dataset:</strong> 256 scripts, 8 mod_types (jul28 dataset)
   </div>
   {nav_html}
 </div>
